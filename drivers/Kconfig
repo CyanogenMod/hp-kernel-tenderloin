@@ -113,4 +113,6 @@ source "drivers/xen/Kconfig"
 source "drivers/staging/Kconfig"
 
 source "drivers/platform/Kconfig"
+
+source "drivers/ar6000/Kconfig"
 endmenu
