@@ -19,10 +19,12 @@
 #include <linux/wait.h>
 #include <linux/sched.h>
 #include <linux/jiffies.h>
+#include <linux/uaccess.h>
 #include <asm/atomic.h>
 #include <mach/qdsp6v2/apr_audio.h>
 #include <mach/qdsp6v2/q6afe.h>
 #include "audio_acdb.h"
+#include "rtac.h"
 
 #define TIMEOUT_MS 1000
 #define AUDIO_RX 0x0
@@ -54,13 +56,18 @@ static int32_t adm_callback(struct apr_client_data *data, void *priv)
 
 		if (data->opcode == APR_BASIC_RSP_RESULT) {
 			switch (payload[0]) {
+			case ADM_CMD_SET_PARAMS:
+#ifdef CONFIG_MSM8X60_RTAC
+				if (rtac_make_adm_callback(payload,
+						data->payload_size))
+					break;
+#endif
 			case ADM_CMD_COPP_CLOSE:
 			case ADM_CMD_MEMORY_MAP:
 			case ADM_CMD_MEMORY_UNMAP:
 			case ADM_CMD_MEMORY_MAP_REGIONS:
 			case ADM_CMD_MEMORY_UNMAP_REGIONS:
 			case ADM_CMD_MATRIX_MAP_ROUTINGS:
-			case ADM_CMD_SET_PARAMS:
 				atomic_set(&this_adm.copp_stat[index], 1);
 				wake_up(&this_adm.wait);
 				break;
@@ -82,6 +89,12 @@ static int32_t adm_callback(struct apr_client_data *data, void *priv)
 			wake_up(&this_adm.wait);
 			}
 			break;
+#ifdef CONFIG_MSM8X60_RTAC
+		case ADM_CMDRSP_GET_PARAMS:
+			rtac_make_adm_callback(payload,
+				data->payload_size);
+			break;
+#endif
 		default:
 			pr_err("%s: Unknown cmd:0x%x\n", __func__,
 							data->opcode);
@@ -191,6 +204,9 @@ int adm_open(int port_id, int path, int rate, int channel_mode, int topology)
 			ret = -ENODEV;
 			return ret;
 		}
+#ifdef CONFIG_MSM8X60_RTAC
+		rtac_set_adm_handle(this_adm.apr);
+#endif
 	}
 
 
@@ -320,6 +336,10 @@ int adm_matrix_map(int session_id, int path, int num_copps, int *port_id)
 	for (i = 0; i < num_copps; i++)
 		send_adm_cal(port_id[i], path);
 
+#ifdef CONFIG_MSM8X60_RTAC
+	for (i = 0; i < num_copps; i++)
+		rtac_add_adm_device(port_id[i], session_id);
+#endif
 	return 0;
 
 fail_cmd:
@@ -347,6 +367,9 @@ int adm_memory_map_regions(uint32_t *buf_add, uint32_t mempool_id,
 			ret = -ENODEV;
 			return ret;
 		}
+#ifdef CONFIG_MSM8X60_RTAC
+		rtac_set_adm_handle(this_adm.apr);
+#endif
 	}
 
 	cmd_size = sizeof(struct adm_cmd_memory_map_regions)
@@ -470,6 +493,20 @@ fail_cmd:
 	return ret;
 }
 
+#ifdef CONFIG_MSM8X60_RTAC
+int adm_get_copp_id(int port_id)
+{
+	pr_debug("%s\n", __func__);
+
+	if (port_id < 0) {
+		pr_err("%s: invalid port_id = %d\n", __func__, port_id);
+		return -EINVAL;
+	}
+
+	return atomic_read(&this_adm.copp_id[port_id]);
+}
+#endif
+
 int adm_close(int port_id)
 {
 	struct apr_hdr close;
@@ -525,6 +562,10 @@ int adm_close(int port_id)
 			ret = -EINVAL;
 			goto fail_cmd;
 		}
+
+#ifdef CONFIG_MSM8X60_RTAC
+		rtac_remove_adm_device(port_id);
+#endif
 	}
 
 fail_cmd:

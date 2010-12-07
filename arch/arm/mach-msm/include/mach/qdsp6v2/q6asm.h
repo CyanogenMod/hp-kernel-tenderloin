@@ -75,6 +75,8 @@
 #define NO_TIMESTAMP    0xFF00
 #define SET_TIMESTAMP   0x0000
 
+#define SESSION_MAX	0x08
+
 typedef void (*app_cb)(uint32_t opcode, uint32_t token,
 			uint32_t *payload, void *priv);
 
@@ -240,4 +242,10 @@ uint32_t q6asm_get_session_time(struct audio_client *ac);
 
 /* Client can set the IO mode to either AIO/SIO mode */
 int q6asm_set_io_mode(struct audio_client *ac, uint32_t mode);
+
+#ifdef CONFIG_MSM8X60_RTAC
+/* Get Service ID for APR communication */
+int q6asm_get_apr_service_id(int session_id);
+#endif
+
 #endif /* __Q6_ASM_H__ */

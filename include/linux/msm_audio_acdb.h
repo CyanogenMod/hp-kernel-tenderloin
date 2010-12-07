@@ -1,4 +1,4 @@
-/* Copyright (c) 2009, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -65,5 +65,30 @@ struct sidetone_cal {
 	uint16_t	enable;
 	uint16_t	gain;
 };
+
+/* For Real-Time Audio Calibration */
+#define AUDIO_GET_RTAC_DEV_CTRL_INFO	_IOR(AUDIO_IOCTL_MAGIC, \
+			(AUDIO_MAX_COMMON_IOCTL_NUM+11), unsigned)
+#define AUDIO_GET_RTAC_ADM_INFO		_IOR(AUDIO_IOCTL_MAGIC, \
+			(AUDIO_MAX_COMMON_IOCTL_NUM+12), unsigned)
+#define AUDIO_GET_RTAC_VOICE_INFO	_IOR(AUDIO_IOCTL_MAGIC, \
+			(AUDIO_MAX_COMMON_IOCTL_NUM+13), unsigned)
+#define AUDIO_GET_RTAC_ADM_CAL	_IOWR(AUDIO_IOCTL_MAGIC, \
+			(AUDIO_MAX_COMMON_IOCTL_NUM+14), unsigned)
+#define AUDIO_SET_RTAC_ADM_CAL	_IOWR(AUDIO_IOCTL_MAGIC, \
+			(AUDIO_MAX_COMMON_IOCTL_NUM+15), unsigned)
+#define AUDIO_GET_RTAC_ASM_CAL	_IOWR(AUDIO_IOCTL_MAGIC, \
+			(AUDIO_MAX_COMMON_IOCTL_NUM+16), unsigned)
+#define AUDIO_SET_RTAC_ASM_CAL	_IOWR(AUDIO_IOCTL_MAGIC, \
+			(AUDIO_MAX_COMMON_IOCTL_NUM+17), unsigned)
+#define AUDIO_GET_RTAC_CVS_CAL	_IOWR(AUDIO_IOCTL_MAGIC, \
+			(AUDIO_MAX_COMMON_IOCTL_NUM+18), unsigned)
+#define AUDIO_SET_RTAC_CVS_CAL	_IOWR(AUDIO_IOCTL_MAGIC, \
+			(AUDIO_MAX_COMMON_IOCTL_NUM+19), unsigned)
+#define AUDIO_GET_RTAC_CVP_CAL	_IOWR(AUDIO_IOCTL_MAGIC, \
+			(AUDIO_MAX_COMMON_IOCTL_NUM+20), unsigned)
+#define AUDIO_SET_RTAC_CVP_CAL	_IOWR(AUDIO_IOCTL_MAGIC, \
+			(AUDIO_MAX_COMMON_IOCTL_NUM+21), unsigned)
+
 
 #endif /* __MSM_AUDIO_ACDB_H */

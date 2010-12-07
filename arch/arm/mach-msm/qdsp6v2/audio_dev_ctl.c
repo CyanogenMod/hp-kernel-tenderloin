@@ -30,6 +30,7 @@
 #include <mach/qdsp6v2/q6afe.h>
 #include <mach/qdsp6v2/q6voice.h>
 #include "q6adm.h"
+#include "rtac.h"
 
 #ifndef MAX
 #define  MAX(x, y) (((x) > (y)) ? (x) : (y))
@@ -1293,6 +1294,10 @@ void broadcast_event(u32 evt_id, u32 dev_id, u64 session_id)
 		&& (evt_id != AUDDEV_EVT_STREAM_VOL_CHG)
 		&& (evt_id != AUDDEV_EVT_VOICE_STATE_CHG))
 		dev_info = audio_dev_ctrl_find_dev(dev_id);
+
+#ifdef CONFIG_MSM8X60_RTAC
+	update_rtac(evt_id, dev_id, dev_info);
+#endif
 
 	if (event.cb != NULL)
 		callback = event.cb;

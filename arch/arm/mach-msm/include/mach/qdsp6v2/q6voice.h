@@ -11,7 +11,7 @@
  *       with the distribution.
  *     * Neither the name of Code Aurora Forum, Inc. nor the names of its
  *       contributors may be used to endorse or promote products derived
- *	from this software without specific prior written permission.
+ *       from this software without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
  * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
@@ -523,6 +523,10 @@ struct cvs_start_record_cmd {
 #define VSS_MEDIA_ID_G729		0x00010FD0
 /* G.729AB (contains two 10ms vocoder frames. */
 
+#define VOICE_CMD_SET_PARAM				0x00011006
+#define VOICE_CMD_GET_PARAM				0x00011007
+#define VOICE_EVT_GET_PARAM_ACK				0x00011008
+
 struct vss_ivocproc_cmd_create_full_control_session_t {
 	uint16_t direction;
 	/*
@@ -632,6 +636,82 @@ typedef void (*ul_cb_fn)(uint8_t *voc_pkt,
 typedef void (*dl_cb_fn)(uint8_t *voc_pkt,
 			 uint32_t *pkt_len,
 			 void *private_data);
+
+
+struct mvs_driver_info {
+	uint32_t media_type;
+	uint32_t rate;
+	uint32_t network_type;
+	ul_cb_fn ul_cb;
+	dl_cb_fn dl_cb;
+	void *private_data;
+};
+
+struct incall_rec_info {
+	uint32_t pending;
+	uint32_t rec_mode;
+};
+
+struct voice_data {
+	int voc_state;/*INIT, CHANGE, RELEASE, RUN */
+	uint32_t voc_path;
+
+	wait_queue_head_t mvm_wait;
+	wait_queue_head_t cvs_wait;
+	wait_queue_head_t cvp_wait;
+
+	uint32_t device_events;
+
+	/* cache the values related to Rx and Tx */
+	struct device_data dev_rx;
+	struct device_data dev_tx;
+
+	/* these default values are for all devices */
+	uint32_t default_mute_val;
+	uint32_t default_vol_val;
+	uint32_t default_sample_val;
+
+	/* call status */
+	int v_call_status; /* Start or End */
+
+	/* APR to MVM in the modem */
+	void *apr_mvm;
+	/* APR to CVS in the modem */
+	void *apr_cvs;
+	/* APR to CVP in the modem */
+	void *apr_cvp;
+
+	/* APR to MVM in the Q6 */
+	void *apr_q6_mvm;
+	/* APR to CVS in the Q6 */
+	void *apr_q6_cvs;
+	/* APR to CVP in the Q6 */
+	void *apr_q6_cvp;
+
+	u32 mvm_state;
+	u32 cvs_state;
+	u32 cvp_state;
+
+	/* Handle to MVM in the modem */
+	u16 mvm_handle;
+	/* Handle to CVS in the modem */
+	u16 cvs_handle;
+	/* Handle to CVP in the modem */
+	u16 cvp_handle;
+
+	/* Handle to MVM in the Q6 */
+	u16 mvm_q6_handle;
+	/* Handle to CVS in the Q6 */
+	u16 cvs_q6_handle;
+	/* Handle to CVP in the Q6 */
+	u16 cvp_q6_handle;
+
+	struct mutex lock;
+
+	struct mvs_driver_info mvs_info;
+
+	struct incall_rec_info rec_info;
+};
 
 int voice_set_voc_path_full(uint32_t set);
 

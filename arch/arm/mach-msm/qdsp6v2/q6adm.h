@@ -40,4 +40,8 @@ int adm_close(int port);
 
 int adm_matrix_map(int session_id, int path, int num_copps, int *port_id);
 
+#ifdef CONFIG_MSM8X60_RTAC
+int adm_get_copp_id(int port_id);
+#endif
+
 #endif /* __Q6_ADM_H__ */

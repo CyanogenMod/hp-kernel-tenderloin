@@ -477,6 +477,8 @@ struct asm_pp_params_command {
 
 
 #define ADM_CMD_SET_PARAMS                               0x00010306
+#define ADM_CMD_GET_PARAMS                               0x0001030B
+#define ADM_CMDRSP_GET_PARAMS                            0x0001030C
 struct adm_set_params_command {
 	struct apr_hdr		hdr;
 	u32			payload;

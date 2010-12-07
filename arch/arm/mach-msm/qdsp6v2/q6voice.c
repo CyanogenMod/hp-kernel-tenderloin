@@ -32,6 +32,7 @@
 #include <mach/qdsp6v2/q6voice.h>
 #include "audio_acdb.h"
 #include <linux/msm_audio_mvs.h>
+#include "rtac.h"
 
 #define TIMEOUT_MS 3000
 #define SNDDEV_CAP_TTY 0x20
@@ -45,81 +46,6 @@
 #define BUFFER_PAYLOAD_SIZE 4000
 
 #define VOC_REC_NONE 0xFF
-
-struct mvs_driver_info {
-	uint32_t media_type;
-	uint32_t rate;
-	uint32_t network_type;
-	ul_cb_fn ul_cb;
-	dl_cb_fn dl_cb;
-	void *private_data;
-};
-
-struct incall_rec_info {
-	uint32_t pending;
-	uint32_t rec_mode;
-};
-
-struct voice_data {
-	int voc_state;/*INIT, CHANGE, RELEASE, RUN */
-	uint32_t voc_path;
-
-	wait_queue_head_t mvm_wait;
-	wait_queue_head_t cvs_wait;
-	wait_queue_head_t cvp_wait;
-
-	uint32_t device_events;
-
-	/* cache the values related to Rx and Tx */
-	struct device_data dev_rx;
-	struct device_data dev_tx;
-
-	/* these default values are for all devices */
-	uint32_t default_mute_val;
-	uint32_t default_vol_val;
-	uint32_t default_sample_val;
-
-	/* call status */
-	int v_call_status; /* Start or End */
-
-	/* APR to MVM in the modem */
-	void *apr_mvm;
-	/* APR to CVS in the modem */
-	void *apr_cvs;
-	/* APR to CVP in the modem */
-	void *apr_cvp;
-
-	/* APR to MVM in the Q6 */
-	void *apr_q6_mvm;
-	/* APR to CVS in the Q6 */
-	void *apr_q6_cvs;
-	/* APR to CVP in the Q6 */
-	void *apr_q6_cvp;
-
-	u32 mvm_state;
-	u32 cvs_state;
-	u32 cvp_state;
-
-	/* Handle to MVM in the modem */
-	u16 mvm_handle;
-	/* Handle to CVS in the modem */
-	u16 cvs_handle;
-	/* Handle to CVP in the modem */
-	u16 cvp_handle;
-
-	/* Handle to MVM in the Q6 */
-	u16 mvm_q6_handle;
-	/* Handle to CVS in the Q6 */
-	u16 cvs_q6_handle;
-	/* Handle to CVP in the Q6 */
-	u16 cvp_q6_handle;
-
-	struct mutex lock;
-
-	struct mvs_driver_info mvs_info;
-
-	struct incall_rec_info rec_info;
-};
 
 struct voice_data voice;
 
@@ -165,10 +91,14 @@ static void voice_set_apr_cvs(struct voice_data *v, void *apr_cvs)
 {
 	pr_debug("%s: apr_cvs 0x%x\n", __func__, (unsigned int)apr_cvs);
 
-	if (v->voc_path == VOC_PATH_PASSIVE)
+	if (v->voc_path == VOC_PATH_PASSIVE) {
 		v->apr_cvs = apr_cvs;
-	else
+#ifdef CONFIG_MSM8X60_RTAC
+		rtac_set_voice_handle(RTAC_CVS, apr_cvs);
+#endif
+	} else {
 		v->apr_q6_cvs = apr_cvs;
+	}
 }
 
 static void *voice_get_apr_cvp(struct voice_data *v)
@@ -189,10 +119,14 @@ static void voice_set_apr_cvp(struct voice_data *v, void *apr_cvp)
 {
 	pr_debug("%s: apr_cvp 0x%x\n", __func__, (unsigned int)apr_cvp);
 
-	if (v->voc_path == VOC_PATH_PASSIVE)
+	if (v->voc_path == VOC_PATH_PASSIVE) {
 		v->apr_cvp = apr_cvp;
-	else
+#ifdef CONFIG_MSM8X60_RTAC
+		rtac_set_voice_handle(RTAC_CVP, apr_cvp);
+#endif
+	} else {
 		v->apr_q6_cvp = apr_cvp;
+	}
 }
 
 static u16 voice_get_mvm_handle(struct voice_data *v)
@@ -1563,6 +1497,9 @@ static int voice_setup_modem_voice(struct voice_data *v)
 		}
 	}
 
+#ifdef CONFIG_MSM8X60_RTAC
+	rtac_add_voice(v);
+#endif
 	return 0;
 fail:
 	return -EINVAL;
@@ -1631,6 +1568,9 @@ static int voice_destroy_modem_voice(struct voice_data *v)
 		goto fail;
 	}
 
+#ifdef CONFIG_MSM8X60_RTAC
+	rtac_remove_voice(v);
+#endif
 	cvp_handle = 0;
 	voice_set_cvp_handle(v, cvp_handle);
 
@@ -2282,6 +2222,11 @@ static int32_t modem_cvs_callback(struct apr_client_data *data, void *priv)
 
 					v->cvs_state = CMD_STATUS_SUCCESS;
 					wake_up(&v->cvs_wait);
+#ifdef CONFIG_MSM8X60_RTAC
+			} else if (ptr[0] == VOICE_CMD_SET_PARAM) {
+				rtac_make_voice_callback(RTAC_CVS, ptr,
+					data->payload_size);
+#endif
 			} else
 				pr_debug("%s: cmd = 0x%x\n", __func__, ptr[0]);
 		}
@@ -2342,6 +2287,12 @@ static int32_t modem_cvs_callback(struct apr_client_data *data, void *priv)
 		} else {
 			pr_debug("%s: ul_cb is NULL\n", __func__);
 		}
+#ifdef CONFIG_MSM8X60_RTAC
+	} else if (data->opcode ==  VOICE_EVT_GET_PARAM_ACK) {
+		rtac_make_voice_callback(RTAC_CVS, data->payload,
+					data->payload_size);
+#endif
+
 	} else {
 		pr_debug("%s: Unknown opcode 0x%x\n", __func__, data->opcode);
 	}
@@ -2398,10 +2349,20 @@ static int32_t modem_cvp_callback(struct apr_client_data *data, void *priv)
 				pr_debug("%s: cmd = 0x%x\n", __func__, ptr[0]);
 				v->cvp_state = CMD_STATUS_SUCCESS;
 				wake_up(&v->cvp_wait);
+#ifdef CONFIG_MSM8X60_RTAC
+			} else if (ptr[0] == VOICE_CMD_SET_PARAM) {
+				rtac_make_voice_callback(RTAC_CVP, ptr,
+					data->payload_size);
+#endif
 			} else
 				pr_debug("%s: not match cmd = 0x%x\n",
 							__func__, ptr[0]);
 		}
+#ifdef CONFIG_MSM8X60_RTAC
+	} else if (data->opcode ==  VOICE_EVT_GET_PARAM_ACK) {
+		rtac_make_voice_callback(RTAC_CVP, data->payload,
+			data->payload_size);
+#endif
 	}
 	return 0;
 }

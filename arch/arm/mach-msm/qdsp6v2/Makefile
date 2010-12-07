@@ -1,3 +1,4 @@
+obj-$(CONFIG_MSM8X60_RTAC) += rtac.o
 obj-y += audio_dev_ctl.o
 obj-y += board-msm8x60-audio.o
 obj-y += snddev_icodec.o
