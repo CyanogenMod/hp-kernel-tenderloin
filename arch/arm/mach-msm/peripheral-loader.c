@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -324,9 +324,24 @@ unlock:
 }
 EXPORT_SYMBOL(pil_put);
 
-int pil_force_reset(const char *name)
+void pil_force_shutdown(const char *name)
 {
-	int ret = 0;
+	struct pil_device *pil;
+
+	pil = find_peripheral(name);
+	if (!pil)
+		return;
+
+	mutex_lock(&pil->lock);
+	if (!WARN(!pil->count, "%s: Reference count mismatch\n", __func__))
+		pil->ops->shutdown();
+	mutex_unlock(&pil->lock);
+}
+EXPORT_SYMBOL(pil_force_shutdown);
+
+int pil_force_boot(const char *name)
+{
+	int ret = -EINVAL;
 	struct pil_device *pil;
 
 	pil = find_peripheral(name);
@@ -334,14 +349,13 @@ int pil_force_reset(const char *name)
 		return -EINVAL;
 
 	mutex_lock(&pil->lock);
-	if (pil->count) {
-		pil->ops->shutdown();
+	if (!WARN(!pil->count, "%s: Reference count mismatch\n", __func__))
 		ret = load_image(pil);
-	}
 	mutex_unlock(&pil->lock);
+
 	return ret;
 }
-EXPORT_SYMBOL(pil_force_reset);
+EXPORT_SYMBOL(pil_force_boot);
 
 #ifdef CONFIG_DEBUG_FS
 int msm_pil_debugfs_open(struct inode *inode, struct file *filp)

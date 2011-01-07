@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -31,11 +31,13 @@
 #ifdef CONFIG_MSM_PIL
 extern void *pil_get(const char *name);
 extern void pil_put(void *peripheral_handle);
-extern int pil_force_reset(const char *name);
+extern void pil_force_shutdown(const char *name);
+extern int pil_force_boot(const char *name);
 #else
 static inline void *pil_get(const char *name) { return NULL; }
 static inline void pil_put(void *peripheral_handle) { }
-static inline int pil_force_reset(const char *name) { return -ENOSYS; }
+static inline void pil_force_shutdown(const char *name) { }
+static inline int pil_force_boot(const char *name) { return -ENOSYS; }
 #endif
 
 #endif
