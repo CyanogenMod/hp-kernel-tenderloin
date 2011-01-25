@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -41,9 +41,9 @@ struct snddev_icodec_data {
 	/* Afe setting */
 	u8 channel_mode;
 	u32 default_sample_rate;
-	void (*pamp_on) (void);
+	int (*pamp_on) (void);
 	void (*pamp_off) (void);
-	void (*voltage_on) (void);
+	int (*voltage_on) (void);
 	void (*voltage_off) (void);
 	u32 dev_vol_type;
 };

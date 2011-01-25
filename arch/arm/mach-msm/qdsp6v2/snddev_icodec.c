@@ -319,14 +319,20 @@ static int snddev_icodec_open_rx(struct snddev_icodec_state *icodec)
 		adie_codec_set_master_mode(icodec->adie_path, 0);
 
 	/* Enable power amplifier */
-	if (icodec->data->pamp_on)
-		icodec->data->pamp_on();
+	if (icodec->data->pamp_on) {
+		if (icodec->data->pamp_on()) {
+			pr_err("%s: Error turning on rx power\n", __func__);
+			goto error_pamp;
+		}
+	}
 #endif
+
 	icodec->enabled = 1;
 
 	wake_unlock(&drv->rx_idlelock);
 	return 0;
 
+error_pamp:
 error_adie:
 	clk_disable(drv->rx_osrclk);
 error_invalid_freq:
@@ -351,8 +357,12 @@ static int snddev_icodec_open_tx(struct snddev_icodec_state *icodec)
 
 #if defined(CONFIG_MARIMBA_CODEC)
 	/* Reuse pamp_on for TX platform-specific setup  */
-	if (icodec->data->pamp_on)
-		icodec->data->pamp_on();
+	if (icodec->data->pamp_on) {
+		if (icodec->data->pamp_on()) {
+			pr_err("%s: Error turning on tx power\n", __func__);
+			goto error_pamp;
+		}
+	}
 #endif
 
 #if defined(CONFIG_MARIMBA_CODEC)
@@ -442,7 +452,7 @@ error_invalid_freq:
 		icodec->data->pamp_off();
 
 	pr_err("%s: encounter error\n", __func__);
-
+error_pamp:
 	wake_unlock(&drv->tx_idlelock);
 	return -ENODEV;
 }
