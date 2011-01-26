@@ -803,7 +803,11 @@ struct kgsl_platform_data kgsl_pdata = {
 #ifdef CONFIG_KGSL_PER_PROCESS_PAGE_TABLE
 	.pt_va_size = SZ_256M - SZ_64K,
 #else
+	/* Set the GPU pagetable size to the maximum practical
+	 * limit */
 	.pt_va_size = SZ_256M - SZ_64K,
+	/* We only ever have one pagetable for everybody */
+	.pt_max_count = 1,
 #endif
 };
 
