@@ -4077,20 +4077,27 @@ static struct platform_device android_pmem_audio_device = {
 };
 
 static struct kgsl_platform_data kgsl_pdata = {
-#ifdef CONFIG_MSM_NPA_SYSTEM_BUS
-	/* NPA Flow IDs */
-	.high_axi_3d = MSM_AXI_FLOW_3D_GPU_HIGH,
-	.high_axi_2d = MSM_AXI_FLOW_2D_GPU_HIGH,
-#else
-	/* AXI rates in KHz */
-	.high_axi_3d = 192000,
-	.high_axi_2d = 192000,
-#endif
-	.max_grp2d_freq = 0,
-	.min_grp2d_freq = 0,
+	.pwrlevel_2d = {
+		{
+			.gpu_freq = 0,
+			.bus_freq = 192000000,
+		},
+	},
+	.init_level_2d = 0,
+	.num_levels_2d = 1,
+	.pwrlevel_3d = {
+		{
+			.gpu_freq = 245760000,
+			.bus_freq = 192000000,
+		},
+		{
+			.gpu_freq = 192000000,
+			.bus_freq = 0,
+		},
+	},
+	.init_level_3d = 0,
+	.num_levels_3d = 2,
 	.set_grp2d_async = NULL, /* HW workaround, run Z180 SYNC @ 192 MHZ */
-	.max_grp3d_freq = 245760000,
-	.min_grp3d_freq = 192 * 1000*1000,
 	.set_grp3d_async = set_grp3d_async,
 	.imem_clk_name = "imem_clk",
 	.grp3d_clk_name = "grp_clk",

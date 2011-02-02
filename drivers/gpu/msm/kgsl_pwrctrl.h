@@ -52,13 +52,7 @@
 #define BW_INIT 0
 #define BW_MAX  1
 
-enum kgsl_clk_freq {
-	KGSL_AXI_HIGH = 0,
-	KGSL_MIN_FREQ = 1,
-	KGSL_DEFAULT_FREQ = 2,
-	KGSL_MAX_FREQ = 3,
-	KGSL_NUM_FREQ = 4
-};
+#define KGSL_DEFAULT_PWRLEVEL 1
 
 struct kgsl_pwrctrl {
 	int interrupt_num;
@@ -71,7 +65,9 @@ struct kgsl_pwrctrl {
 	struct clk *imem_clk;
 	struct clk *imem_pclk;
 	unsigned int power_flags;
-	unsigned int clk_freq[KGSL_NUM_FREQ];
+	struct kgsl_pwrlevel pwrlevels[KGSL_MAX_PWRLEVELS];
+	unsigned int active_pwrlevel;
+	unsigned int num_pwrlevels;
 	unsigned int interval_timeout;
 	struct regulator *gpu_reg;
 	uint32_t pcl;

@@ -476,7 +476,7 @@ kgsl_yamato_getchipid(struct kgsl_device *device)
 int __init
 kgsl_yamato_init_pwrctrl(struct kgsl_device *device)
 {
-	int result = 0;
+	int i, result = 0;
 	struct clk *clk, *grp_clk;
 	struct platform_device *pdev = kgsl_driver.pdev;
 	struct kgsl_platform_data *pdata = pdev->dev.platform_data;
@@ -511,13 +511,25 @@ kgsl_yamato_init_pwrctrl(struct kgsl_device *device)
 	/* put the AXI bus into asynchronous mode with the graphics cores */
 	if (pdata->set_grp3d_async != NULL)
 		pdata->set_grp3d_async();
-	if (pdata->max_grp3d_freq) {
-		device->pwrctrl.clk_freq[KGSL_MIN_FREQ] =
-			clk_round_rate(clk, pdata->min_grp3d_freq);
-		device->pwrctrl.clk_freq[KGSL_MAX_FREQ] =
-			clk_round_rate(clk, pdata->max_grp3d_freq);
-		clk_set_rate(clk, device->pwrctrl.clk_freq[KGSL_MIN_FREQ]);
+
+	if (pdata->num_levels_3d > KGSL_MAX_PWRLEVELS) {
+		result = -EINVAL;
+		goto done;
 	}
+	device->pwrctrl.num_pwrlevels = pdata->num_levels_3d;
+	device->pwrctrl.active_pwrlevel = pdata->init_level_3d;
+	for (i = 0; i < pdata->num_levels_3d; i++) {
+		device->pwrctrl.pwrlevels[i].gpu_freq =
+			(pdata->pwrlevel_3d[i].gpu_freq > 0) ?
+			clk_round_rate(clk, pdata->pwrlevel_3d[i].
+				gpu_freq) : 0;
+		device->pwrctrl.pwrlevels[i].bus_freq =
+			pdata->pwrlevel_3d[i].bus_freq;
+	}
+	/* Do not set_rate for targets in sync with AXI */
+	if (pdata->pwrlevel_3d[0].gpu_freq > 0)
+		clk_set_rate(clk, device->pwrctrl.
+			pwrlevels[KGSL_DEFAULT_PWRLEVEL].gpu_freq);
 
 	if (pdata->imem_clk_name != NULL) {
 		clk = clk_get(&pdev->dev, pdata->imem_clk_name);
@@ -549,7 +561,6 @@ kgsl_yamato_init_pwrctrl(struct kgsl_device *device)
 		KGSL_PWRFLAGS_AXI_OFF | KGSL_PWRFLAGS_POWER_OFF |
 		KGSL_PWRFLAGS_IRQ_OFF;
 	device->pwrctrl.nap_allowed = pdata->nap_allowed;
-	device->pwrctrl.clk_freq[KGSL_AXI_HIGH] = pdata->high_axi_3d;
 	/* per test, io_fraction default value is set to 33% for best
 	   power/performance result */
 	device->pwrctrl.io_fraction = 33;
@@ -559,7 +570,9 @@ kgsl_yamato_init_pwrctrl(struct kgsl_device *device)
 		device->pwrctrl.ebi1_clk = NULL;
 	else
 		clk_set_rate(device->pwrctrl.ebi1_clk,
-				device->pwrctrl.clk_freq[KGSL_AXI_HIGH] * 1000);
+			device->pwrctrl.
+				pwrlevels[device->pwrctrl.active_pwrlevel].
+					 bus_freq);
 	if (pdata->grp3d_bus_scale_table != NULL) {
 		device->pwrctrl.pcl =
 		msm_bus_scale_register_client(pdata->grp3d_bus_scale_table);

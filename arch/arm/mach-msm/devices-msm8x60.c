@@ -736,20 +736,31 @@ struct platform_device msm_device_rng = {
 #endif
 
 struct kgsl_platform_data kgsl_pdata = {
-#ifdef CONFIG_MSM_NPA_SYSTEM_BUS
-	/* NPA Flow IDs */
-	.high_axi_3d = MSM_AXI_FLOW_3D_GPU_HIGH,
-	.high_axi_2d = MSM_AXI_FLOW_2D_GPU_HIGH,
-#else
-	/* AXI rates in KHz */
-	.high_axi_3d = 200000,
-	.high_axi_2d = 160000,
-#endif
-	.max_grp2d_freq = 228571000,
-	.min_grp2d_freq = 228571000,
-	.set_grp2d_async = NULL, /* HW workaround, run Z180 SYNC @ 192 MHZ */
-	.max_grp3d_freq = 266667000,
-	.min_grp3d_freq = 266667000,
+	.pwrlevel_2d = {
+		{
+			.gpu_freq = 228571000,
+			.bus_freq = 1,
+		},
+		{
+			.gpu_freq = 228571000,
+			.bus_freq = 0,
+		},
+	},
+	.init_level_2d = 0,
+	.num_levels_2d = 2,
+	.pwrlevel_3d = {
+		{
+			.gpu_freq = 266667000,
+			.bus_freq = 1,
+		},
+		{
+			.gpu_freq = 266667000,
+			.bus_freq = 0,
+		},
+	},
+	.init_level_3d = 0,
+	.num_levels_3d = 2,
+	.set_grp2d_async = NULL,
 	.set_grp3d_async = NULL,
 	.imem_clk_name = "imem_axi_clk",
 	.imem_pclk_name = "imem_pclk",

@@ -1439,12 +1439,27 @@ static struct resource kgsl_resources[] = {
 	},
 };
 static struct kgsl_platform_data kgsl_pdata = {
-	.high_axi_3d = 128000, /* Max for 8K */
-	.max_grp2d_freq = 0,
-	.min_grp2d_freq = 0,
+	.pwrlevel_2d = {
+		{
+			.gpu_freq = 0,
+			.bus_freq = 192000000,
+		},
+	},
+	.init_level_2d = 0,
+	.num_levels_2d = 1,
+	.pwrlevel_3d = {
+		{
+			.gpu_freq = 235000000,
+			.bus_freq = 128000000,
+		},
+		{
+			.gpu_freq = 192000000,
+			.bus_freq = 0,
+		},
+	},
+	.init_level_3d = 0,
+	.num_levels_3d = 2,
 	.set_grp2d_async = NULL,
-	.max_grp3d_freq = 235*1000*1000,
-	.min_grp3d_freq = 192*1000*1000,
 	/*note: on 8650a async mode is the default */
 	.set_grp3d_async = NULL,
 	.imem_clk_name = "imem_clk",

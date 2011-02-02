@@ -50,6 +50,8 @@
 #define KGSL_FLAGS_RESERVED2   0x00000080
 #define KGSL_FLAGS_SOFT_RESET  0x00000100
 
+#define KGSL_MAX_PWRLEVELS 5
+
 /* device id */
 enum kgsl_deviceid {
 	KGSL_DEVICE_YAMATO	= 0x00000000,
@@ -122,17 +124,22 @@ struct kgsl_shadowprop {
 	unsigned int flags; /* contains KGSL_FLAGS_ values */
 };
 
+struct kgsl_pwrlevel {
+	unsigned int gpu_freq;
+	unsigned int bus_freq;
+};
+
 #ifdef __KERNEL__
 #include <mach/msm_bus.h>
 
 struct kgsl_platform_data {
-	unsigned int high_axi_2d;
-	unsigned int high_axi_3d;
-	unsigned int max_grp2d_freq;
-	unsigned int min_grp2d_freq;
+	struct kgsl_pwrlevel pwrlevel_2d[KGSL_MAX_PWRLEVELS];
+	int init_level_2d;
+	int num_levels_2d;
+	struct kgsl_pwrlevel pwrlevel_3d[KGSL_MAX_PWRLEVELS];
+	int init_level_3d;
+	int num_levels_3d;
 	int (*set_grp2d_async)(void);
-	unsigned int max_grp3d_freq;
-	unsigned int min_grp3d_freq;
 	int (*set_grp3d_async)(void);
 	const char *imem_clk_name;
 	const char *imem_pclk_name;
