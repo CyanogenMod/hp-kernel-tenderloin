@@ -58,6 +58,7 @@
 #define QDSP6SS_STRAP_AHB		(msm_lpass_qdsp6ss_base + 0x0020)
 
 #define PPSS_RESET			(MSM_CLK_CTL_BASE + 0x2594)
+#define PPSS_PROC_CLK_CTL		(MSM_CLK_CTL_BASE + 0x2588)
 
 #define PAS_MODEM	0
 #define PAS_Q6		1
@@ -154,6 +155,8 @@ static int init_image_dsps_untrusted(const u8 *metadata, size_t size)
 {
 	struct elf32_hdr *ehdr = (struct elf32_hdr *)metadata;
 	dsps_start = ehdr->e_entry;
+	/* Bring memory and bus interface out of reset */
+	writel(0x2, PPSS_RESET);
 	return 0;
 }
 
@@ -419,6 +422,7 @@ static int shutdown_q6_trusted(void)
 
 static int reset_dsps_untrusted(void)
 {
+	writel(0x10, PPSS_PROC_CLK_CTL);
 	/* Bring DSPS out of reset */
 	writel(0x0, PPSS_RESET);
 	return 0;
@@ -436,7 +440,8 @@ static int shutdown_dsps_trusted(void)
 
 static int shutdown_dsps_untrusted(void)
 {
-	writel(0x3, PPSS_RESET);
+	writel(0x2, PPSS_RESET);
+	writel(0x0, PPSS_PROC_CLK_CTL);
 	return 0;
 }
 
