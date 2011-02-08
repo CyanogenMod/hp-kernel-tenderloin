@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * Based on the mp3 native driver in arch/arm/mach-msm/qdsp5v2/audio_mp3.c
  *
@@ -61,20 +61,20 @@ struct audio {
 
 static struct audio fm_audio;
 
-static int audio_enable(struct audio *audio)
+static int fm_audio_enable(struct audio *audio)
 {
 	if (audio->enabled)
 		return 0;
 
-	pr_info("fm dest= %08x fm_source = %08x\n",
-			audio->fm_dst_copp_id, audio->fm_src_copp_id);
+	pr_info("%s: fm dest= %08x fm_source = %08x\n", __func__,
+		audio->fm_dst_copp_id, audio->fm_src_copp_id);
 
 	/* do afe loopback here */
 
 	if (audio->fm_dest && audio->fm_source) {
 		if (afe_loopback(FM_ENABLE, audio->fm_dst_copp_id,
 					audio->fm_src_copp_id) < 0) {
-			pr_err("afe_loopback failed\n");
+			pr_err("%s: afe_loopback failed\n", __func__);
 		}
 
 		audio->running = 1;
@@ -84,13 +84,13 @@ static int audio_enable(struct audio *audio)
 	return 0;
 }
 
-static void fm_listner(u32 evt_id, union auddev_evt_data *evt_payload,
+static void fm_audio_listner(u32 evt_id, union auddev_evt_data *evt_payload,
 			void *private_data)
 {
 	struct audio *audio = (struct audio *) private_data;
 	switch (evt_id) {
 	case AUDDEV_EVT_DEV_RDY:
-		pr_info(":AUDDEV_EVT_DEV_RDY\n");
+		pr_info("%s :AUDDEV_EVT_DEV_RDY\n", __func__);
 		if (evt_payload->routing_id == FM_COPP) {
 			audio->fm_source = 1;
 			audio->fm_src_copp_id = FM_COPP;
@@ -109,7 +109,7 @@ static void fm_listner(u32 evt_id, union auddev_evt_data *evt_payload,
 		}
 		break;
 	case AUDDEV_EVT_DEV_RLS:
-		pr_info(":AUDDEV_EVT_DEV_RLS\n");
+		pr_info("%s: AUDDEV_EVT_DEV_RLS\n", __func__);
 		if (evt_payload->routing_id == audio->fm_src_copp_id)
 			audio->fm_source = 0;
 		else
@@ -121,13 +121,22 @@ static void fm_listner(u32 evt_id, union auddev_evt_data *evt_payload,
 			audio->running = 0;
 		}
 		break;
+	case AUDDEV_EVT_STREAM_VOL_CHG:
+		pr_debug("%s: AUDDEV_EVT_STREAM_VOL_CHG\n", __func__);
+		if (audio->fm_source) {
+			audio->volume = evt_payload->session_vol;
+			afe_loopback_gain(audio->fm_src_copp_id,
+					audio->volume);
+		}
+		break;
+
 	default:
-		pr_err(":ERROR:wrong event\n");
+		pr_err("%s: ERROR:wrong event %08x\n", __func__, evt_id);
 		break;
 	}
 }
 
-static int audio_disable(struct audio *audio)
+static int fm_audio_disable(struct audio *audio)
 {
 
 	/* break the AFE loopback here */
@@ -135,22 +144,22 @@ static int audio_disable(struct audio *audio)
 	return 0;
 }
 
-static long audio_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+static long fm_audio_ioctl(struct file *file, unsigned int cmd,
+		unsigned long arg)
 {
 	struct audio *audio = file->private_data;
 	int rc = -EINVAL;
 
-	pr_info("cmd = %d\n", cmd);
 
 	mutex_lock(&audio->lock);
 	switch (cmd) {
 	case AUDIO_START:
-		pr_info("AUDIO_START\n");
-		rc = audio_enable(audio);
+		pr_info("%s: AUDIO_START\n", __func__);
+		rc = fm_audio_enable(audio);
 		break;
 	case AUDIO_STOP:
-		pr_info("AUDIO_STOP\n");
-		rc = audio_disable(audio);
+		pr_info("%s: AUDIO_STOP\n", __func__);
+		rc = fm_audio_disable(audio);
 		audio->running = 0;
 		audio->enabled = 0;
 		break;
@@ -163,19 +172,20 @@ static long audio_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		break;
 	default:
 		rc = -EINVAL;
+		pr_err("%s: Un supported IOCTL\n", __func__);
 	}
 	mutex_unlock(&audio->lock);
 	return rc;
 }
 
-static int audio_release(struct inode *inode, struct file *file)
+static int fm_audio_release(struct inode *inode, struct file *file)
 {
 	struct audio *audio = file->private_data;
 
-	pr_info("audio instance 0x%08x freeing\n", (int)audio);
+	pr_debug("audio instance 0x%08x freeing\n", (int)audio);
 	mutex_lock(&audio->lock);
 	auddev_unregister_evt_listner(AUDDEV_CLNT_DEC, audio->dec_id);
-	audio_disable(audio);
+	fm_audio_disable(audio);
 	audio->running = 0;
 	audio->enabled = 0;
 	audio->opened = 0;
@@ -183,7 +193,7 @@ static int audio_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static int audio_open(struct inode *inode, struct file *file)
+static int fm_audio_open(struct inode *inode, struct file *file)
 {
 	struct audio *audio = &fm_audio;
 	int rc = 0;
@@ -206,7 +216,7 @@ static int audio_open(struct inode *inode, struct file *file)
 	rc = auddev_register_evt_listner(audio->device_events,
 					AUDDEV_CLNT_DEC,
 					audio->dec_id,
-					fm_listner,
+					fm_audio_listner,
 					(void *)audio);
 
 	if (rc) {
@@ -223,9 +233,9 @@ event_err:
 
 static const struct file_operations audio_fm_fops = {
 	.owner		= THIS_MODULE,
-	.open		= audio_open,
-	.release	= audio_release,
-	.unlocked_ioctl	= audio_ioctl,
+	.open		= fm_audio_open,
+	.release	= fm_audio_release,
+	.unlocked_ioctl	= fm_audio_ioctl,
 };
 
 struct miscdevice audio_fm_misc = {
@@ -234,7 +244,7 @@ struct miscdevice audio_fm_misc = {
 	.fops	= &audio_fm_fops,
 };
 
-static int __init audio_init(void)
+static int __init fm_audio_init(void)
 {
 	struct audio *audio = &fm_audio;
 
@@ -242,7 +252,7 @@ static int __init audio_init(void)
 	return misc_register(&audio_fm_misc);
 }
 
-device_initcall(audio_init);
+device_initcall(fm_audio_init);
 
 MODULE_DESCRIPTION("MSM FM driver");
 MODULE_LICENSE("GPL v2");

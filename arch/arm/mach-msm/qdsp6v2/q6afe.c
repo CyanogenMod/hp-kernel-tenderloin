@@ -32,6 +32,8 @@ struct afe_ctl {
 static struct afe_ctl this_afe;
 
 #define TIMEOUT_MS 1000
+#define Q6AFE_MAX_VOLUME 0x3FFF
+
 
 static int32_t afe_callback(struct apr_client_data *data, void *priv)
 {
@@ -47,6 +49,7 @@ static int32_t afe_callback(struct apr_client_data *data, void *priv)
 			case AFE_PORT_CMD_START:
 			case AFE_PORT_CMD_LOOPBACK:
 			case AFE_PORT_CMD_SIDETONE_CTL:
+			case AFE_PORT_CMD_SET_PARAM:
 				atomic_set(&this_afe.state, 0);
 				wake_up(&this_afe.wait);
 				break;
@@ -194,8 +197,81 @@ done:
 	return ret;
 }
 
+
+int afe_loopback_gain(u16 port_id, u16 volume)
+{
+	struct afe_port_cmd_set_param set_param;
+	int ret = 0;
+
+	if (this_afe.apr == NULL) {
+		pr_err("%s: AFE is not opened\n", __func__);
+		ret = -EPERM;
+		goto fail_cmd;
+	}
+
+	if (port_id >= AFE_MAX_PORTS) {
+
+		pr_err("%s: Failed : Invalid Port id = %d\n", __func__,
+				port_id);
+		ret = -EINVAL;
+		goto fail_cmd;
+	}
+
+	/* RX ports numbers are even .TX ports numbers are odd. */
+	if (port_id % 2 == 0) {
+		pr_err("%s: Failed : afe loopback gain only for TX ports."
+			" port_id %d\n", __func__, port_id);
+		ret = -EINVAL;
+		goto fail_cmd;
+	}
+
+	pr_debug("%s: %d %hX\n", __func__, port_id, volume);
+
+	set_param.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
+				APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
+	set_param.hdr.pkt_size = sizeof(set_param);
+	set_param.hdr.src_port = 0;
+	set_param.hdr.dest_port = 0;
+	set_param.hdr.token = 0;
+	set_param.hdr.opcode = AFE_PORT_CMD_SET_PARAM;
+
+	set_param.port_id		= port_id;
+	set_param.payload_size		= sizeof(struct afe_param_payload);
+	set_param.payload_address	= 0;
+
+	set_param.payload.module_id	= AFE_MODULE_ID_PORT_INFO;
+	set_param.payload.param_id	= AFE_PARAM_ID_LOOPBACK_GAIN;
+	set_param.payload.param_size = sizeof(struct afe_param_loopback_gain);
+	set_param.payload.reserved	= 0;
+
+	set_param.payload.param.loopback_gain.gain		= volume;
+	set_param.payload.param.loopback_gain.reserved	= 0;
+
+	atomic_set(&this_afe.state, 1);
+	ret = apr_send_pkt(this_afe.apr, (uint32_t *) &set_param);
+	if (ret < 0) {
+		pr_err("%s: AFE param set failed for port %d\n",
+					__func__, port_id);
+		ret = -EINVAL;
+		goto fail_cmd;
+	}
+
+	ret = wait_event_timeout(this_afe.wait,
+		(atomic_read(&this_afe.state) == 0),
+			msecs_to_jiffies(TIMEOUT_MS));
+	if (ret < 0) {
+		pr_err("%s: wait_event timeout\n", __func__);
+		ret = -EINVAL;
+		goto fail_cmd;
+	}
+	return 0;
+fail_cmd:
+	return ret;
+}
+
 #ifdef CONFIG_DEBUG_FS
 static struct dentry *debugfs_afelb;
+static struct dentry *debugfs_afelb_gain;
 
 static int afe_debug_open(struct inode *inode, struct file *file)
 {
@@ -274,7 +350,41 @@ static ssize_t afe_debug_write(struct file *filp,
 			pr_err("%s: Error, invalid parameters\n", __func__);
 			rc = -EINVAL;
 		}
+
+	} else if (!strcmp(lb_str, "afe_loopback_gain")) {
+		rc = afe_get_parameters(lbuf, param, 2);
+		if (!rc) {
+			pr_info("%s %lu %lu\n", lb_str, param[0], param[1]);
+
+			if (param[0] >= AFE_MAX_PORTS) {
+				pr_err("%s: Error, invalid afe port\n",
+					__func__);
+				rc = -EINVAL;
+				goto afe_error;
+			}
+
+			if (param[1] < 0 || param[1] > 100) {
+				pr_err("%s: Error, volume shoud be 0 to 100"
+					" percentage param = %lu\n",
+					__func__, param[1]);
+				rc = -EINVAL;
+				goto afe_error;
+			}
+
+			param[1] = (Q6AFE_MAX_VOLUME * param[1]) / 100;
+
+			if (this_afe.apr == NULL) {
+				pr_err("%s: Error, AFE not opened\n", __func__);
+				rc = -EINVAL;
+			} else {
+				rc = afe_loopback_gain(param[0], param[1]);
+			}
+		} else {
+			pr_err("%s: Error, invalid parameters\n", __func__);
+			rc = -EINVAL;
+		}
 	}
+
 afe_error:
 	if (rc == 0)
 		rc = cnt;
@@ -381,6 +491,12 @@ static int __init afe_init(void)
 	debugfs_afelb = debugfs_create_file("afe_loopback",
 	S_IFREG | S_IWUGO, NULL, (void *) "afe_loopback",
 	&afe_debug_fops);
+
+	debugfs_afelb_gain = debugfs_create_file("afe_loopback_gain",
+	S_IFREG | S_IWUGO, NULL, (void *) "afe_loopback_gain",
+	&afe_debug_fops);
+
+
 #endif
 	return 0;
 }
@@ -390,6 +506,8 @@ static void __exit afe_exit(void)
 #ifdef CONFIG_DEBUG_FS
 	if (debugfs_afelb)
 		debugfs_remove(debugfs_afelb);
+	if (debugfs_afelb_gain)
+		debugfs_remove(debugfs_afelb_gain);
 #endif
 }
 

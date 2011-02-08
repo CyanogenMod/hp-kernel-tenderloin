@@ -240,6 +240,57 @@ struct afe_codec_loopback_command {
 } __attribute__ ((packed));
 
 
+#define AFE_PARAM_ID_SIDETONE_GAIN	0x00010300
+struct afe_param_sidetone_gain {
+	u16 gain;
+	u16 reserved;
+} __attribute__ ((packed));
+
+#define AFE_PARAM_ID_SAMPLING_RATE	0x00010301
+struct afe_param_sampling_rate {
+	u32 sampling_rate;
+} __attribute__ ((packed));
+
+
+#define AFE_PARAM_ID_CHANNELS		0x00010302
+struct afe_param_channels {
+	u16 channels;
+	u16 reserved;
+} __attribute__ ((packed));
+
+
+#define AFE_PARAM_ID_LOOPBACK_GAIN	0x00010303
+struct afe_param_loopback_gain {
+	u16 gain;
+	u16 reserved;
+} __attribute__ ((packed));
+
+
+#define AFE_MODULE_ID_PORT_INFO		0x00010200
+struct afe_param_payload {
+	u32 module_id;
+	u32 param_id;
+	u16 param_size;
+	u16 reserved;
+	union {
+		struct afe_param_sidetone_gain sidetone_gain;
+		struct afe_param_sampling_rate sampling_rate;
+		struct afe_param_channels      channels;
+		struct afe_param_loopback_gain loopback_gain;
+	} __attribute__((packed)) param;
+} __attribute__ ((packed));
+
+#define AFE_PORT_CMD_SET_PARAM		0x000100dc
+
+struct afe_port_cmd_set_param {
+	struct apr_hdr hdr;
+	u16 port_id;
+	u16 payload_size;
+	u32 payload_address;
+	struct afe_param_payload payload;
+} __attribute__ ((packed));
+
+
 #define AFE_EVENT_GET_ACTIVE_PORTS 0x00010100
 struct afe_get_active_ports_rsp {
 	u16	num_ports;
