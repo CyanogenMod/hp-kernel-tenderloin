@@ -121,11 +121,11 @@ static void audlpa_async_send_data(struct audio *audio, unsigned needed,
 static int audlpa_pause(struct audio *audio);
 static void audlpa_unmap_pmem_region(struct audio *audio);
 static long pcm_ioctl(struct file *file, unsigned int cmd, unsigned long arg);
-static int aulpa_set_pcm_params(void *data);
+static int audlpa_set_pcm_params(void *data);
 
 struct audlpa_dec audlpa_decs[] = {
 	{"msm_pcm_lp_dec", AUDDEC_DEC_PCM, &pcm_ioctl,
-		&aulpa_set_pcm_params},
+		&audlpa_set_pcm_params},
 };
 
 static void lpa_listner(u32 evt_id, union auddev_evt_data *evt_payload,
@@ -652,7 +652,8 @@ void q6_audlpa_out_cb(uint32_t opcode, uint32_t token,
 			wake_up(&audio->write_wait);
 		}
 		break;
-
+	case ASM_SESSION_CMDRSP_GET_SESSION_TIME:
+		break;
 	default:
 		break;
 	}
@@ -664,7 +665,7 @@ static long pcm_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	return -EINVAL;
 }
 
-static int aulpa_set_pcm_params(void *data)
+static int audlpa_set_pcm_params(void *data)
 {
 	struct audio *audio = (struct audio *)data;
 	int rc;
@@ -680,11 +681,31 @@ static long audio_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	struct audio *audio = file->private_data;
 	int rc = -EINVAL;
+	uint32_t timestamp;
 
 	pr_debug("%s: audio_ioctl() cmd = %d\n", __func__, cmd);
 
-	if (cmd == AUDIO_GET_STATS)
-		pr_debug("%s: audio_get_stats command\n", __func__);
+	if (cmd == AUDIO_GET_STATS) {
+		struct msm_audio_stats stats;
+
+		pr_debug("%s: AUDIO_GET_STATS cmd\n", __func__);
+		memset(&stats, 0, sizeof(stats));
+		timestamp = q6asm_get_session_time(audio->ac);
+		if (timestamp < 0) {
+			pr_err("%s: Get Session Time return value =%d\n",
+				__func__, timestamp);
+			return -EAGAIN;
+		}
+		audio->bytes_consumed = ((timestamp * 2 *
+			audio->out_channel_mode *
+			(audio->out_sample_rate/1000))/(1000));
+		pr_debug("%s: bytes_consumed = %d", __func__,
+				audio->bytes_consumed);
+		stats.byte_count = audio->bytes_consumed;
+		if (copy_to_user((void *) arg, &stats, sizeof(stats)))
+				return -EFAULT;
+		return 0;
+	}
 
 	switch (cmd) {
 	case AUDIO_ENABLE_AUDPP:
@@ -1222,6 +1243,7 @@ static int audio_open(struct inode *inode, struct file *file)
 	audio->opened = 1;
 	audio->out_enabled = 0;
 	audio->out_prefill = 0;
+	audio->bytes_consumed = 0;
 
 	audio->device_events = AUDDEV_EVT_STREAM_VOL_CHG;
 	audio->drv_status &= ~ADRV_STATUS_PAUSE;

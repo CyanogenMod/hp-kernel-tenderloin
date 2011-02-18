@@ -113,6 +113,7 @@ struct audio {
 	struct codec_operations codec_ops;
 	uint32_t buffer_size;
 	uint32_t buffer_count;
+	uint32_t bytes_consumed;
 };
 
 #endif /* !AUDIO_LPA_H */
