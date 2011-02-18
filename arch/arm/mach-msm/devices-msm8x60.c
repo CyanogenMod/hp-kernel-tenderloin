@@ -800,8 +800,11 @@ struct kgsl_platform_data kgsl_pdata = {
 	.grp2d1_bus_scale_table = &grp2d1_bus_scale_pdata,
 	.nap_allowed = true,
 #endif
+	/* The maximum possible range for any individual pagetable
+	   is 256MB - 64K (0xfff0000) */
+
 #ifdef CONFIG_KGSL_PER_PROCESS_PAGE_TABLE
-	.pt_va_size = SZ_256M - SZ_64K,
+	.pt_va_size = SZ_128M,
 #else
 	/* Set the GPU pagetable size to the maximum practical
 	 * limit */
