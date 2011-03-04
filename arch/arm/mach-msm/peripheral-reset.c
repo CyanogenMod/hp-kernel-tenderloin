@@ -63,6 +63,7 @@
 #define PAS_MODEM	0
 #define PAS_Q6		1
 #define PAS_DSPS	2
+#define PAS_PLAYREADY	3
 
 #define PAS_INIT_IMAGE_CMD	1
 #define PAS_MEM_CMD		2
@@ -445,6 +446,21 @@ static int shutdown_dsps_untrusted(void)
 	return 0;
 }
 
+static int init_image_playready(const u8 *metadata, size_t size)
+{
+	return init_image_trusted(PAS_PLAYREADY, metadata, size);
+}
+
+static int reset_playready(void)
+{
+	return auth_and_reset_trusted(PAS_PLAYREADY);
+}
+
+static int shutdown_playready(void)
+{
+	return shutdown_trusted(PAS_PLAYREADY);
+}
+
 struct pil_reset_ops pil_modem_ops = {
 	.init_image = init_image_modem_untrusted,
 	.verify_blob = verify_blob,
@@ -464,6 +480,13 @@ struct pil_reset_ops pil_dsps_ops = {
 	.verify_blob = verify_blob,
 	.auth_and_reset = reset_dsps_untrusted,
 	.shutdown = shutdown_dsps_untrusted,
+};
+
+struct pil_reset_ops pil_playready_ops = {
+	.init_image = init_image_playready,
+	.verify_blob = verify_blob,
+	.auth_and_reset = reset_playready,
+	.shutdown = shutdown_playready,
 };
 
 static struct pil_device peripherals[] = {
@@ -491,6 +514,14 @@ static struct pil_device peripherals[] = {
 			.id = -1,
 		},
 		.ops = &pil_dsps_ops,
+	},
+	{
+		.name = "playrdy",
+		.pdev = {
+			.name = "pil_playready",
+			.id = -1,
+		},
+		.ops = &pil_playready_ops,
 	},
 };
 
