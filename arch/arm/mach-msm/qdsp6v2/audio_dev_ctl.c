@@ -27,6 +27,7 @@
 #include <mach/qdsp6v2/audio_dev_ctl.h>
 #include <mach/debug_mm.h>
 #include <mach/qdsp6v2/apr_audio.h>
+#include <mach/qdsp6v2/q6afe.h>
 #include "q6adm.h"
 
 #ifndef MAX
@@ -128,16 +129,19 @@ EXPORT_SYMBOL(msm_reset_all_device);
 int msm_set_copp_id(int session_id, int copp_id)
 {
 	int rc = 0;
+	int index;
 
 	if (session_id < 1 || session_id > 8)
 		return -EINVAL;
-	if (copp_id < 0 || copp_id > AFE_MAX_PORTS)
+	if (afe_validate_port(copp_id) < 0)
 		return -EINVAL;
-	pr_debug("%s: session[%d] copp_id[%d]\n", __func__, session_id,
-						copp_id);
+
+	index = afe_get_port_index(copp_id);
+	pr_debug("%s: session[%d] copp_id[%d] index[%d]\n", __func__,
+			session_id, copp_id, index);
 	mutex_lock(&routing_info.copp_list_mutex);
-	if (routing_info.copp_list[session_id][copp_id] == DEVICE_IGNORE)
-		routing_info.copp_list[session_id][copp_id] = copp_id;
+	if (routing_info.copp_list[session_id][index] == DEVICE_IGNORE)
+		routing_info.copp_list[session_id][index] = copp_id;
 	mutex_unlock(&routing_info.copp_list_mutex);
 
 	return rc;
@@ -147,13 +151,15 @@ EXPORT_SYMBOL(msm_set_copp_id);
 int msm_clear_copp_id(int session_id, int copp_id)
 {
 	int rc = 0;
+	int index = afe_get_port_index(copp_id);
+
 	if (session_id < 1 || session_id > 8)
 		return -EINVAL;
-	pr_debug("%s: session[%d] copp_id[%d]\n", __func__, session_id,
-						copp_id);
+	pr_debug("%s: session[%d] copp_id[%d] index[%d]\n", __func__,
+			session_id, copp_id, index);
 	mutex_lock(&routing_info.copp_list_mutex);
-	if (routing_info.copp_list[session_id][copp_id] == copp_id)
-		routing_info.copp_list[session_id][copp_id] = DEVICE_IGNORE;
+	if (routing_info.copp_list[session_id][index] == copp_id)
+		routing_info.copp_list[session_id][index] = DEVICE_IGNORE;
 	mutex_unlock(&routing_info.copp_list_mutex);
 
 	return rc;

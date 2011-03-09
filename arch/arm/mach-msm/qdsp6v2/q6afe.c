@@ -22,6 +22,7 @@
 #include <linux/wait.h>
 #include <linux/jiffies.h>
 #include <mach/qdsp6v2/apr_audio.h>
+#include <mach/qdsp6v2/q6afe.h>
 
 struct afe_ctl {
 	void *apr;
@@ -63,6 +64,60 @@ static int32_t afe_callback(struct apr_client_data *data, void *priv)
 	return 0;
 }
 
+int afe_validate_port(u16 port_id)
+{
+	int ret;
+
+	switch (port_id) {
+	case PRIMARY_I2S_RX:
+	case PRIMARY_I2S_TX:
+	case PCM_RX:
+	case PCM_TX:
+	case SECONDARY_I2S_RX:
+	case SECONDARY_I2S_TX:
+	case MI2S_RX:
+	case MI2S_TX:
+	case HDMI_RX:
+	case RSVD_2:
+	case RSVD_3:
+	case DIGI_MIC_TX:
+	case VOICE_RECORD_RX:
+	case VOICE_RECORD_TX:
+	case VOICE_PLAYBACK_TX:
+	{
+		ret = 0;
+		break;
+	}
+
+	default:
+		ret = -EINVAL;
+	}
+
+	return ret;
+}
+
+int afe_get_port_index(u16 port_id)
+{
+	switch (port_id) {
+	case PRIMARY_I2S_RX: return IDX_PRIMARY_I2S_RX;
+	case PRIMARY_I2S_TX: return IDX_PRIMARY_I2S_TX;
+	case PCM_RX: return IDX_PCM_RX;
+	case PCM_TX: return IDX_PCM_TX;
+	case SECONDARY_I2S_RX: return IDX_SECONDARY_I2S_RX;
+	case SECONDARY_I2S_TX: return IDX_SECONDARY_I2S_TX;
+	case MI2S_RX: return IDX_MI2S_RX;
+	case MI2S_TX: return IDX_MI2S_TX;
+	case HDMI_RX: return IDX_HDMI_RX;
+	case RSVD_2: return IDX_RSVD_2;
+	case RSVD_3: return IDX_RSVD_3;
+	case DIGI_MIC_TX: return IDX_DIGI_MIC_TX;
+	case VOICE_RECORD_RX: return IDX_VOICE_RECORD_RX;
+	case VOICE_RECORD_TX: return IDX_VOICE_RECORD_TX;
+	case VOICE_PLAYBACK_TX: return IDX_VOICE_PLAYBACK_TX;
+	default: return -EINVAL;
+	}
+}
+
 int afe_open(u16 port_id, union afe_port_config *afe_config, int rate)
 {
 	struct afe_port_start_command start;
@@ -96,7 +151,7 @@ int afe_open(u16 port_id, union afe_port_config *afe_config, int rate)
 	config.hdr.token = 0;
 	config.hdr.opcode = AFE_PORT_AUDIO_IF_CONFIG;
 
-	if (port_id >= AFE_MAX_PORTS) {
+	if (afe_validate_port(port_id) < 0) {
 
 		pr_err("%s: Failed : Invalid Port id = %d\n", __func__,
 				port_id);
@@ -209,7 +264,7 @@ int afe_loopback_gain(u16 port_id, u16 volume)
 		goto fail_cmd;
 	}
 
-	if (port_id >= AFE_MAX_PORTS) {
+	if (afe_validate_port(port_id) < 0) {
 
 		pr_err("%s: Failed : Invalid Port id = %d\n", __func__,
 				port_id);
@@ -335,8 +390,8 @@ static ssize_t afe_debug_write(struct file *filp,
 				rc = -EINVAL;
 				goto afe_error;
 			}
-			if ((param[1] >= AFE_MAX_PORTS) || (param[2] >=
-				AFE_MAX_PORTS)) {
+			if ((afe_validate_port(param[1]) < 0) ||
+			    (afe_validate_port(param[2])) < 0) {
 				pr_err("%s: Error, invalid afe port\n",
 					__func__);
 			}
@@ -356,7 +411,7 @@ static ssize_t afe_debug_write(struct file *filp,
 		if (!rc) {
 			pr_info("%s %lu %lu\n", lb_str, param[0], param[1]);
 
-			if (param[0] >= AFE_MAX_PORTS) {
+			if (afe_validate_port(param[0]) < 0) {
 				pr_err("%s: Error, invalid afe port\n",
 					__func__);
 				rc = -EINVAL;

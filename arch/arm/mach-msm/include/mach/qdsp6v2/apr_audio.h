@@ -29,23 +29,23 @@
  * Audio Front End (AFE)
  */
 
-/* Port ID */
-enum {
-	PRIMARY_I2S_RX = 0,
-	PRIMARY_I2S_TX = 1,
-	PCM_RX = 2,
-	PCM_TX = 3,
-	SECONDARY_I2S_RX = 4,
-	SECONDARY_I2S_TX = 5,
-	MI2S_RX = 6,
-	MI2S_TX = 7,
-	HDMI_RX = 8,
-	RSVD_2 = 9,
-	RSVD_3 = 10,
-	DIGI_MIC_TX = 11,
-	AFE_MAX_PORTS ,
-	INVALID = 0xFFFF,
-};
+/* Port ID. Update afe_get_port_index when a new port is added here. */
+#define PRIMARY_I2S_RX 0		/* index = 0 */
+#define PRIMARY_I2S_TX 1		/* index = 1 */
+#define PCM_RX 2			/* index = 2 */
+#define PCM_TX 3			/* index = 3 */
+#define SECONDARY_I2S_RX 4		/* index = 4 */
+#define SECONDARY_I2S_TX 5		/* index = 5 */
+#define MI2S_RX 6			/* index = 6 */
+#define MI2S_TX 7			/* index = 7 */
+#define HDMI_RX 8			/* index = 8 */
+#define RSVD_2 9			/* index = 9 */
+#define RSVD_3 10			/* index = 10 */
+#define DIGI_MIC_TX 11			/* index = 11 */
+#define VOICE_RECORD_RX 0x8003		/* index = 12 */
+#define VOICE_RECORD_TX 0x8004		/* index = 13 */
+#define VOICE_PLAYBACK_TX 0x8005	/* index = 14 */
+#define AFE_PORT_INVALID 0xFFFF
 
 #define AFE_PORT_CMD_START 0x000100ca
 struct afe_port_start_command {
