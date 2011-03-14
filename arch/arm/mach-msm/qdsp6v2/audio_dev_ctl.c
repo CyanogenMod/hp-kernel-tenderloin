@@ -328,10 +328,18 @@ int msm_snddev_set_dec(int popp_id, int copp_id, int set,
 
 	mutex_lock(&routing_info.adm_mutex);
 	if (set) {
-		rc = adm_open(copp_id, popp_id, PLAYBACK, rate, mode,
+		rc = adm_open(copp_id, PLAYBACK, rate, mode,
 			DEFAULT_COPP_TOPOLOGY);
 		if (rc < 0) {
 			pr_err("%s: adm open fail rc[%d]\n", __func__, rc);
+			rc = -EINVAL;
+			goto fail_cmd;
+		}
+
+		rc = adm_matrix_map(popp_id, PLAYBACK, 1, &copp_id);
+		if (rc < 0) {
+			pr_err("%s: matrix map failed rc[%d]\n", __func__, rc);
+			adm_close(copp_id);
 			rc = -EINVAL;
 			goto fail_cmd;
 		}
@@ -454,10 +462,17 @@ int msm_snddev_set_enc(int popp_id, int copp_id, int set,
 			rate = 16000;
 		}
 		mutex_unlock(&adm_tx_topology_tbl.lock);
-		rc = adm_open(copp_id, popp_id, LIVE_RECORDING, rate, mode,
-			topology);
+		rc = adm_open(copp_id, LIVE_RECORDING, rate, mode, topology);
 		if (rc < 0) {
 			pr_err("%s: adm open fail rc[%d]\n", __func__, rc);
+			rc = -EINVAL;
+			goto fail_cmd;
+		}
+
+		rc = adm_matrix_map(popp_id, LIVE_RECORDING, 1, &copp_id);
+		if (rc < 0) {
+			pr_err("%s: matrix map failed rc[%d]\n", __func__, rc);
+			adm_close(copp_id);
 			rc = -EINVAL;
 			goto fail_cmd;
 		}

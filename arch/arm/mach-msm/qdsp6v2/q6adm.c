@@ -166,17 +166,14 @@ done:
 	return;
 }
 
-int adm_open(int port_id, int session_id , int path,
-				int rate, int channel_mode,
-				int topology)
+int adm_open(int port_id, int path, int rate, int channel_mode, int topology)
 {
 	struct adm_copp_open_command	open;
-	struct adm_routings_command	route;
 	int ret = 0;
 	int index;
 
-	pr_debug("%s: port %d session 0x%x path:%d rate:%d mode:%d\n", __func__,
-				port_id, session_id, path, rate, channel_mode);
+	pr_debug("%s: port %d path:%d rate:%d mode:%d\n", __func__,
+				port_id, path, rate, channel_mode);
 
 	if (afe_validate_port(port_id) < 0) {
 		pr_err("%s port idi[%d] is invalid\n", __func__, port_id);
@@ -213,7 +210,7 @@ int adm_open(int port_id, int session_id , int path,
 		open.hdr.opcode = ADM_CMD_COPP_OPEN;
 
 		open.mode = path;
-		open.endpoint_id1 = port_id & 0x00FF;
+		open.endpoint_id1 = port_id;
 		open.endpoint_id2 = 0xFFFF;
 		open.topology_id  = topology;
 
@@ -246,22 +243,48 @@ int adm_open(int port_id, int session_id , int path,
 		}
 	}
 	atomic_inc(&this_adm.copp_cnt[index]);
+	return 0;
+
+fail_cmd:
+
+	return ret;
+}
+
+int adm_matrix_map(int session_id, int path, int num_copps, int *port_id)
+{
+	struct adm_routings_command	route;
+	int ret = 0, i = 0;
+	/* Assumes port_ids have already been validated during adm_open */
+	int index = afe_get_port_index(port_id[0]);
+
+	pr_debug("%s: session 0x%x path:%d num_copps:%d port_id[0]:%d\n",
+		 __func__, session_id, path, num_copps, port_id[0]);
+
 	route.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
 				APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
 	route.hdr.pkt_size = sizeof(route);
 	route.hdr.src_svc = 0;
 	route.hdr.src_domain = APR_DOMAIN_APPS;
-	route.hdr.src_port = port_id;
+	route.hdr.src_port = port_id[0];
 	route.hdr.dest_svc = APR_SVC_ADM;
 	route.hdr.dest_domain = APR_DOMAIN_ADSP;
 	route.hdr.dest_port = atomic_read(&this_adm.copp_id[index]);
-	route.hdr.token = port_id;
+	route.hdr.token = port_id[0];
 	route.hdr.opcode = ADM_CMD_MATRIX_MAP_ROUTINGS;
 	route.num_sessions = 1;
 	route.sessions[0].id = session_id;
-	route.sessions[0].num_copps = 1;
-	route.sessions[0].copp_id[0] =
-			atomic_read(&this_adm.copp_id[index]);
+	route.sessions[0].num_copps = num_copps;
+
+	for (i = 0; i < num_copps; i++) {
+		int tmp;
+		tmp = afe_get_port_index(port_id[i]);
+
+		pr_debug("%s: port_id[%d]: %d, index: %d\n", __func__, i,
+			 port_id[i], tmp);
+
+		route.sessions[0].copp_id[i] =
+					atomic_read(&this_adm.copp_id[tmp]);
+	}
 
 	switch (path) {
 	case 0x1:
@@ -280,7 +303,7 @@ int adm_open(int port_id, int session_id , int path,
 	ret = apr_send_pkt(this_adm.apr, (uint32_t *)&route);
 	if (ret < 0) {
 		pr_err("%s: ADM routing for port %d failed\n",
-					__func__, port_id);
+					__func__, port_id[0]);
 		ret = -EINVAL;
 		goto fail_cmd;
 	}
@@ -289,11 +312,14 @@ int adm_open(int port_id, int session_id , int path,
 				msecs_to_jiffies(TIMEOUT_MS));
 	if (!ret) {
 		pr_err("%s: ADM cmd Route failed for port %d\n",
-					__func__, port_id);
+					__func__, port_id[0]);
 		ret = -EINVAL;
 		goto fail_cmd;
 	}
-	send_adm_cal(port_id, path);
+
+	for (i = 0; i < num_copps; i++)
+		send_adm_cal(port_id[i], path);
+
 	return 0;
 
 fail_cmd:

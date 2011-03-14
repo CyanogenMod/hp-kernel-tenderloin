@@ -28,8 +28,7 @@
 #ifndef __Q6_ADM_H__
 #define __Q6_ADM_H__
 
-int adm_open(int port, int session, int path,
-				int rate, int mode, int topology);
+int adm_open(int port, int path, int rate, int mode, int topology);
 
 int adm_memory_map_regions(uint32_t *buf_add, uint32_t mempool_id,
 				uint32_t *bufsz, uint32_t bufcnt);
@@ -38,5 +37,7 @@ int adm_memory_unmap_regions(uint32_t *buf_add, uint32_t *bufsz,
 						uint32_t bufcnt);
 
 int adm_close(int port);
+
+int adm_matrix_map(int session_id, int path, int num_copps, int *port_id);
 
 #endif /* __Q6_ADM_H__ */
