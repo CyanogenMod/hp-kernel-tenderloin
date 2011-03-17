@@ -80,8 +80,8 @@ struct msm_audio {
 };
 
 struct pcm_session {
-	unsigned char playback_session[MAX_PLAYBACK_SESSIONS];
-	unsigned char capture_session[MAX_CAPTURE_SESSIONS];
+	unsigned short playback_session[MAX_PLAYBACK_SESSIONS];
+	unsigned short capture_session[MAX_CAPTURE_SESSIONS];
 };
 
 /* platform data */

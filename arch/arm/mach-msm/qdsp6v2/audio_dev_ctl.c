@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -64,7 +64,7 @@ struct audio_routing_info {
 	unsigned short audrec_mixer_mask[MAX_SESSIONS];
 	struct session_freq dec_freq[MAX_SESSIONS];
 	struct session_freq enc_freq[MAX_SESSIONS];
-	unsigned char copp_list[MAX_SESSIONS][AFE_MAX_PORTS];
+	unsigned short copp_list[MAX_SESSIONS][AFE_MAX_PORTS];
 	int voice_tx_dev_id;
 	int voice_rx_dev_id;
 	int voice_tx_sample_rate;
@@ -1394,7 +1394,7 @@ static int __init audio_dev_ctrl_init(void)
 	mutex_init(&routing_info.adm_mutex);
 
 	memset(routing_info.copp_list, DEVICE_IGNORE,
-		(sizeof(char) * MAX_SESSIONS * AFE_MAX_PORTS));
+		(sizeof(unsigned short) * MAX_SESSIONS * AFE_MAX_PORTS));
 	return misc_register(&audio_dev_ctrl_misc);
 }
 
