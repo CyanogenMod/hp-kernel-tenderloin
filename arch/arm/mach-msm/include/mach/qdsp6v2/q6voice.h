@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -254,6 +254,12 @@ struct mvm_set_voice_timing_cmd {
 #define VSS_ISTREAM_CMD_SET_ENC_DTX_MODE		0x0001101D
 /* Set encoder DTX mode. */
 
+#define VSS_ISTREAM_CMD_START_RECORD			0x00011236
+/* Start in-call conversation recording. */
+
+#define VSS_ISTREAM_CMD_STOP_RECORD			0x00011237
+/* Stop in-call conversation recording. */
+
 struct vss_istream_cmd_create_passive_control_session_t {
 	char name[20];
 	/**<
@@ -389,6 +395,25 @@ struct vss_istream_cmd_set_enc_dtx_mode_t {
 	 */
 } __attribute__((packed));
 
+#define VSS_TAP_POINT_NONE				0x00010F78
+/* Indicates no tapping for specified path. */
+
+#define VSS_TAP_POINT_STREAM_END			0x00010F79
+/* Indicates that specified path should be tapped at the end of the stream. */
+
+struct vss_istream_cmd_start_record_t {
+	uint32_t rx_tap_point;
+	/* Tap point to use on the Rx path. Supported values are:
+	 * VSS_TAP_POINT_NONE : Do not record Rx path.
+	 * VSS_TAP_POINT_STREAM_END : Rx tap point is at the end of the stream.
+	 */
+	uint32_t tx_tap_point;
+	/* Tap point to use on the Tx path. Supported values are:
+	 * VSS_TAP_POINT_NONE : Do not record tx path.
+	 * VSS_TAP_POINT_STREAM_END : Tx tap point is at the end of the stream.
+	 */
+} __attribute__((packed));
+
 struct cvs_create_passive_ctl_session_cmd {
 	struct apr_hdr hdr;
 	struct vss_istream_cmd_create_passive_control_session_t cvs_session;
@@ -397,7 +422,7 @@ struct cvs_create_passive_ctl_session_cmd {
 struct cvs_create_full_ctl_session_cmd {
 	struct apr_hdr hdr;
 	struct vss_istream_cmd_create_full_control_session_t cvs_session;
-};
+} __attribute__((packed));
 
 struct cvs_destroy_session_cmd {
 	struct apr_hdr hdr;
@@ -440,6 +465,11 @@ struct cvs_set_cdma_enc_minmax_rate_cmd {
 struct cvs_set_enc_dtx_mode_cmd {
 	struct apr_hdr hdr;
 	struct vss_istream_cmd_set_enc_dtx_mode_t dtx_mode;
+} __attribute__((packed));
+
+struct cvs_start_record_cmd {
+		struct apr_hdr hdr;
+		struct vss_istream_cmd_start_record_t rec_mode;
 } __attribute__((packed));
 
 /* TO CVP commands */
@@ -613,4 +643,5 @@ void voice_config_vocoder(uint32_t media_type,
 			  uint32_t rate,
 			  uint32_t network_type);
 
+int voice_start_record(uint32_t rec_mode, uint32_t set);
 #endif

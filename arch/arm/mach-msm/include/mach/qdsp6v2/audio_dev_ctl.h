@@ -223,4 +223,7 @@ int msm_snddev_get_enc_freq(int session_id);
 int msm_set_voice_vol(int dir, s32 volume);
 int msm_set_voice_mute(int dir, int mute);
 int msm_get_voice_state(void);
+int msm_enable_incall_recording(int popp_id, int rec_mode, int rate,
+				int channel_mode);
+int msm_disable_incall_recording(uint32_t popp_id, uint32_t rec_mode);
 #endif
