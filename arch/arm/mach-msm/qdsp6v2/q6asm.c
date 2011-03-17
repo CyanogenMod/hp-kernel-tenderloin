@@ -206,8 +206,8 @@ void q6asm_audio_client_free(struct audio_client *ac)
 		}
 	}
 
-	q6asm_session_free(ac);
 	apr_deregister(ac->apr);
+	q6asm_session_free(ac);
 
 	pr_debug("%s: APR De-Register\n", __func__);
 	if (atomic_read(&this_mmap.ref_cnt) <= 0) {
