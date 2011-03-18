@@ -1,7 +1,7 @@
 obj-y += audio_dev_ctl.o
 obj-y += board-msm8x60-audio.o
 obj-y += snddev_icodec.o
-obj-y += snddev_ecodec.o snddev_mi2s.o
+obj-y += snddev_ecodec.o snddev_mi2s.o snddev_virtual.o
 obj-y += apr.o apr_tal.o apr_tal_debug.o dsp_debug.o
 obj-y += audio_acdb.o
 obj-y += q6asm.o q6adm.o q6afe.o
