@@ -669,7 +669,7 @@ static unsigned int kgsl_virtaddr_to_physaddr(unsigned int virtaddr)
 }
 #endif
 
-static int ashmem_flush_cache_range(struct ashmem_area *asma, unsigned long cmd)
+static int ashmem_flush_cache_range(struct ashmem_area *asma)
 {
 #ifdef CONFIG_OUTER_CACHE
 	unsigned long end;
@@ -687,19 +687,7 @@ static int ashmem_flush_cache_range(struct ashmem_area *asma, unsigned long cmd)
 		goto done;
 	}
 
-	switch (cmd) {
-	case ASHMEM_CACHE_FLUSH_RANGE:
-		dmac_flush_range((const void *)addr,
-			(const void *)(addr + size));
-		break;
-	case ASHMEM_CACHE_CLEAN_RANGE:
-		dmac_clean_range((const void *)addr,
-			(const void *)(addr + size));
-		break;
-	default:
-		result = -EINVAL;
-		goto done;
-	}
+	flush_cache_user_range(addr, addr + size);
 #ifdef CONFIG_OUTER_CACHE
 	for (end = addr; end < (addr + size); end += PAGE_SIZE) {
 		unsigned long physaddr;
@@ -709,14 +697,7 @@ static int ashmem_flush_cache_range(struct ashmem_area *asma, unsigned long cmd)
 			goto done;
 		}
 
-		switch (cmd) {
-		case ASHMEM_CACHE_FLUSH_RANGE:
-			outer_flush_range(physaddr, physaddr + PAGE_SIZE);
-			break;
-		case ASHMEM_CACHE_CLEAN_RANGE:
-			outer_clean_range(physaddr, physaddr + PAGE_SIZE);
-			break;
-		}
+		outer_flush_range(physaddr, physaddr + PAGE_SIZE);
 	}
 	mb();
 #endif
@@ -766,8 +747,7 @@ static long ashmem_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		}
 		break;
 	case ASHMEM_CACHE_FLUSH_RANGE:
-	case ASHMEM_CACHE_CLEAN_RANGE:
-		ret = ashmem_flush_cache_range(asma, cmd);
+		ret = ashmem_flush_cache_range(asma);
 		break;
 	}
 
