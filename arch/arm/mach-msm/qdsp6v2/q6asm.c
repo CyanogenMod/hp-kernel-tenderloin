@@ -638,7 +638,7 @@ static int32_t q6asm_callback(struct apr_client_data *data, void *priv)
 				"payload[0] = %d, payload[1] = %d, "
 				"payload[2] = %d\n", __func__,
 				 payload[0], payload[1], payload[2]);
-		ac->time_stamp = (uint32_t)(((uint64_t)payload[1] << 32) |
+		ac->time_stamp = (uint64_t)(((uint64_t)payload[1] << 32) |
 				payload[2]);
 		if (atomic_read(&ac->time_flag)) {
 			atomic_set(&ac->time_flag, 0);
@@ -2132,7 +2132,7 @@ fail_cmd:
 	return -EINVAL;
 }
 
-uint32_t q6asm_get_session_time(struct audio_client *ac)
+uint64_t q6asm_get_session_time(struct audio_client *ac)
 {
 	struct apr_hdr hdr;
 	int rc;

@@ -681,7 +681,8 @@ static long audio_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	struct audio *audio = file->private_data;
 	int rc = -EINVAL;
-	uint32_t timestamp;
+	uint64_t timestamp;
+	uint64_t temp;
 
 	pr_debug("%s: audio_ioctl() cmd = %d\n", __func__, cmd);
 
@@ -692,16 +693,19 @@ static long audio_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		memset(&stats, 0, sizeof(stats));
 		timestamp = q6asm_get_session_time(audio->ac);
 		if (timestamp < 0) {
-			pr_err("%s: Get Session Time return value =%d\n",
+			pr_err("%s: Get Session Time return value =%lld\n",
 				__func__, timestamp);
 			return -EAGAIN;
 		}
-		audio->bytes_consumed = ((timestamp * 2 *
-			audio->out_channel_mode *
-			(audio->out_sample_rate/1000))/(1000));
-		pr_debug("%s: bytes_consumed = %d", __func__,
-				audio->bytes_consumed);
+		temp = (timestamp * 2 * audio->out_channel_mode);
+		temp = temp * (audio->out_sample_rate/1000);
+		temp = div_u64(temp, 1000);
+		audio->bytes_consumed = (uint32_t)(temp & 0xFFFFFFFF);
 		stats.byte_count = audio->bytes_consumed;
+		stats.unused[0]  = (uint32_t)((temp >> 32) & 0xFFFFFFFF);
+		pr_debug("%s: bytes_consumed:lsb = %d, msb = %d,"
+			"timestamp = %lld\n", __func__,
+			audio->bytes_consumed, stats.unused[0], timestamp);
 		if (copy_to_user((void *) arg, &stats, sizeof(stats)))
 				return -EFAULT;
 		return 0;
