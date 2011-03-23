@@ -308,12 +308,14 @@ static void scpll_enable(int sc_pll, uint32_t l_val)
 
 	/* Power-up SCPLL into standby mode. */
 	writel(SCPLL_STANDBY, sc_pll_base[sc_pll] + SCPLL_CTL_OFFSET);
+	dsb();
 	udelay(10);
 
 	/* Shot-switch to target frequency. */
 	regval = (l_val << 3) | SHOT_SWITCH;
 	writel(regval, sc_pll_base[sc_pll] + SCPLL_FSM_CTL_EXT_OFFSET);
 	writel(SCPLL_NORMAL, sc_pll_base[sc_pll] + SCPLL_CTL_OFFSET);
+	dsb();
 	udelay(20);
 }
 
@@ -372,11 +374,11 @@ static void set_l2_speed(struct clkctl_l2_speed *tgt_s)
 	else {
 		if (tgt_s->src_sel == 1) {
 			scpll_enable(L2, tgt_s->l_val);
-			mb();
+			dsb();
 			select_core_source(L2, tgt_s->src_sel);
 		} else {
 			select_core_source(L2, tgt_s->src_sel);
-			mb();
+			dsb();
 			scpll_disable(L2);
 		}
 	}
@@ -482,12 +484,12 @@ static void switch_sc_speed(int cpu, struct clkctl_acpu_speed *tgt_s)
 		select_core_source(cpu, tgt_s->core_src_sel);
 	} else if (strt_s->pll != ACPU_SCPLL && tgt_s->pll == ACPU_SCPLL) {
 		scpll_enable(cpu, tgt_s->l_val);
-		mb();
+		dsb();
 		select_core_source(cpu, tgt_s->core_src_sel);
 	} else if (strt_s->pll == ACPU_SCPLL && tgt_s->pll != ACPU_SCPLL) {
 		select_clk_source_div(cpu, tgt_s);
 		select_core_source(cpu, tgt_s->core_src_sel);
-		mb();
+		dsb();
 		scpll_disable(cpu);
 	} else
 		scpll_change_freq(cpu, tgt_s->l_val);
@@ -609,6 +611,7 @@ static void __init scpll_init(int sc_pll)
 
 	/* Power-up SCPLL into standby mode. */
 	writel(SCPLL_STANDBY, sc_pll_base[sc_pll] + SCPLL_CTL_OFFSET);
+	dsb();
 	udelay(10);
 
 	/* Calibrate the SCPLL to the maximum range supported by the h/w. We

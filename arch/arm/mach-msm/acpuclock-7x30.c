@@ -1,7 +1,7 @@
 /*
  *
  * Copyright (C) 2007 Google, Inc.
- * Copyright (c) 2007-2010, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2007-2011, Code Aurora Forum. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -159,6 +159,9 @@ static void acpuclk_config_pll2(struct pll *pll)
 {
 	uint32_t config = readl(PLL2_CONFIG_ADDR);
 
+	/* Make sure write to disable PLL_2 has completed
+	 * before reconfiguring that PLL. */
+	mb();
 	writel(pll->l, PLL2_L_VAL_ADDR);
 	writel(pll->m, PLL2_M_VAL_ADDR);
 	writel(pll->n, PLL2_N_VAL_ADDR);
@@ -167,6 +170,8 @@ static void acpuclk_config_pll2(struct pll *pll)
 	else
 		config &= ~BIT(15);
 	writel(config, PLL2_CONFIG_ADDR);
+	/* Make sure PLL is programmed before returning. */
+	mb();
 }
 
 /* Set clock source and divider given a clock speed */
@@ -191,6 +196,9 @@ static void acpuclk_set_src(const struct clkctl_acpu_speed *s)
 
 	/* Program clock source selection. */
 	writel(reg_clksel, SCSS_CLK_SEL_ADDR);
+
+	/* Make sure switch to new source is complete. */
+	dsb();
 }
 
 int acpuclk_set_rate(int cpu, unsigned long rate, enum setrate_reason reason)
