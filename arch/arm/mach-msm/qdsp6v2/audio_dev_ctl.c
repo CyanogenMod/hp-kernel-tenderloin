@@ -120,6 +120,9 @@ int msm_reset_all_device(void)
 			broadcast_event(AUDDEV_EVT_DEV_RLS,
 				dev_id,
 				SESSION_IGNORE);
+
+			if (dev_info->copp_id == VOICE_PLAYBACK_TX)
+				voice_start_playback(0);
 		}
 		dev_info->sessions = 0;
 	}
@@ -361,6 +364,11 @@ int msm_snddev_set_dec(int popp_id, int copp_id, int set,
 				break;
 			}
 		}
+	}
+
+	if (copp_id == VOICE_PLAYBACK_TX) {
+		/* Signal uplink playback. */
+		rc = voice_start_playback(set);
 	}
 fail_cmd:
 	mutex_unlock(&routing_info.adm_mutex);

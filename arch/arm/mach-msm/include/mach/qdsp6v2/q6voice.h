@@ -260,6 +260,12 @@ struct mvm_set_voice_timing_cmd {
 #define VSS_ISTREAM_CMD_STOP_RECORD			0x00011237
 /* Stop in-call conversation recording. */
 
+#define VSS_ISTREAM_CMD_START_PLAYBACK			0x00011238
+/* Start in-call music delivery on the Tx voice path. */
+
+#define VSS_ISTREAM_CMD_STOP_PLAYBACK			0x00011239
+/* Stop the in-call music delivery on the Tx voice path. */
+
 struct vss_istream_cmd_create_passive_control_session_t {
 	char name[20];
 	/**<
@@ -652,6 +658,11 @@ struct incall_rec_info {
 	uint32_t rec_mode;
 };
 
+struct incall_music_info {
+	uint32_t pending;
+	uint32_t playing;
+};
+
 struct voice_data {
 	int voc_state;/*INIT, CHANGE, RELEASE, RUN */
 	uint32_t voc_path;
@@ -711,6 +722,8 @@ struct voice_data {
 	struct mvs_driver_info mvs_info;
 
 	struct incall_rec_info rec_info;
+
+	struct incall_music_info music_info;
 };
 
 int voice_set_voc_path_full(uint32_t set);
@@ -724,4 +737,6 @@ void voice_config_vocoder(uint32_t media_type,
 			  uint32_t network_type);
 
 int voice_start_record(uint32_t rec_mode, uint32_t set);
+
+int voice_start_playback(uint32_t set);
 #endif

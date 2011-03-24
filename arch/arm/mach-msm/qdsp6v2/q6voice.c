@@ -1781,6 +1781,130 @@ int voice_start_record(uint32_t rec_mode, uint32_t set)
 	return ret;
 }
 
+static int voice_cvs_start_playback(struct voice_data *v)
+{
+	int ret = 0;
+	void *apr_cvs = voice_get_apr_cvs(v);
+	u16 cvs_handle = voice_get_cvs_handle(v);
+	struct apr_hdr cvs_start_playback;
+
+	pr_debug("%s: Start playback\n", __func__);
+
+	cvs_start_playback.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
+					APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
+	cvs_start_playback.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
+				sizeof(cvs_start_playback) - APR_HDR_SIZE);
+	cvs_start_playback.src_port = 0;
+	cvs_start_playback.dest_port = cvs_handle;
+	cvs_start_playback.token = 0;
+	cvs_start_playback.opcode = VSS_ISTREAM_CMD_START_PLAYBACK;
+
+	v->cvs_state = CMD_STATUS_FAIL;
+
+	ret = apr_send_pkt(apr_cvs, (uint32_t *) &cvs_start_playback);
+	if (ret < 0) {
+		pr_err("%s: Error %d sending START_PLAYBACK\n",
+		       __func__, ret);
+
+		goto fail;
+	}
+
+	ret = wait_event_timeout(v->cvs_wait,
+				 (v->cvs_state == CMD_STATUS_SUCCESS),
+				 msecs_to_jiffies(TIMEOUT_MS));
+	if (!ret) {
+		pr_err("%s: wait_event timeout\n", __func__);
+
+		goto fail;
+	}
+
+	v->music_info.playing = 1;
+
+	return 0;
+
+fail:
+	return ret;
+}
+
+static int voice_cvs_stop_playback(struct voice_data *v)
+{
+	int ret = 0;
+	void *apr_cvs = voice_get_apr_cvs(v);
+	u16 cvs_handle = voice_get_cvs_handle(v);
+	struct apr_hdr cvs_stop_playback;
+
+	pr_debug("%s: Stop playback\n", __func__);
+
+	if (v->music_info.playing) {
+		cvs_stop_playback.hdr_field =
+				APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
+				APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
+		cvs_stop_playback.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
+				sizeof(cvs_stop_playback) - APR_HDR_SIZE);
+		cvs_stop_playback.src_port = 0;
+		cvs_stop_playback.dest_port = cvs_handle;
+		cvs_stop_playback.token = 0;
+
+		cvs_stop_playback.opcode = VSS_ISTREAM_CMD_STOP_PLAYBACK;
+
+		v->cvs_state = CMD_STATUS_FAIL;
+
+		ret = apr_send_pkt(apr_cvs, (uint32_t *) &cvs_stop_playback);
+		if (ret < 0) {
+			pr_err("%s: Error %d sending STOP_PLAYBACK\n",
+			       __func__, ret);
+
+			goto fail;
+		}
+
+		ret = wait_event_timeout(v->cvs_wait,
+					 (v->cvs_state == CMD_STATUS_SUCCESS),
+					 msecs_to_jiffies(TIMEOUT_MS));
+		if (!ret) {
+			pr_err("%s: wait_event timeout\n", __func__);
+
+			goto fail;
+		}
+
+		v->music_info.playing = 0;
+	} else {
+		pr_err("%s: Stop playback already sent\n", __func__);
+	}
+
+	return 0;
+
+fail:
+	return ret;
+}
+
+int voice_start_playback(uint32_t set)
+{
+	int ret = 0;
+	u16 cvs_handle;
+
+	pr_debug("%s: Start playback %d\n", __func__, set);
+
+	mutex_lock(&voice.lock);
+
+	cvs_handle = voice_get_cvs_handle(&voice);
+
+	if (cvs_handle != 0) {
+		if (set)
+			ret = voice_cvs_start_playback(&voice);
+		else
+			ret = voice_cvs_stop_playback(&voice);
+	} else {
+		/* Cache the value for later. */
+		pr_debug("%s: Caching ICP value", __func__);
+
+		voice.music_info.pending = set;
+	}
+
+	mutex_unlock(&voice.lock);
+
+	return ret;
+}
+
 static void voice_auddev_cb_function(u32 evt_id,
 			union auddev_evt_data *evt_payload,
 			void *private_data)
@@ -1824,6 +1948,14 @@ static void voice_auddev_cb_function(u32 evt_id,
 						v->rec_info.rec_mode);
 
 					v->rec_info.pending = 0;
+				}
+
+				/* Start in-call music delivery if command was
+				 * pending. */
+				if (v->music_info.pending) {
+					voice_cvs_start_playback(v);
+
+					v->music_info.pending = 0;
 				}
 			}
 		}
@@ -1923,6 +2055,14 @@ static void voice_auddev_cb_function(u32 evt_id,
 						v->rec_info.rec_mode);
 
 					v->rec_info.pending = 0;
+				}
+
+				/* Start in-call music delivery if command was
+				 * pending. */
+				if (v->music_info.pending) {
+					voice_cvs_start_playback(v);
+
+					v->music_info.pending = 0;
 				}
 			}
 		}
@@ -2227,6 +2367,18 @@ static int32_t modem_cvs_callback(struct apr_client_data *data, void *priv)
 				rtac_make_voice_callback(RTAC_CVS, ptr,
 					data->payload_size);
 #endif
+			} else if (ptr[0] == VSS_ISTREAM_CMD_START_PLAYBACK) {
+				pr_debug("%s: START_PLAYBACK resp 0x%x\n",
+					 __func__, ptr[1]);
+
+					v->cvs_state = CMD_STATUS_SUCCESS;
+					wake_up(&v->cvs_wait);
+			} else if (ptr[0] == VSS_ISTREAM_CMD_STOP_PLAYBACK) {
+				pr_debug("%s: STOP_PLAYBACK resp 0x%x\n",
+					 __func__, ptr[1]);
+
+					v->cvs_state = CMD_STATUS_SUCCESS;
+					wake_up(&v->cvs_wait);
 			} else
 				pr_debug("%s: cmd = 0x%x\n", __func__, ptr[0]);
 		}
@@ -2416,6 +2568,8 @@ static int __init voice_init(void)
 
 	v->rec_info.pending = 0;
 	v->rec_info.rec_mode = VOC_REC_NONE;
+
+	memset(&v->music_info, 0, sizeof(v->music_info));
 
 	v->device_events = AUDDEV_EVT_DEV_CHG_VOICE |
 			AUDDEV_EVT_DEV_RDY |
