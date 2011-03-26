@@ -353,6 +353,10 @@ int adm_memory_map_regions(uint32_t *buf_add, uint32_t mempool_id,
 			+ sizeof(struct adm_memory_map_regions) * bufcnt;
 
 	mmap_region_cmd = kzalloc(cmd_size, GFP_KERNEL);
+	if (!mmap_region_cmd) {
+		pr_err("%s: allocate mmap_region_cmd failed\n", __func__);
+		return -ENOMEM;
+	}
 	mmap_regions = (struct adm_cmd_memory_map_regions *)mmap_region_cmd;
 	mmap_regions->hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
 						APR_HDR_LEN(APR_HDR_SIZE),
@@ -419,6 +423,10 @@ int adm_memory_unmap_regions(uint32_t *buf_add, uint32_t *bufsz,
 			+ sizeof(struct adm_memory_unmap_regions) * bufcnt;
 
 	unmap_region_cmd = kzalloc(cmd_size, GFP_KERNEL);
+	if (!unmap_region_cmd) {
+		pr_err("%s: allocate unmap_region_cmd failed\n", __func__);
+		return -ENOMEM;
+	}
 	unmap_regions = (struct adm_cmd_memory_unmap_regions *)
 						unmap_region_cmd;
 	unmap_regions->hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
