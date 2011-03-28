@@ -124,8 +124,8 @@ obj-$(CONFIG_ARCH_MSM8X60) += subsystem-fatal-8x60.o
 obj-$(CONFIG_ARCH_MSM8X60) += saw-regulator.o
 obj-$(CONFIG_ARCH_MSM8X60) += rpm-regulator.o
 obj-$(CONFIG_ARCH_MSM8X60) += footswitch-8x60.o
-obj-$(CONFIG_ARCH_MSM8X60) += subsystem_notif.o
-obj-$(CONFIG_ARCH_MSM8X60) += subsystem_restart.o
+obj-$(CONFIG_MSM_SUBSYSTEM_RESTART) += subsystem_notif.o
+obj-$(CONFIG_MSM_SUBSYSTEM_RESTART) += subsystem_restart.o
 
 ifdef CONFIG_ARCH_MSM8X60
 	obj-$(CONFIG_CPU_IDLE) += cpuidle.o

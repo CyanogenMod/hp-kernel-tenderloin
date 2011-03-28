@@ -77,14 +77,14 @@ void *subsys_notif_register_notifier(
 				subsys_notif_add_subsys(subsys_name);
 
 		if (!subsys)
-			return NULL;
+			return ERR_PTR(-EINVAL);
 	}
 
 	ret = srcu_notifier_chain_register(
 		&subsys->subsys_notif_rcvr_list, nb);
 
 	if (ret < 0)
-		return NULL;
+		return ERR_PTR(ret);
 
 	return subsys;
 }
@@ -127,7 +127,7 @@ void *subsys_notif_add_subsys(const char *subsys_name)
 
 	if (!subsys) {
 		mutex_unlock(&notif_add_lock);
-		return NULL;
+		return ERR_PTR(-EINVAL);
 	}
 
 	strlcpy(subsys->name, subsys_name, ARRAY_SIZE(subsys->name));

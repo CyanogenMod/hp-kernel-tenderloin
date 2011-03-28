@@ -54,8 +54,23 @@ struct subsys_data {
 	void *restart_order;
 };
 
+#if defined(CONFIG_MSM_SUBSYSTEM_RESTART)
+
 int subsystem_restart(const char *subsys_name);
-int ssr_add_soc_restart_order(const char *restart_order[], int count);
 int ssr_register_subsystem(struct subsys_data *subsys);
+
+#else
+
+static inline int subsystem_restart(const char *subsystem_name)
+{
+	return 0;
+}
+
+static inline int ssr_register_subsystem(struct subsys_data *subsys)
+{
+	return 0;
+}
+
+#endif /* CONFIG_MSM_SUBSYSTEM_RESTART */
 
 #endif
