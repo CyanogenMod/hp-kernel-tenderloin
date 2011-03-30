@@ -396,7 +396,7 @@ static void set_bus_bw(unsigned int bw)
 		return;
 	}
 
-	/* Update bandwidth if requst has changed. */
+	/* Update bandwidth if requst has changed. This may sleep. */
 	ret = msm_bus_scale_client_update_request(bus_perf_client, bw);
 	if (ret)
 		pr_err("%s: bandwidth request failed (%d)\n", __func__, ret);
@@ -406,7 +406,7 @@ static void set_bus_bw(unsigned int bw)
 
 /* Apply any per-cpu voltage increases. */
 static int increase_vdd(int cpu, unsigned int vdd_sc, unsigned int vdd_mem,
-			unsigned int vdd_dig)
+			unsigned int vdd_dig, enum setrate_reason reason)
 {
 	int rc = 0;
 
@@ -429,6 +429,13 @@ static int increase_vdd(int cpu, unsigned int vdd_sc, unsigned int vdd_mem,
 		return rc;
 	}
 
+	 /* Don't update the Scorpion voltage in the hotplug path.  It should
+	  * already be correct.  Attempting to set it is bad because we don't
+	  * know what CPU we are running on at this point, but the Scorpion
+	  * regulator API requires we call it from the affected CPU.  */
+	if (reason == SETRATE_HOTPLUG)
+		return rc;
+
 	/* Update per-core Scorpion voltage. */
 	rc = regulator_set_voltage(regulator_sc[cpu], vdd_sc, MAX_VDD_SC);
 	if (rc) {
@@ -442,16 +449,21 @@ static int increase_vdd(int cpu, unsigned int vdd_sc, unsigned int vdd_mem,
 
 /* Apply any per-cpu voltage decreases. */
 static void decrease_vdd(int cpu, unsigned int vdd_sc, unsigned int vdd_mem,
-			 unsigned int vdd_dig)
+			 unsigned int vdd_dig, enum setrate_reason reason)
 {
 	int ret;
 
-	/* Update per-core Scorpion voltage. */
-	ret = regulator_set_voltage(regulator_sc[cpu], vdd_sc, MAX_VDD_SC);
-	if (ret) {
-		pr_err("%s: vdd_sc (cpu%d) decrease failed (%d)\n",
-			__func__, cpu, ret);
-		return;
+	/* Update per-core Scorpion voltage. This must be called on the CPU
+	 * that's being affected. Don't do this in the hotplug remove path,
+	 * where the rail is off and we're executing on the other CPU. */
+	if (reason != SETRATE_HOTPLUG) {
+		ret = regulator_set_voltage(regulator_sc[cpu], vdd_sc,
+					    MAX_VDD_SC);
+		if (ret) {
+			pr_err("%s: vdd_sc (cpu%d) decrease failed (%d)\n",
+				__func__, cpu, ret);
+			return;
+		}
 	}
 
 	/* Decrease vdd_dig active-set vote. */
@@ -512,7 +524,7 @@ int acpuclk_set_rate(int cpu, unsigned long rate, enum setrate_reason reason)
 		goto out;
 	}
 
-	if (reason == SETRATE_CPUFREQ)
+	if (reason == SETRATE_CPUFREQ || reason == SETRATE_HOTPLUG)
 		mutex_lock(&drv_state.lock);
 
 	strt_s = drv_state.current_speed[cpu];
@@ -551,9 +563,10 @@ int acpuclk_set_rate(int cpu, unsigned long rate, enum setrate_reason reason)
 	vdd_dig = max(tgt_s->l2_level->vdd_dig, pll_vdd_dig);
 
 	/* Increase VDD levels if needed. */
-	if ((reason == SETRATE_CPUFREQ || reason == SETRATE_INIT)
+	if ((reason == SETRATE_CPUFREQ || reason == SETRATE_HOTPLUG
+	  || reason == SETRATE_INIT)
 			&& (tgt_s->acpuclk_khz > strt_s->acpuclk_khz)) {
-		rc = increase_vdd(cpu, tgt_s->vdd_sc, vdd_mem, vdd_dig);
+		rc = increase_vdd(cpu, tgt_s->vdd_sc, vdd_mem, vdd_dig, reason);
 		if (rc)
 			goto out;
 	}
@@ -583,7 +596,7 @@ int acpuclk_set_rate(int cpu, unsigned long rate, enum setrate_reason reason)
 
 	/* Drop VDD levels if we can. */
 	if (tgt_s->acpuclk_khz < strt_s->acpuclk_khz)
-		decrease_vdd(cpu, tgt_s->vdd_sc, vdd_mem, vdd_dig);
+		decrease_vdd(cpu, tgt_s->vdd_sc, vdd_mem, vdd_dig, reason);
 
 	dprintk("ACPU%d speed change complete\n", cpu);
 
@@ -592,7 +605,7 @@ int acpuclk_set_rate(int cpu, unsigned long rate, enum setrate_reason reason)
 		AVS_ENABLE(cpu, tgt_s->avsdscr_setting);
 
 out:
-	if (reason == SETRATE_CPUFREQ)
+	if (reason == SETRATE_CPUFREQ || reason == SETRATE_HOTPLUG)
 		mutex_unlock(&drv_state.lock);
 	return rc;
 }
@@ -752,6 +765,36 @@ static void __init cpufreq_table_init(void)
 static void __init cpufreq_table_init(void) {}
 #endif
 
+#define HOT_UNPLUG_KHZ MAX_AXI
+static int __cpuinit acpuclock_cpu_callback(struct notifier_block *nfb,
+					    unsigned long action, void *hcpu)
+{
+	static int prev_khz[NR_CPUS];
+	int cpu = (int)hcpu;
+
+	switch (action) {
+	case CPU_DEAD:
+		prev_khz[cpu] = acpuclk_get_rate(cpu);
+		/* Fall through. */
+	case CPU_UP_CANCELED:
+		acpuclk_set_rate(cpu, HOT_UNPLUG_KHZ, SETRATE_HOTPLUG);
+		break;
+	case CPU_UP_PREPARE:
+		if (WARN_ON(!prev_khz[cpu]))
+			prev_khz[cpu] = acpu_freq_tbl->acpuclk_khz;
+		acpuclk_set_rate(cpu, prev_khz[cpu], SETRATE_HOTPLUG);
+		break;
+	default:
+		break;
+	}
+
+	return NOTIFY_OK;
+}
+
+static struct notifier_block __cpuinitdata acpuclock_cpu_notifier = {
+	.notifier_call = acpuclock_cpu_callback,
+};
+
 static unsigned int __init select_freq_plan(void)
 {
 	uint32_t speed_bin, max_khz;
@@ -805,4 +848,5 @@ void __init msm_acpu_clock_init(struct msm_acpu_clock_platform_data *clkdata)
 		acpuclk_set_rate(cpu, max_cpu_khz, SETRATE_INIT);
 
 	cpufreq_table_init();
+	register_hotcpu_notifier(&acpuclock_cpu_notifier);
 }

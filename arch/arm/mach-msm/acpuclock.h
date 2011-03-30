@@ -26,6 +26,7 @@ enum setrate_reason {
 	SETRATE_CPUFREQ = 0,
 	SETRATE_SWFI,
 	SETRATE_PC,
+	SETRATE_HOTPLUG,
 	SETRATE_INIT,
 };
 

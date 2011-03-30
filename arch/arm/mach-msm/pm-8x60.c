@@ -724,7 +724,12 @@ static void msm_pm_power_collapse(bool from_idle)
 
 	avsdscr_setting = avs_get_avsdscr();
 	avs_disable();
-	saved_acpuclk_rate = acpuclk_power_collapse();
+
+	if (cpu_online(dev->cpu))
+		saved_acpuclk_rate = acpuclk_power_collapse();
+	else
+		saved_acpuclk_rate = 0;
+
 	if (MSM_PM_DEBUG_CLOCK & msm_pm_debug_mask)
 		pr_info("CPU%u: %s: change clock rate (old rate = %lu)\n",
 			dev->cpu, __func__, saved_acpuclk_rate);
