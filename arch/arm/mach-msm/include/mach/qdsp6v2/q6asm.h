@@ -206,6 +206,9 @@ int q6asm_enc_cfg_blk_aac(struct audio_client *ac,
 int q6asm_enc_cfg_blk_pcm(struct audio_client *ac,
 			uint32_t rate, uint32_t channels);
 
+int q6asm_enable_sbrps(struct audio_client *ac,
+			uint32_t sbr_ps);
+
 int q6asm_enc_cfg_blk_qcelp(struct audio_client *ac, uint32_t frames_per_buf,
 		uint16_t min_rate, uint16_t max_rate,
 		uint16_t reduced_rate_level, uint16_t rate_modulation_cmd);
@@ -219,6 +222,9 @@ int q6asm_enc_cfg_blk_amrnb(struct audio_client *ac, uint32_t frames_per_buf,
 
 int q6asm_media_format_block_pcm(struct audio_client *ac,
 			uint32_t rate, uint32_t channels);
+
+int q6asm_media_format_block_aac(struct audio_client *ac,
+			struct asm_aac_cfg *cfg);
 
 int q6asm_media_format_block_wma(struct audio_client *ac,
 			void *cfg);

@@ -343,9 +343,8 @@ int q6asm_audio_client_buf_alloc(unsigned int dir,
 								&buf[cnt].phys,
 								GFP_KERNEL);
 				if (!buf[cnt].data) {
-					pr_err("%s Buf alloc failed for"
-						" size=%d\n", __func__,
-						bufsz);
+					pr_err("%s Buf alloc failed\n",
+								__func__);
 					mutex_unlock(&ac->cmd_lock);
 					goto fail;
 				}
@@ -914,6 +913,9 @@ int q6asm_open_read_write(struct audio_client *ac,
 	case FORMAT_LINEAR_PCM:
 		open.write_format = LINEAR_PCM;
 		break;
+	case FORMAT_MPEG4_AAC:
+		open.write_format = MPEG4_AAC;
+		break;
 	case FORMAT_WMA_V9:
 		open.write_format = WMA_V9;
 		break;
@@ -1109,6 +1111,41 @@ fail_cmd:
 	return -EINVAL;
 }
 
+int q6asm_enable_sbrps(struct audio_client *ac,
+			uint32_t sbr_ps_enable)
+{
+	struct asm_stream_cmd_encdec_sbr  sbrps;
+
+	int rc = 0;
+
+	pr_debug("%s: Session %d\n", __func__, ac->session);
+
+	q6asm_add_hdr(ac, &sbrps.hdr, sizeof(sbrps), TRUE);
+
+	sbrps.hdr.opcode = ASM_STREAM_CMD_SET_ENCDEC_PARAM;
+	sbrps.param_id = ASM_ENABLE_SBR_PS;
+	sbrps.param_size = sizeof(struct asm_sbr_ps);
+	sbrps.sbr_ps.enable = sbr_ps_enable;
+
+	rc = apr_send_pkt(ac->apr, (uint32_t *) &sbrps);
+	if (rc < 0) {
+		pr_err("Command opcode[0x%x]paramid[0x%x] failed\n",
+				ASM_STREAM_CMD_SET_ENCDEC_PARAM,
+				ASM_ENABLE_SBR_PS);
+		rc = -EINVAL;
+		goto fail_cmd;
+	}
+	rc = wait_event_timeout(ac->cmd_wait,
+			(atomic_read(&ac->cmd_state) == 0), 5*HZ);
+	if (!rc) {
+		pr_err("timeout opcode[0x%x] ", sbrps.hdr.opcode);
+		goto fail_cmd;
+	}
+	return 0;
+fail_cmd:
+	return -EINVAL;
+}
+
 int q6asm_enc_cfg_blk_qcelp(struct audio_client *ac, uint32_t frames_per_buf,
 		uint16_t min_rate, uint16_t max_rate,
 		uint16_t reduced_rate_level, uint16_t rate_modulation_cmd)
@@ -1253,6 +1290,54 @@ int q6asm_media_format_block_pcm(struct audio_client *ac,
 	fmt.write_cfg.pcm_cfg.is_signed = 1;
 	fmt.write_cfg.pcm_cfg.interleaved = 1;
 
+	rc = apr_send_pkt(ac->apr, (uint32_t *) &fmt);
+	if (rc < 0) {
+		pr_err("%s:Comamnd open failed\n", __func__);
+		goto fail_cmd;
+	}
+	rc = wait_event_timeout(ac->cmd_wait,
+			(atomic_read(&ac->cmd_state) == 0), 5*HZ);
+	if (!rc) {
+		pr_err("%s:timeout. waited for FORMAT_UPDATE\n", __func__);
+		goto fail_cmd;
+	}
+	return 0;
+fail_cmd:
+	return -EINVAL;
+}
+
+int q6asm_media_format_block_aac(struct audio_client *ac,
+				struct asm_aac_cfg *cfg)
+{
+	struct asm_stream_media_format_update fmt;
+	int rc = 0;
+
+	pr_debug("%s:session[%d]rate[%d]ch[%d]\n", __func__, ac->session,
+		cfg->sample_rate, cfg->ch_cfg);
+
+	q6asm_add_hdr(ac, &fmt.hdr, sizeof(fmt), TRUE);
+
+	fmt.hdr.opcode = ASM_DATA_CMD_MEDIA_FORMAT_UPDATE;
+
+	fmt.format = MPEG4_AAC;
+	fmt.cfg_size = sizeof(struct asm_aac_cfg);
+	fmt.write_cfg.aac_cfg.format = cfg->format;
+	fmt.write_cfg.aac_cfg.aot = cfg->aot;
+	fmt.write_cfg.aac_cfg.ep_config = cfg->ep_config;
+	fmt.write_cfg.aac_cfg.section_data_resilience =
+					cfg->section_data_resilience;
+	fmt.write_cfg.aac_cfg.scalefactor_data_resilience =
+					cfg->scalefactor_data_resilience;
+	fmt.write_cfg.aac_cfg.spectral_data_resilience =
+					cfg->spectral_data_resilience;
+	fmt.write_cfg.aac_cfg.ch_cfg = cfg->ch_cfg;
+	fmt.write_cfg.aac_cfg.sample_rate = cfg->sample_rate;
+	pr_info("%s:format=%x cfg_size=%d aac-cfg=%x aot=%d ch=%d sr=%d\n",
+			__func__, fmt.format, fmt.cfg_size,
+			fmt.write_cfg.aac_cfg.format,
+			fmt.write_cfg.aac_cfg.aot,
+			fmt.write_cfg.aac_cfg.ch_cfg,
+			fmt.write_cfg.aac_cfg.sample_rate);
 	rc = apr_send_pkt(ac->apr, (uint32_t *) &fmt);
 	if (rc < 0) {
 		pr_err("%s:Comamnd open failed\n", __func__);

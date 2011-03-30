@@ -607,8 +607,6 @@ struct asm_aac_cfg {
 	u16 section_data_resilience;
 	u16 scalefactor_data_resilience;
 	u16 spectral_data_resilience;
-	u16 sbr_on;
-	u16 sbr_ps_on;
 	u16 ch_cfg;
 	u16 reserved;
 	u32 sample_rate;
@@ -678,6 +676,10 @@ struct asm_sbc_bitrate {
 
 struct asm_immed_decode {
 	u32 mode;
+};
+
+struct asm_sbr_ps {
+	u32 enable;
 };
 
 struct asm_encode_cfg_blk {
@@ -766,6 +768,7 @@ struct asm_stream_cmd_open_read_write {
 #define ASM_STREAM_CMD_SET_ENCDEC_PARAM                  0x00010C10
 #define ASM_STREAM_CMD_GET_ENCDEC_PARAM                  0x00010C11
 #define ASM_ENCDEC_CFG_BLK_ID				 0x00010C2C
+#define ASM_ENABLE_SBR_PS				 0x00010C63
 struct asm_stream_cmd_encdec_cfg_blk{
 	struct apr_hdr              hdr;
 	u32                         param_id;
@@ -784,6 +787,13 @@ struct asm_stream_cmd_encdec_immed_decode{
 	u32            param_id;
 	u32            param_size;
 	struct asm_immed_decode dec;
+} __attribute__((packed));
+
+struct asm_stream_cmd_encdec_sbr{
+	struct apr_hdr hdr;
+	u32            param_id;
+	u32            param_size;
+	struct asm_sbr_ps sbr_ps;
 } __attribute__((packed));
 
 #define ASM_STREAM _CMD_ADJUST_SAMPLES                   0x00010C0A
