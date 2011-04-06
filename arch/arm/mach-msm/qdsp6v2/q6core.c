@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -36,6 +36,7 @@ struct dentry *dentry;
 struct apr_svc_ch_dev *handle;
 struct apr_svc *apr_handle_q;
 struct apr_svc *apr_handle_m;
+struct apr_svc *core_handle_q;
 struct apr_client_data clnt_data;
 char l_buf[4096];
 
@@ -50,6 +51,11 @@ static char *svc_names[] = {
 					"ASM",
 					"ADM",
 				};
+
+#define TIMEOUT_MS 1000
+int32_t query_adsp_ver;
+wait_queue_head_t adsp_version_wait;
+uint32_t adsp_version;
 
 static int32_t aprv2_core_fn_q(struct apr_client_data *data, void *priv)
 {
@@ -74,6 +80,11 @@ static int32_t aprv2_core_fn_q(struct apr_client_data *data, void *priv)
 	case ADSP_GET_VERSION_RSP:{
 		if (data->payload_size) {
 			payload = data->payload;
+			if (query_adsp_ver == 1) {
+				query_adsp_ver = 0;
+				adsp_version  = payload->build_id;
+				wake_up(&adsp_version_wait);
+			}
 			svc_info = (struct adsp_service_info *)
 			((char *)payload + sizeof(struct adsp_get_version));
 			pr_info("----------------------------------------\n");
@@ -120,6 +131,66 @@ static ssize_t apr_debug_open(struct inode *inode, struct file *file)
 	pr_debug("apr debugfs opened\n");
 	return 0;
 }
+
+void *core_open(void)
+{
+	if (core_handle_q == NULL) {
+		core_handle_q = apr_register("ADSP", "CORE",
+					aprv2_core_fn_q, 0xFFFFFFFF, NULL);
+	}
+	pr_info("Open_q %p\n", core_handle_q);
+	if (core_handle_q == NULL) {
+		pr_err("%s: Unable to register CORE\n", __func__);
+		return NULL;
+	}
+	return core_handle_q;
+}
+EXPORT_SYMBOL(core_open);
+
+int32_t core_close(void)
+{
+	int ret = 0;
+	if (core_handle_q == NULL) {
+		pr_err("CORE is already closed\n");
+		ret = -EINVAL;
+		return ret;
+	}
+	apr_deregister(core_handle_q);
+	return ret;
+}
+EXPORT_SYMBOL(core_close);
+
+uint32_t core_get_adsp_version(void)
+{
+	struct apr_hdr *hdr;
+	int32_t rc = 0, ret = 0;
+	core_open();
+	if (core_handle_q) {
+		hdr = (struct apr_hdr *)l_buf;
+		hdr->hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_EVENT,
+					APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
+		hdr->pkt_size = APR_PKT_SIZE(APR_HDR_SIZE, 0);
+		hdr->src_port = 0;
+		hdr->dest_port = 0;
+		hdr->token = 0;
+		hdr->opcode = ADSP_GET_VERSION;
+
+		apr_send_pkt(core_handle_q, (uint32_t *)l_buf);
+		query_adsp_ver = 1;
+		pr_info("Write_q\n");
+		ret = wait_event_timeout(adsp_version_wait,
+					(query_adsp_ver == 0),
+					msecs_to_jiffies(TIMEOUT_MS));
+		rc = adsp_version;
+		if (!ret) {
+			pr_err("%s: wait_event timeout\n", __func__);
+			rc = -ENODEV;
+		}
+	} else
+		pr_info("apr registration failed\n");
+	return rc;
+}
+EXPORT_SYMBOL(core_get_adsp_version);
 
 static ssize_t apr_debug_write(struct file *file, const char __user *buf,
 				size_t count, loff_t *ppos)
@@ -219,32 +290,12 @@ static ssize_t apr_debug_write(struct file *file, const char __user *buf,
 	} else if (!strncmp(l_buf + 20, "boom", 64)) {
 		q6audio_dsp_not_responding();
 	} else if (!strncmp(l_buf + 20, "dsp_ver", 64)) {
-		struct apr_hdr *hdr;
-
-		apr_handle_q = apr_register("ADSP", "CORE", aprv2_core_fn_q,
-							0xFFFFFFFF, NULL);
-		pr_info("Open_q %p\n", apr_handle_q);
-		if (apr_handle_q) {
-			hdr = (struct apr_hdr *)l_buf;
-			hdr->hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_EVENT,
-					APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
-			hdr->pkt_size = APR_PKT_SIZE(APR_HDR_SIZE, 0);
-			hdr->src_port = 0;
-			hdr->dest_port = 0;
-			hdr->token = 0;
-			hdr->opcode = ADSP_GET_VERSION;
-
-			apr_send_pkt(apr_handle_q, (uint32_t *)l_buf);
-			pr_info("Write_q\n");
-		} else
-			pr_info("apr registration failed\n");
+			core_get_adsp_version();
 	} else if (!strncmp(l_buf + 20, "en_pwr_col", 64)) {
 		struct adsp_power_collapse pc;
 
-		apr_handle_q = apr_register("ADSP", "CORE", aprv2_core_fn_q,
-							0xFFFFFFFF, NULL);
-		pr_info("Open_q %p\n", apr_handle_q);
-		if (apr_handle_q) {
+		core_handle_q = core_open();
+		if (core_handle_q) {
 			pc.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_EVENT,
 					APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
 			pc.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
@@ -254,16 +305,14 @@ static ssize_t apr_debug_write(struct file *file, const char __user *buf,
 			pc.hdr.token = 0;
 			pc.hdr.opcode = ADSP_CMD_SET_POWER_COLLAPSE_STATE;
 			pc.power_collapse = 0x00000000;
-			apr_send_pkt(apr_handle_q, (uint32_t *)&pc);
+			apr_send_pkt(core_handle_q, (uint32_t *)&pc);
 			pr_info("Write_q :enable power collapse\n");
 		}
 	} else if (!strncmp(l_buf + 20, "dis_pwr_col", 64)) {
 		struct adsp_power_collapse pc;
 
-		apr_handle_q = apr_register("ADSP", "CORE", aprv2_core_fn_q,
-							0xFFFFFFFF, NULL);
-		pr_info("Open_q %p\n", apr_handle_q);
-		if (apr_handle_q) {
+		core_handle_q = core_open();
+		if (core_handle_q) {
 			pc.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_EVENT,
 					APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
 			pc.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
@@ -273,7 +322,7 @@ static ssize_t apr_debug_write(struct file *file, const char __user *buf,
 			pc.hdr.token = 0;
 			pc.hdr.opcode = ADSP_CMD_SET_POWER_COLLAPSE_STATE;
 			pc.power_collapse = 0x00000001;
-			apr_send_pkt(apr_handle_q, (uint32_t *)&pc);
+			apr_send_pkt(core_handle_q, (uint32_t *)&pc);
 			pr_info("Write_q:disable power collapse\n");
 		}
 	} else
@@ -287,13 +336,17 @@ static const struct file_operations apr_debug_fops = {
 	.open = apr_debug_open,
 };
 
-static int __init apr_init(void)
+static int __init core_init(void)
 {
 #ifdef CONFIG_DEBUG_FS
 	dentry = debugfs_create_file("apr", S_IFREG | S_IWUGO,
 				NULL, (void *) NULL, &apr_debug_fops);
 #endif /* CONFIG_DEBUG_FS */
+	query_adsp_ver = 0;
+	init_waitqueue_head(&adsp_version_wait);
+	adsp_version = 0;
+	core_handle_q = NULL;
 	return 0;
 }
-device_initcall(apr_init);
+device_initcall(core_init);
 

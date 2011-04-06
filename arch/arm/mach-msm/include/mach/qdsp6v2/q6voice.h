@@ -666,6 +666,7 @@ struct incall_music_info {
 struct voice_data {
 	int voc_state;/*INIT, CHANGE, RELEASE, RUN */
 	uint32_t voc_path;
+	uint32_t adsp_version;
 
 	wait_queue_head_t mvm_wait;
 	wait_queue_head_t cvs_wait;

@@ -174,5 +174,7 @@ int apr_send_pkt(void *handle, uint32_t *buf);
 int apr_deregister(void *handle);
 void change_q6_state(int state);
 void q6audio_dsp_not_responding(void);
-
+uint32_t core_get_adsp_version(void);
+void *core_open(void);
+int32_t   core_close(void);
 #endif

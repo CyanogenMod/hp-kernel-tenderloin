@@ -42,6 +42,7 @@
 
 #define VOC_PATH_PASSIVE 0
 #define VOC_PATH_FULL 1
+#define ADSP_VERSION_CVD 0x60300000
 
 #define BUFFER_PAYLOAD_SIZE 4000
 
@@ -49,11 +50,16 @@
 
 struct voice_data voice;
 
+static bool is_adsp_support_cvd(void)
+{
+	return (voice.adsp_version >= ADSP_VERSION_CVD);
+}
 static void *voice_get_apr_mvm(struct voice_data *v)
 {
 	void *apr_mvm = NULL;
 
-	if (v->voc_path == VOC_PATH_PASSIVE)
+	if (v->voc_path == VOC_PATH_PASSIVE &&
+		!(is_adsp_support_cvd()))
 		apr_mvm = v->apr_mvm;
 	else
 		apr_mvm = v->apr_q6_mvm;
@@ -67,7 +73,8 @@ static void voice_set_apr_mvm(struct voice_data *v, void *apr_mvm)
 {
 	pr_debug("%s: apr_mvm 0x%x\n", __func__, (unsigned int)apr_mvm);
 
-	if (v->voc_path == VOC_PATH_PASSIVE)
+	if (v->voc_path == VOC_PATH_PASSIVE &&
+		!(is_adsp_support_cvd()))
 		v->apr_mvm = apr_mvm;
 	else
 		v->apr_q6_mvm = apr_mvm;
@@ -77,7 +84,8 @@ static void *voice_get_apr_cvs(struct voice_data *v)
 {
 	void *apr_cvs = NULL;
 
-	if (v->voc_path == VOC_PATH_PASSIVE)
+	if (v->voc_path == VOC_PATH_PASSIVE &&
+		!(is_adsp_support_cvd()))
 		apr_cvs = v->apr_cvs;
 	else
 		apr_cvs = v->apr_q6_cvs;
@@ -91,7 +99,8 @@ static void voice_set_apr_cvs(struct voice_data *v, void *apr_cvs)
 {
 	pr_debug("%s: apr_cvs 0x%x\n", __func__, (unsigned int)apr_cvs);
 
-	if (v->voc_path == VOC_PATH_PASSIVE) {
+	if (v->voc_path == VOC_PATH_PASSIVE &&
+		!(is_adsp_support_cvd())) {
 		v->apr_cvs = apr_cvs;
 #ifdef CONFIG_MSM8X60_RTAC
 		rtac_set_voice_handle(RTAC_CVS, apr_cvs);
@@ -105,7 +114,8 @@ static void *voice_get_apr_cvp(struct voice_data *v)
 {
 	void *apr_cvp = NULL;
 
-	if (v->voc_path == VOC_PATH_PASSIVE)
+	if (v->voc_path == VOC_PATH_PASSIVE &&
+		!(is_adsp_support_cvd()))
 		apr_cvp = v->apr_cvp;
 	else
 		apr_cvp = v->apr_q6_cvp;
@@ -119,7 +129,8 @@ static void voice_set_apr_cvp(struct voice_data *v, void *apr_cvp)
 {
 	pr_debug("%s: apr_cvp 0x%x\n", __func__, (unsigned int)apr_cvp);
 
-	if (v->voc_path == VOC_PATH_PASSIVE) {
+	if (v->voc_path == VOC_PATH_PASSIVE &&
+		!(is_adsp_support_cvd())) {
 		v->apr_cvp = apr_cvp;
 #ifdef CONFIG_MSM8X60_RTAC
 		rtac_set_voice_handle(RTAC_CVP, apr_cvp);
@@ -212,9 +223,18 @@ static int32_t modem_cvp_callback(struct apr_client_data *data, void *priv);
 static int voice_apr_register(struct voice_data *v)
 {
 	int rc = 0;
-	void *apr_mvm = voice_get_apr_mvm(v);
-	void *apr_cvs = voice_get_apr_cvs(v);
-	void *apr_cvp = voice_get_apr_cvp(v);
+	void *apr_mvm;
+	void *apr_cvs;
+	void *apr_cvp;
+
+	if (v->adsp_version == 0) {
+		core_open();
+		v->adsp_version = core_get_adsp_version();
+		pr_info("adsp_ver fetched:%x\n", v->adsp_version);
+	}
+	apr_mvm = voice_get_apr_mvm(v);
+	apr_cvs = voice_get_apr_cvs(v);
+	apr_cvp = voice_get_apr_cvp(v);
 
 
 	pr_debug("into voice_apr_register_callback\n");
@@ -222,7 +242,8 @@ static int voice_apr_register(struct voice_data *v)
 	if (apr_mvm == NULL) {
 		pr_debug("start to register MVM callback\n");
 
-		if (v->voc_path == VOC_PATH_PASSIVE) {
+		if (v->voc_path == VOC_PATH_PASSIVE &&
+			!(is_adsp_support_cvd())) {
 			apr_mvm = apr_register("MODEM", "MVM",
 					       modem_mvm_callback, 0xFFFFFFFF,
 					       v);
@@ -244,7 +265,8 @@ static int voice_apr_register(struct voice_data *v)
 	if (apr_cvs == NULL) {
 		pr_debug("start to register CVS callback\n");
 
-		if (v->voc_path == VOC_PATH_PASSIVE) {
+		if (v->voc_path == VOC_PATH_PASSIVE &&
+			!(is_adsp_support_cvd())) {
 			apr_cvs = apr_register("MODEM", "CVS",
 					       modem_cvs_callback, 0xFFFFFFFF,
 					       v);
@@ -266,7 +288,8 @@ static int voice_apr_register(struct voice_data *v)
 	if (apr_cvp == NULL) {
 		pr_debug("start to register CVP callback\n");
 
-		if (v->voc_path == VOC_PATH_PASSIVE) {
+		if (v->voc_path == VOC_PATH_PASSIVE &&
+			!(is_adsp_support_cvd())) {
 			apr_cvp = apr_register("MODEM", "CVP",
 					       modem_cvp_callback, 0xFFFFFFFF,
 					       v);
@@ -2548,7 +2571,8 @@ static int __init voice_init(void)
 	v->dev_tx.mute = v->default_mute_val;
 
 	v->voc_state = VOC_INIT;
-	v->voc_path = VOC_PATH_FULL;
+	v->voc_path = VOC_PATH_PASSIVE;
+	v->adsp_version = 0;
 	init_waitqueue_head(&v->mvm_wait);
 	init_waitqueue_head(&v->cvs_wait);
 	init_waitqueue_head(&v->cvp_wait);
