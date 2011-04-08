@@ -71,7 +71,7 @@ void q6asm_aac_in_cb(uint32_t opcode, uint32_t token,
 			__func__, audio->ac->session);
 		break;
 	default:
-		pr_err("%s:session id %d: Ignore opcode[0x%x]\n", __func__,
+		pr_debug("%s:session id %d: Ignore opcode[0x%x]\n", __func__,
 			audio->ac->session, opcode);
 		break;
 	}

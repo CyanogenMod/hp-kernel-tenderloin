@@ -879,7 +879,7 @@ int q6asm_open_write(struct audio_client *ac, uint32_t format)
 	rc = wait_event_timeout(ac->cmd_wait,
 			(atomic_read(&ac->cmd_state) == 0), 5*HZ);
 	if (!rc) {
-		pr_err("%s: timeout. waited for OPEN_WRITR rc[%d]\n", __func__,
+		pr_err("%s: timeout. waited for OPEN_WRITE rc[%d]\n", __func__,
 			rc);
 		goto fail_cmd;
 	}
@@ -959,7 +959,7 @@ int q6asm_open_read_write(struct audio_client *ac,
 	rc = wait_event_timeout(ac->cmd_wait,
 			(atomic_read(&ac->cmd_state) == 0), 5*HZ);
 	if (!rc) {
-		pr_err("timeout. waited for OPEN_WRITR rc[%d]\n", rc);
+		pr_err("timeout. waited for OPEN_WRITE rc[%d]\n", rc);
 		goto fail_cmd;
 	}
 	return 0;
@@ -2311,7 +2311,7 @@ int q6asm_cmd(struct audio_client *ac, int cmd)
 			for (cnt = 0; cnt < ac->port[IN].max_buf_cnt;
 								cnt++) {
 				if (ac->port[IN].buf[cnt].used == IN) {
-					pr_err("Write Buf[%d] not returned\n",
+					pr_debug("Write Buf[%d] not returned\n",
 									cnt);
 				}
 			}
@@ -2319,7 +2319,7 @@ int q6asm_cmd(struct audio_client *ac, int cmd)
 		if (ac->port[OUT].buf) {
 			for (cnt = 0; cnt < ac->port[OUT].max_buf_cnt; cnt++) {
 				if (ac->port[OUT].buf[cnt].used == OUT) {
-					pr_err("Read Buf[%d] not returned\n",
+					pr_debug("Read Buf[%d] not returned\n",
 									cnt);
 				}
 			}
