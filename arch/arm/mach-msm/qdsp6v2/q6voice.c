@@ -1282,14 +1282,9 @@ fail:
 static int voice_setup_modem_voice(struct voice_data *v)
 {
 	struct cvp_create_full_ctl_session_cmd cvp_session_cmd;
-	struct apr_hdr cvp_enable_cmd;
-	struct mvm_attach_vocproc_cmd mvm_a_vocproc_cmd;
 	int ret = 0;
 	struct msm_snddev_info *dev_tx_info;
-	void *apr_mvm = voice_get_apr_mvm(v);
 	void *apr_cvp = voice_get_apr_cvp(v);
-	u16 mvm_handle = voice_get_mvm_handle(v);
-	u16 cvp_handle = voice_get_cvp_handle(v);
 
 	/* create cvp session and wait for response */
 	cvp_session_cmd.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
@@ -1344,9 +1339,6 @@ static int voice_setup_modem_voice(struct voice_data *v)
 		goto fail;
 	}
 
-	/* Get the created handle. */
-	cvp_handle = voice_get_cvp_handle(v);
-
 	/* send cvs cal */
 	voice_send_cvs_cal_to_modem(v);
 
@@ -1355,6 +1347,22 @@ static int voice_setup_modem_voice(struct voice_data *v)
 
 	/* send cvp vol table cal */
 	voice_send_cvp_vol_tbl_to_modem(v);
+
+	return 0;
+
+fail:
+	return -EINVAL;
+}
+
+static int voice_enable_vocproc(struct voice_data *v)
+{
+	int ret = 0;
+	struct apr_hdr cvp_enable_cmd;
+	struct mvm_attach_vocproc_cmd mvm_a_vocproc_cmd;
+	void *apr_mvm = voice_get_apr_mvm(v);
+	void *apr_cvp = voice_get_apr_cvp(v);
+	u16 mvm_handle = voice_get_mvm_handle(v);
+	u16 cvp_handle = voice_get_cvp_handle(v);
 
 	/* enable vocproc and wait for respose */
 	cvp_enable_cmd.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
@@ -1933,6 +1941,7 @@ static void voice_auddev_cb_function(u32 evt_id,
 				voice_apr_register(v);
 				voice_create_mvm_cvs_session(v);
 				voice_setup_modem_voice(v);
+				voice_enable_vocproc(v);
 				voice_send_start_voice_cmd(v);
 				get_sidetone_cal(&sidetone_cal_data);
 				msm_snddev_enable_sidetone(
@@ -2005,6 +2014,7 @@ static void voice_auddev_cb_function(u32 evt_id,
 				voice_setup_modem_voice(v);
 				voice_send_mute_cmd_to_modem(v);
 				voice_send_vol_index_to_modem(v);
+				voice_enable_vocproc(v);
 				get_sidetone_cal(&sidetone_cal_data);
 				msm_snddev_enable_sidetone(
 					v->dev_rx.dev_id,
@@ -2040,6 +2050,7 @@ static void voice_auddev_cb_function(u32 evt_id,
 				voice_apr_register(v);
 				voice_create_mvm_cvs_session(v);
 				voice_setup_modem_voice(v);
+				voice_enable_vocproc(v);
 				voice_send_start_voice_cmd(v);
 				get_sidetone_cal(&sidetone_cal_data);
 				msm_snddev_enable_sidetone(
