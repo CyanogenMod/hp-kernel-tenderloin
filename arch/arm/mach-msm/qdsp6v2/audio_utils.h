@@ -72,6 +72,7 @@ struct q6audio_in{
 	void				*enc_cfg;
 	struct msm_audio_buf_cfg        buf_cfg;
 	struct msm_audio_config		pcm_cfg;
+	void				*codec_cfg;
 
 	/* number of buffers available to read/write */
 	atomic_t			in_count;

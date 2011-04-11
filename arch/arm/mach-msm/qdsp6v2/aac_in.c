@@ -88,7 +88,11 @@ static long aac_in_ioctl(struct file *file,
 	switch (cmd) {
 	case AUDIO_START: {
 		struct msm_audio_aac_enc_config *enc_cfg;
+		struct msm_audio_aac_config *aac_config;
+		uint32_t aac_mode = AAC_ENC_MODE_AAC_LC;
+
 		enc_cfg = audio->enc_cfg;
+		aac_config = audio->codec_cfg;
 		/* ENCODE CFG (after new set of API's are published )bharath*/
 		pr_debug("%s:session id %d: default buf alloc[%d]\n", __func__,
 				audio->ac->session, audio->buf_alloc);
@@ -104,12 +108,22 @@ static long aac_in_ioctl(struct file *file,
 				__func__, audio->ac->session);
 			break;
 		}
+
+		pr_debug("%s:sbr_ps_flag = %d, sbr_flag = %d\n", __func__,
+			aac_config->sbr_ps_on_flag, aac_config->sbr_on_flag);
+		if (aac_config->sbr_ps_on_flag)
+			aac_mode = AAC_ENC_MODE_EAAC_P;
+		else if (aac_config->sbr_on_flag)
+			aac_mode = AAC_ENC_MODE_AAC_P;
+		else
+			aac_mode = AAC_ENC_MODE_AAC_LC;
+
 		rc = q6asm_enc_cfg_blk_aac(audio->ac,
 					audio->buf_cfg.frames_per_buf,
 					enc_cfg->sample_rate,
 					enc_cfg->channels,
 					enc_cfg->bit_rate,
-					AAC_ENC_MODE_AAC_LC,
+					aac_mode,
 					enc_cfg->stream_format);
 		if (rc < 0) {
 			pr_err("%s:session id %d: cmd media format block\
@@ -199,6 +213,12 @@ static long aac_in_ioctl(struct file *file,
 			rc = -EINVAL;
 			break;
 		}
+		if ((cfg.sample_rate < 8000) && (cfg.sample_rate > 48000)) {
+			pr_err("%s: ERROR in setting samplerate = %d\n",
+				__func__, cfg.sample_rate);
+			rc = -EINVAL;
+			break;
+		}
 		enc_cfg->sample_rate = cfg.sample_rate;
 		enc_cfg->channels = cfg.channels;
 		enc_cfg->bit_rate = cfg.bit_rate;
@@ -206,9 +226,47 @@ static long aac_in_ioctl(struct file *file,
 			((cfg.stream_format == AUDIO_AAC_FORMAT_RAW) ? \
 								0x03 : 0x00);
 		pr_debug("%s:session id %d: Set-aac-cfg:SR= 0x%x ch=0x%x\
-			bitrate=0x%x\n", __func__, audio->ac->session,
-			enc_cfg->sample_rate, enc_cfg->channels,
-			enc_cfg->bit_rate);
+			bitrate=0x%x, format(adts/raw) = %d\n",
+			__func__, audio->ac->session, enc_cfg->sample_rate,
+			enc_cfg->channels, enc_cfg->bit_rate,
+			enc_cfg->stream_format);
+		break;
+	}
+	case AUDIO_GET_AAC_CONFIG: {
+		if (copy_to_user((void *)arg, &audio->codec_cfg,
+				 sizeof(struct msm_audio_aac_config))) {
+			rc = -EFAULT;
+			break;
+		}
+		break;
+	}
+	case AUDIO_SET_AAC_CONFIG: {
+		struct msm_audio_aac_config aac_cfg;
+		struct msm_audio_aac_config *audio_aac_cfg;
+		struct msm_audio_aac_enc_config *enc_cfg;
+		enc_cfg = audio->enc_cfg;
+		audio_aac_cfg = audio->codec_cfg;
+
+		if (copy_from_user(&aac_cfg, (void *)arg,
+				 sizeof(struct msm_audio_aac_config))) {
+			rc = -EFAULT;
+			break;
+		}
+		pr_debug("%s:session id %d: AUDIO_SET_AAC_CONFIG: sbr_flag = %d"
+				 " sbr_ps_flag = %d\n", __func__,
+				 audio->ac->session, aac_cfg.sbr_on_flag,
+				 aac_cfg.sbr_ps_on_flag);
+		audio_aac_cfg->sbr_on_flag = aac_cfg.sbr_on_flag;
+		audio_aac_cfg->sbr_ps_on_flag = aac_cfg.sbr_ps_on_flag;
+		if ((audio_aac_cfg->sbr_on_flag == 1) ||
+			 (audio_aac_cfg->sbr_ps_on_flag == 1)) {
+			if (enc_cfg->sample_rate < 24000) {
+				pr_err("%s: ERROR in setting samplerate = %d"
+					"\n", __func__, enc_cfg->sample_rate);
+				rc = -EINVAL;
+				break;
+			}
+		}
 		break;
 	}
 	default:
@@ -221,6 +279,7 @@ static int aac_in_open(struct inode *inode, struct file *file)
 {
 	struct q6audio_in *audio = NULL;
 	struct msm_audio_aac_enc_config *enc_cfg;
+	struct msm_audio_aac_config *aac_config;
 	int rc = 0;
 
 	audio = kzalloc(sizeof(struct q6audio_in), GFP_KERNEL);
@@ -241,6 +300,17 @@ static int aac_in_open(struct inode *inode, struct file *file)
 	}
 	enc_cfg = audio->enc_cfg;
 
+	audio->codec_cfg = kzalloc(sizeof(struct msm_audio_aac_config),
+				GFP_KERNEL);
+	if (audio->codec_cfg == NULL) {
+		pr_err("%s:session id %d: Could not allocate memory for aac\
+				config\n", __func__, audio->ac->session);
+		kfree(audio->enc_cfg);
+		kfree(audio);
+		return -ENOMEM;
+	}
+	aac_config = audio->codec_cfg;
+
 	mutex_init(&audio->lock);
 	mutex_init(&audio->read_lock);
 	mutex_init(&audio->write_lock);
@@ -258,11 +328,16 @@ static int aac_in_open(struct inode *inode, struct file *file)
 	enc_cfg->sample_rate = 8000;
 	enc_cfg->channels = 1;
 	enc_cfg->bit_rate = 16000;
-	enc_cfg->stream_format = 0x03;/* 0:ADTS, 3:RAW */
+	enc_cfg->stream_format = 0x00;/* 0:ADTS, 3:RAW */
 	audio->buf_cfg.meta_info_enable = 0x01;
 	audio->buf_cfg.frames_per_buf   = 0x01;
 	audio->pcm_cfg.buffer_count = PCM_BUF_COUNT;
 	audio->pcm_cfg.buffer_size  = PCM_BUF_SIZE;
+	aac_config->format = AUDIO_AAC_FORMAT_ADTS;
+	aac_config->audio_object = AUDIO_AAC_OBJECT_LC;
+	aac_config->sbr_on_flag = 0;
+	aac_config->sbr_ps_on_flag = 0;
+	aac_config->channel_configuration = 1;
 
 	audio->ac = q6asm_audio_client_alloc((app_cb)q6asm_aac_in_cb,
 							(void *)audio);
@@ -271,6 +346,7 @@ static int aac_in_open(struct inode *inode, struct file *file)
 		pr_err("%s:session id %d: Could not allocate memory for\
 				audio client\n", __func__, audio->ac->session);
 		kfree(audio->enc_cfg);
+		kfree(audio->codec_cfg);
 		kfree(audio);
 		return -ENOMEM;
 	}
@@ -332,6 +408,7 @@ static int aac_in_open(struct inode *inode, struct file *file)
 fail:
 	q6asm_audio_client_free(audio->ac);
 	kfree(audio->enc_cfg);
+	kfree(audio->codec_cfg);
 	kfree(audio);
 	return rc;
 }
