@@ -43,6 +43,7 @@ struct subsys_data {
 	int (*shutdown) (void);
 	int (*powerup) (void);
 	void (*crash_shutdown) (struct subsys_data *);
+	int (*ramdump) (int);
 
 	/* Internal use only */
 	struct list_head list;

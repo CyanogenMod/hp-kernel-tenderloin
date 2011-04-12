@@ -51,6 +51,7 @@ struct subsys_soc_restart_order {
 };
 
 static int restart_level;
+static int enable_ramdumps;
 
 static LIST_HEAD(subsystem_list);
 static DEFINE_MUTEX(subsystem_list_lock);
@@ -78,6 +79,7 @@ static struct subsys_soc_restart_order **restart_orders;
 static int n_restart_orders;
 
 module_param(restart_level, int, S_IRUGO | S_IWUSR);
+module_param(enable_ramdumps, int, S_IRUGO | S_IWUSR);
 
 static struct subsys_data *_find_subsystem(const char *subsys_name)
 {
@@ -234,7 +236,17 @@ static int _subsys_restart(const char *subsys_name, int coupled)
 	 */
 	mutex_unlock(shutdown_lock);
 
-	/* TODO: Collect ram dumps for all subsystems in order here */
+	/* Collect ram dumps for all subsystems in order here */
+
+	for (i = 0; i < restart_list_count; i++) {
+		if (!restart_list[i])
+			continue;
+
+		if (restart_list[i]->ramdump)
+			if (restart_list[i]->ramdump(enable_ramdumps) < 0)
+				pr_warn("%s: Subsystem %s: Ramdump failed.",
+					__func__, restart_list[i]->name);
+	}
 
 	_send_notification_to_order(restart_list, restart_list_count,
 				SUBSYS_BEFORE_POWERUP);
