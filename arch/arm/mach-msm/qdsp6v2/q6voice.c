@@ -54,6 +54,9 @@ static bool is_adsp_support_cvd(void)
 {
 	return (voice.adsp_version >= ADSP_VERSION_CVD);
 }
+static int voice_send_enable_vocproc_cmd(struct voice_data *v);
+static int voice_send_netid_timing_cmd(struct voice_data *v);
+
 static void *voice_get_apr_mvm(struct voice_data *v)
 {
 	void *apr_mvm = NULL;
@@ -1260,6 +1263,132 @@ static int voice_send_start_voice_cmd(struct voice_data *v)
 		pr_err("%s: wait_event timeout\n", __func__);
 		goto fail;
 	}
+
+	return 0;
+fail:
+	return -EINVAL;
+}
+
+static int voice_disable_vocproc(struct voice_data *v)
+{
+	struct apr_hdr cvp_disable_cmd;
+	int ret = 0;
+	void *apr_cvp = voice_get_apr_cvp(v);
+	u16 cvp_handle = voice_get_cvp_handle(v);
+
+	/* disable vocproc and wait for respose */
+	cvp_disable_cmd.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
+			APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
+	cvp_disable_cmd.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
+			sizeof(cvp_disable_cmd) - APR_HDR_SIZE);
+	pr_debug("cvp_disable_cmd pkt size = %d, cvp_handle=%d\n",
+		cvp_disable_cmd.pkt_size, cvp_handle);
+	cvp_disable_cmd.src_port = 0;
+	cvp_disable_cmd.dest_port = cvp_handle;
+	cvp_disable_cmd.token = 0;
+	cvp_disable_cmd.opcode = VSS_IVOCPROC_CMD_DISABLE;
+
+	v->cvp_state = CMD_STATUS_FAIL;
+	ret = apr_send_pkt(apr_cvp, (uint32_t *) &cvp_disable_cmd);
+	if (ret < 0) {
+		pr_err("Fail in sending VSS_IVOCPROC_CMD_DISABLE\n");
+		goto fail;
+	}
+	ret = wait_event_timeout(v->cvp_wait,
+			(v->cvp_state == CMD_STATUS_SUCCESS),
+			msecs_to_jiffies(TIMEOUT_MS));
+	if (!ret) {
+		pr_err("%s: wait_event timeout\n", __func__);
+		goto fail;
+	}
+#ifdef CONFIG_MSM8X60_RTAC
+	rtac_remove_voice(v);
+#endif
+
+	return 0;
+fail:
+	return -EINVAL;
+}
+
+static int voice_set_device(struct voice_data *v)
+{
+	struct cvp_set_device_cmd  cvp_setdev_cmd;
+	struct msm_snddev_info *dev_tx_info;
+	int ret = 0;
+	void *apr_cvp = voice_get_apr_cvp(v);
+	u16 cvp_handle = voice_get_cvp_handle(v);
+
+
+	/* set device and wait for response */
+	cvp_setdev_cmd.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
+				APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
+	cvp_setdev_cmd.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
+				sizeof(cvp_setdev_cmd) - APR_HDR_SIZE);
+	pr_debug(" send create cvp setdev, pkt size = %d\n",
+			cvp_setdev_cmd.hdr.pkt_size);
+	cvp_setdev_cmd.hdr.src_port = 0;
+	cvp_setdev_cmd.hdr.dest_port = cvp_handle;
+	cvp_setdev_cmd.hdr.token = 0;
+	cvp_setdev_cmd.hdr.opcode = VSS_IVOCPROC_CMD_SET_DEVICE;
+
+	dev_tx_info = audio_dev_ctrl_find_dev(v->dev_tx.dev_id);
+	if (IS_ERR(dev_tx_info)) {
+		pr_err("bad dev_id %d\n", v->dev_tx.dev_id);
+		goto fail;
+	}
+
+	if (dev_tx_info->channel_mode > 1)
+		cvp_setdev_cmd.cvp_set_device.tx_topology_id =
+			VSS_IVOCPROC_TOPOLOGY_ID_TX_DM_FLUENCE;
+	else
+		cvp_setdev_cmd.cvp_set_device.tx_topology_id =
+			VSS_IVOCPROC_TOPOLOGY_ID_TX_SM_ECNS;
+	cvp_setdev_cmd.cvp_set_device.rx_topology_id =
+			VSS_IVOCPROC_TOPOLOGY_ID_RX_DEFAULT;
+	cvp_setdev_cmd.cvp_set_device.tx_port_id = v->dev_tx.dev_port_id;
+	cvp_setdev_cmd.cvp_set_device.rx_port_id = v->dev_rx.dev_port_id;
+	pr_info("topology=%d , tx_port_id=%d, rx_port_id=%d\n",
+			cvp_setdev_cmd.cvp_set_device.tx_topology_id,
+			cvp_setdev_cmd.cvp_set_device.tx_port_id,
+			cvp_setdev_cmd.cvp_set_device.rx_port_id);
+
+	v->cvp_state = CMD_STATUS_FAIL;
+	ret = apr_send_pkt(apr_cvp, (uint32_t *) &cvp_setdev_cmd);
+	if (ret < 0) {
+		pr_err("Fail in sending VOCPROC_FULL_CONTROL_SESSION\n");
+	goto fail;
+	}
+	pr_debug("wait for cvp create session event\n");
+	ret = wait_event_timeout(v->cvp_wait,
+			(v->cvp_state == CMD_STATUS_SUCCESS),
+			msecs_to_jiffies(TIMEOUT_MS));
+	if (!ret) {
+		pr_err("%s: wait_event timeout\n", __func__);
+		goto fail;
+	}
+
+	/* send cvs cal */
+	voice_send_cvs_cal_to_modem(v);
+
+	/* send cvp cal */
+	voice_send_cvp_cal_to_modem(v);
+
+	/* send cvp vol table cal */
+	voice_send_cvp_vol_tbl_to_modem(v);
+
+	/* enable vocproc and wait for respose */
+	voice_send_enable_vocproc_cmd(v);
+
+	/* send tty mode if tty device is used */
+	voice_send_tty_mode_to_modem(v);
+
+	if (v->voc_path == VOC_PATH_FULL)
+		voice_send_netid_timing_cmd(v);
+
+#ifdef CONFIG_MSM8X60_RTAC
+	rtac_add_voice(v);
+#endif
+
 	return 0;
 fail:
 	return -EINVAL;
@@ -1377,15 +1506,13 @@ fail:
 	return -EINVAL;
 }
 
-static int voice_enable_vocproc(struct voice_data *v)
+static int voice_send_enable_vocproc_cmd(struct voice_data *v)
 {
 	int ret = 0;
 	struct apr_hdr cvp_enable_cmd;
-	struct mvm_attach_vocproc_cmd mvm_a_vocproc_cmd;
-	void *apr_mvm = voice_get_apr_mvm(v);
-	void *apr_cvp = voice_get_apr_cvp(v);
-	u16 mvm_handle = voice_get_mvm_handle(v);
+
 	u16 cvp_handle = voice_get_cvp_handle(v);
+	void *apr_cvp = voice_get_apr_cvp(v);
 
 	/* enable vocproc and wait for respose */
 	cvp_enable_cmd.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
@@ -1406,12 +1533,110 @@ static int voice_enable_vocproc(struct voice_data *v)
 		goto fail;
 	}
 	ret = wait_event_timeout(v->cvp_wait,
-				 (v->cvp_state == CMD_STATUS_SUCCESS),
-				 msecs_to_jiffies(TIMEOUT_MS));
+			(v->cvp_state == CMD_STATUS_SUCCESS),
+			msecs_to_jiffies(TIMEOUT_MS));
 	if (!ret) {
 		pr_err("%s: wait_event timeout\n", __func__);
 		goto fail;
 	}
+
+	return 0;
+fail:
+	return -EINVAL;
+}
+
+static int voice_send_netid_timing_cmd(struct voice_data *v)
+{
+	int ret = 0;
+	void *apr_mvm = voice_get_apr_mvm(v);
+	struct mvm_set_network_cmd mvm_set_network;
+	struct mvm_set_voice_timing_cmd mvm_set_voice_timing;
+	u16 mvm_handle = voice_get_mvm_handle(v);
+
+	ret = voice_config_cvs_vocoder(v);
+	if (ret < 0) {
+		pr_err("%s: Error %d configuring CVS voc",
+					__func__, ret);
+		goto fail;
+	}
+	/* Set network ID. */
+	pr_debug("%s: Setting network ID\n", __func__);
+
+	mvm_set_network.hdr.hdr_field =
+			APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
+			APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
+	mvm_set_network.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
+			sizeof(mvm_set_network) - APR_HDR_SIZE);
+	mvm_set_network.hdr.src_port = 0;
+	mvm_set_network.hdr.dest_port = mvm_handle;
+	mvm_set_network.hdr.token = 0;
+	mvm_set_network.hdr.opcode = VSS_ICOMMON_CMD_SET_NETWORK;
+	mvm_set_network.network.network_id = v->mvs_info.network_type;
+
+	v->mvm_state = CMD_STATUS_FAIL;
+	ret = apr_send_pkt(apr_mvm, (uint32_t *) &mvm_set_network);
+	if (ret < 0) {
+		pr_err("%s: Error %d sending SET_NETWORK\n", __func__, ret);
+		goto fail;
+	}
+
+	ret = wait_event_timeout(v->mvm_wait,
+			(v->mvm_state == CMD_STATUS_SUCCESS),
+			 msecs_to_jiffies(TIMEOUT_MS));
+	if (!ret) {
+		pr_err("%s: wait_event timeout\n", __func__);
+		goto fail;
+	}
+
+	/* Set voice timing. */
+	 pr_debug("%s: Setting voice timing\n", __func__);
+
+	mvm_set_voice_timing.hdr.hdr_field =
+			APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
+			APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
+	mvm_set_voice_timing.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
+			sizeof(mvm_set_voice_timing) - APR_HDR_SIZE);
+	mvm_set_voice_timing.hdr.src_port = 0;
+	mvm_set_voice_timing.hdr.dest_port = mvm_handle;
+	mvm_set_voice_timing.hdr.token = 0;
+	mvm_set_voice_timing.hdr.opcode =
+			VSS_ICOMMON_CMD_SET_VOICE_TIMING;
+	mvm_set_voice_timing.timing.mode = 0;
+	mvm_set_voice_timing.timing.enc_offset = 8000;
+	mvm_set_voice_timing.timing.dec_req_offset = 3300;
+	mvm_set_voice_timing.timing.dec_offset = 8300;
+
+	v->mvm_state = CMD_STATUS_FAIL;
+
+	ret = apr_send_pkt(apr_mvm, (uint32_t *) &mvm_set_voice_timing);
+	if (ret < 0) {
+		pr_err("%s: Error %d sending SET_TIMING\n", __func__, ret);
+		goto fail;
+	}
+
+	ret = wait_event_timeout(v->mvm_wait,
+			(v->mvm_state == CMD_STATUS_SUCCESS),
+				msecs_to_jiffies(TIMEOUT_MS));
+	if (!ret) {
+		pr_err("%s: wait_event timeout\n", __func__);
+		goto fail;
+	}
+
+	return 0;
+fail:
+	return -EINVAL;
+}
+
+static int voice_attach_vocproc(struct voice_data *v)
+{
+	int ret = 0;
+	struct mvm_attach_vocproc_cmd mvm_a_vocproc_cmd;
+	void *apr_mvm = voice_get_apr_mvm(v);
+	u16 mvm_handle = voice_get_mvm_handle(v);
+	u16 cvp_handle = voice_get_cvp_handle(v);
+
+	/* send enable vocproc */
+	voice_send_enable_vocproc_cmd(v);
 
 	/* attach vocproc and wait for response */
 	mvm_a_vocproc_cmd.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
@@ -1443,90 +1668,8 @@ static int voice_enable_vocproc(struct voice_data *v)
 	/* send tty mode if tty device is used */
 	voice_send_tty_mode_to_modem(v);
 
-	if (v->voc_path == VOC_PATH_FULL) {
-		struct mvm_set_network_cmd mvm_set_network;
-		struct mvm_set_voice_timing_cmd mvm_set_voice_timing;
-
-		ret = voice_config_cvs_vocoder(v);
-		if (ret < 0) {
-			pr_err("%s: Error %d configuring CVS voc",
-			       __func__, ret);
-
-			goto fail;
-		}
-
-		/* Set network ID. */
-		pr_info("%s: Setting network ID\n", __func__);
-
-		mvm_set_network.hdr.hdr_field =
-				APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
-					      APR_HDR_LEN(APR_HDR_SIZE),
-					      APR_PKT_VER);
-		mvm_set_network.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
-					sizeof(mvm_set_network) - APR_HDR_SIZE);
-		mvm_set_network.hdr.src_port = 0;
-		mvm_set_network.hdr.dest_port = mvm_handle;
-		mvm_set_network.hdr.token = 0;
-		mvm_set_network.hdr.opcode = VSS_ICOMMON_CMD_SET_NETWORK;
-		mvm_set_network.network.network_id = v->mvs_info.network_type;
-
-		v->mvm_state = CMD_STATUS_FAIL;
-
-		ret = apr_send_pkt(apr_mvm, (uint32_t *) &mvm_set_network);
-		if (ret < 0) {
-			pr_err("%s: Error %d sending SET_NETWORK\n",
-			       __func__, ret);
-
-			goto fail;
-		}
-
-		ret = wait_event_timeout(v->mvm_wait,
-					 (v->mvm_state == CMD_STATUS_SUCCESS),
-					 msecs_to_jiffies(TIMEOUT_MS));
-		if (!ret) {
-			pr_err("%s: wait_event timeout\n", __func__);
-
-			goto fail;
-		}
-
-		/* Set voice timing. */
-		pr_info("%s: Setting voice timing\n", __func__);
-
-		mvm_set_voice_timing.hdr.hdr_field =
-				APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
-					      APR_HDR_LEN(APR_HDR_SIZE),
-					      APR_PKT_VER);
-		mvm_set_voice_timing.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
-				sizeof(mvm_set_voice_timing) - APR_HDR_SIZE);
-		mvm_set_voice_timing.hdr.src_port = 0;
-		mvm_set_voice_timing.hdr.dest_port = mvm_handle;
-		mvm_set_voice_timing.hdr.token = 0;
-		mvm_set_voice_timing.hdr.opcode =
-				VSS_ICOMMON_CMD_SET_VOICE_TIMING;
-		mvm_set_voice_timing.timing.mode = 0;
-		mvm_set_voice_timing.timing.enc_offset = 8000;
-		mvm_set_voice_timing.timing.dec_req_offset = 3300;
-		mvm_set_voice_timing.timing.dec_offset = 8300;
-
-		v->mvm_state = CMD_STATUS_FAIL;
-
-		ret = apr_send_pkt(apr_mvm, (uint32_t *) &mvm_set_voice_timing);
-		if (ret < 0) {
-			pr_err("%s: Error %d sending SET_TIMING\n",
-				       __func__, ret);
-
-				goto fail;
-		}
-
-		ret = wait_event_timeout(v->mvm_wait,
-					 (v->mvm_state == CMD_STATUS_SUCCESS),
-					 msecs_to_jiffies(TIMEOUT_MS));
-		if (!ret) {
-			pr_err("%s: wait_event timeout\n", __func__);
-
-			goto fail;
-		}
-	}
+	if (v->voc_path == VOC_PATH_FULL)
+		voice_send_netid_timing_cmd(v);
 
 #ifdef CONFIG_MSM8X60_RTAC
 	rtac_add_voice(v);
@@ -1964,7 +2107,7 @@ static void voice_auddev_cb_function(u32 evt_id,
 				voice_apr_register(v);
 				voice_create_mvm_cvs_session(v);
 				voice_setup_modem_voice(v);
-				voice_enable_vocproc(v);
+				voice_attach_vocproc(v);
 				voice_send_start_voice_cmd(v);
 				get_sidetone_cal(&sidetone_cal_data);
 				msm_snddev_enable_sidetone(
@@ -2004,7 +2147,7 @@ static void voice_auddev_cb_function(u32 evt_id,
 
 		if (v->voc_state == VOC_RUN) {
 			/* send cmd to modem to do voice device change */
-			voice_destroy_modem_voice(v);
+			voice_disable_vocproc(v);
 			v->voc_state = VOC_CHANGE;
 		}
 
@@ -2034,10 +2177,7 @@ static void voice_auddev_cb_function(u32 evt_id,
 			}
 			if ((v->dev_rx.enabled == VOICE_DEV_ENABLED) &&
 				(v->dev_tx.enabled == VOICE_DEV_ENABLED)) {
-				voice_setup_modem_voice(v);
-				voice_send_mute_cmd_to_modem(v);
-				voice_send_vol_index_to_modem(v);
-				voice_enable_vocproc(v);
+				voice_set_device(v);
 				get_sidetone_cal(&sidetone_cal_data);
 				msm_snddev_enable_sidetone(
 					v->dev_rx.dev_id,
@@ -2073,7 +2213,7 @@ static void voice_auddev_cb_function(u32 evt_id,
 				voice_apr_register(v);
 				voice_create_mvm_cvs_session(v);
 				voice_setup_modem_voice(v);
-				voice_enable_vocproc(v);
+				voice_attach_vocproc(v);
 				voice_send_start_voice_cmd(v);
 				get_sidetone_cal(&sidetone_cal_data);
 				msm_snddev_enable_sidetone(
@@ -2132,7 +2272,7 @@ static void voice_auddev_cb_function(u32 evt_id,
 		mutex_lock(&v->lock);
 
 		if (v->voc_state == VOC_RUN) {
-			voice_destroy_modem_voice(v);
+			voice_disable_vocproc(v);
 			v->voc_state = VOC_CHANGE;
 		}
 
@@ -2518,11 +2658,17 @@ static int32_t modem_cvp_callback(struct apr_client_data *data, void *priv)
 				pr_debug("%s: cmd = 0x%x\n", __func__, ptr[0]);
 				v->cvp_state = CMD_STATUS_SUCCESS;
 				wake_up(&v->cvp_wait);
+			} else if (ptr[0] == VSS_IVOCPROC_CMD_SET_DEVICE) {
+				v->cvp_state = CMD_STATUS_SUCCESS;
+				wake_up(&v->cvp_wait);
 			} else if (ptr[0] ==
 					VSS_IVOCPROC_CMD_SET_RX_VOLUME_INDEX) {
 				v->cvp_state = CMD_STATUS_SUCCESS;
 				wake_up(&v->cvp_wait);
 			} else if (ptr[0] == VSS_IVOCPROC_CMD_ENABLE) {
+				v->cvp_state = CMD_STATUS_SUCCESS;
+				wake_up(&v->cvp_wait);
+			} else if (ptr[0] == VSS_IVOCPROC_CMD_DISABLE) {
 				v->cvp_state = CMD_STATUS_SUCCESS;
 				wake_up(&v->cvp_wait);
 			} else if (ptr[0] == APRV2_IBASIC_CMD_DESTROY_SESSION) {
