@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -492,16 +492,16 @@ ssize_t audio_in_read(struct file *file,
 				rc = -EFAULT;
 				break;
 			}
-			atomic_dec(&audio->out_count);
-			q6asm_read(audio->ac);
 			count -= bytes_to_copy;
 			buf += bytes_to_copy;
 		} else {
 			pr_err("%s:session id %d: short read data[%p]\
-				size[%d]\n", __func__, audio->ac->session,
-				data, size);
-			break;
+				bytesavail[%d]bytesrequest[%d]\n", __func__,
+				audio->ac->session,
+				data, size, count);
 		}
+		atomic_dec(&audio->out_count);
+		q6asm_read(audio->ac);
 		break;
 	}
 	mutex_unlock(&audio->read_lock);
