@@ -29,6 +29,7 @@
 #include <mach/peripheral-loader.h>
 #include <mach/qdsp6v2/apr_audio.h>
 #include <mach/qdsp6v2/q6asm.h>
+#include <linux/android_pmem.h>
 #include <asm/atomic.h>
 #include <asm/ioctls.h>
 #include "rtac.h"
@@ -126,9 +127,9 @@ int q6asm_audio_client_buf_free(unsigned int dir,
 					   (void *)port->buf[cnt].data,
 					   (void *)port->buf[cnt].phys,
 					   (void *)&port->buf[cnt].phys, cnt);
-				dma_free_coherent(NULL, port->buf[cnt].size,
-						port->buf[cnt].data,
-						port->buf[cnt].phys);
+				iounmap(port->buf[cnt].data);
+				pmem_kfree(port->buf[cnt].phys);
+
 				port->buf[cnt].data = NULL;
 				port->buf[cnt].phys = 0;
 				--(port->max_buf_cnt);
@@ -339,24 +340,30 @@ int q6asm_audio_client_buf_alloc(unsigned int dir,
 
 		while (cnt < bufcnt) {
 			if (bufsz > 0) {
-				buf[cnt].data = dma_alloc_coherent(NULL, bufsz,
-								&buf[cnt].phys,
-								GFP_KERNEL);
 				if (!buf[cnt].data) {
-					pr_err("%s Buf alloc failed\n",
-								__func__);
-					mutex_unlock(&ac->cmd_lock);
-					goto fail;
-				}
-				buf[cnt].used = 1;
-				buf[cnt].size = bufsz;
-				buf[cnt].actual_size = bufsz;
-				pr_debug("%s data[%p]phys[%p][%p]\n", __func__,
+					buf[cnt].phys = pmem_kalloc(bufsz,
+							PMEM_MEMTYPE_EBI1|
+							PMEM_ALIGNMENT_4K);
+					if (!buf[cnt].phys) {
+						pr_err("%s:Buf alloc failed "
+						" size=%d\n", __func__,
+						bufsz);
+						mutex_unlock(&ac->cmd_lock);
+						goto fail;
+					}
+					buf[cnt].data =
+						ioremap(buf[cnt].phys, bufsz);
+					buf[cnt].used = 1;
+					buf[cnt].size = bufsz;
+					buf[cnt].actual_size = bufsz;
+					pr_debug("%s data[%p]phys[%p][%p]\n",
+						__func__,
 					   (void *)buf[cnt].data,
 					   (void *)buf[cnt].phys,
 					   (void *)&buf[cnt].phys);
+					cnt++;
+				}
 			}
-			cnt++;
 		}
 		ac->port[dir].max_buf_cnt = cnt;
 
