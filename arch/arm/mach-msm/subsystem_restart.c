@@ -24,6 +24,7 @@
 #include <linux/delay.h>
 #include <linux/list.h>
 #include <linux/io.h>
+#include <linux/kthread.h>
 
 #include <asm/current.h>
 
@@ -48,6 +49,11 @@ struct subsys_soc_restart_order {
 	struct mutex shutdown_lock;
 	struct mutex powerup_lock;
 	struct subsys_data *subsys_ptrs[];
+};
+
+struct restart_thread_data {
+	struct subsys_data *subsys;
+	int coupled;
 };
 
 static int restart_level;
@@ -138,39 +144,28 @@ static void _send_notification_to_order(struct subsys_data
 				restart_list[i]->notif_handle, notif_type);
 }
 
-static int _subsys_restart(const char *subsys_name, int coupled)
+static int subsystem_restart_thread(void *data)
 {
-	int i;
-	struct subsys_data *subsys;
+	struct restart_thread_data *r_work = data;
+	struct subsys_data **restart_list;
+	struct subsys_data *subsys = r_work->subsys;
 	struct subsys_soc_restart_order *soc_restart_order = NULL;
-	struct subsys_data **restart_list = NULL;
+
 	struct mutex *powerup_lock;
 	struct mutex *shutdown_lock;
+
+	int i;
 	int restart_list_count = 0;
 
-	if (!subsys_name)
-		return -EINVAL;
-
-	/* List of subsystems is protected by a lock.
-	 * New subsystems can still come in.
-	 */
-	subsys = _find_subsystem(subsys_name);
-
-	if (!subsys) {
-		pr_warn("%s: Unregistered subsystem %s!", __func__,
-				subsys_name);
-		return -EINVAL;
-	}
-
-	if (coupled)
+	if (r_work->coupled)
 		soc_restart_order = subsys->restart_order;
 
-	/* It's OK to not take the registration lock at this point. This is
-	 * because the subsystem list inside the relevant restart order is
-	 * not being traversed.
+	/* It's OK to not take the registration lock at this point.
+	 * This is because the subsystem list inside the relevant
+	 * restart order is not being traversed.
 	 */
-	if (!soc_restart_order || !coupled) {
-		restart_list = &subsys;
+	if (!soc_restart_order) {
+		restart_list = subsys->single_restart_list;
 		restart_list_count = 1;
 		powerup_lock = &subsys->powerup_lock;
 		shutdown_lock = &subsys->shutdown_lock;
@@ -185,10 +180,12 @@ static int _subsys_restart(const char *subsys_name, int coupled)
 		current);
 
 	/* Try to acquire shutdown_lock. If this fails, these subsystems are
-	 * already being restarted - return success.
+	 * already being restarted - return.
 	 */
-	if (!mutex_trylock(shutdown_lock))
-		return 0;
+	if (!mutex_trylock(shutdown_lock)) {
+		kfree(data);
+		do_exit(0);
+	}
 
 	dprintk("%s[%p]: Attempting to get powerup lock!\n", __func__,
 			current);
@@ -208,9 +205,10 @@ static int _subsys_restart(const char *subsys_name, int coupled)
 	mutex_lock(&soc_order_reg_lock);
 
 	dprintk("%s: Starting restart sequence for %s\n", __func__,
-		subsys_name);
+		r_work->subsys->name);
 
-	_send_notification_to_order(restart_list, restart_list_count,
+	_send_notification_to_order(restart_list,
+				restart_list_count,
 				SUBSYS_BEFORE_SHUTDOWN);
 
 	for (i = 0; i < restart_list_count; i++) {
@@ -237,19 +235,19 @@ static int _subsys_restart(const char *subsys_name, int coupled)
 	mutex_unlock(shutdown_lock);
 
 	/* Collect ram dumps for all subsystems in order here */
-
 	for (i = 0; i < restart_list_count; i++) {
 		if (!restart_list[i])
 			continue;
 
 		if (restart_list[i]->ramdump)
 			if (restart_list[i]->ramdump(enable_ramdumps) < 0)
-				pr_warn("%s: Subsystem %s: Ramdump failed.",
-					__func__, restart_list[i]->name);
+				pr_warn("%s(%s): Ramdump failed.", __func__,
+					restart_list[i]->name);
 	}
 
-	_send_notification_to_order(restart_list, restart_list_count,
-				SUBSYS_BEFORE_POWERUP);
+	_send_notification_to_order(restart_list,
+			restart_list_count,
+			SUBSYS_BEFORE_POWERUP);
 
 	for (i = restart_list_count - 1; i >= 0; i--) {
 
@@ -264,11 +262,12 @@ static int _subsys_restart(const char *subsys_name, int coupled)
 				restart_list[i]->name);
 	}
 
-	_send_notification_to_order(restart_list, restart_list_count,
+	_send_notification_to_order(restart_list,
+				restart_list_count,
 				SUBSYS_AFTER_POWERUP);
 
 	pr_info("%s: Restart sequence for %s completed.", __func__,
-			subsys_name);
+			r_work->subsys->name);
 
 	mutex_unlock(powerup_lock);
 
@@ -276,49 +275,79 @@ static int _subsys_restart(const char *subsys_name, int coupled)
 
 	dprintk("%s: Released powerup lock!\n", __func__);
 
-	return 0;
+	kfree(data);
+	do_exit(0);
 }
 
 int subsystem_restart(const char *subsys_name)
 {
 	struct subsys_data *subsys;
+	struct task_struct *tsk;
+	struct restart_thread_data *data = NULL;
 
-	pr_warn("Subsystem Restart: Restart sequence requested for  %s\n",
+	if (!subsys_name) {
+		pr_err("%s: Invalid subsystem name.", __func__);
+		return -EINVAL;
+	}
+
+	pr_info("Subsystem Restart: Restart sequence requested for  %s\n",
 		subsys_name);
+
+	/* List of subsystems is protected by a lock. New subsystems can
+	 * still come in.
+	 */
+	subsys = _find_subsystem(subsys_name);
+
+	if (!subsys) {
+		pr_warn("%s: Unregistered subsystem %s!", __func__,
+				subsys_name);
+		return -EINVAL;
+	}
+
+	if (restart_level != RESET_SOC) {
+		data = kzalloc(sizeof(struct restart_thread_data), GFP_KERNEL);
+		if (!data) {
+			restart_level = RESET_SOC;
+			pr_warn("%s: Failed to alloc restart data. Resetting.",
+				__func__);
+		} else {
+			data->coupled =
+				restart_level == RESET_SUBSYS_COUPLED ? 1 : 0;
+			data->subsys = subsys;
+		}
+	}
 
 	switch (restart_level) {
 
 	case RESET_SUBSYS_COUPLED:
-
-		dprintk("%s: Restarting %s [coupled]!\n", __func__,
-				subsys_name);
-
-		return _subsys_restart(subsys_name, 1);
-
 	case RESET_SUBSYS_INDEPENDENT:
+		dprintk("%s: Restarting %s [level=%d]!\n", __func__,
+			subsys_name, restart_level);
 
-		dprintk("%s: Restarting %s [independent]!\n", __func__,
-				subsys_name);
+		/* Let the kthread handle the actual restarting. Using a
+		 * workqueue will not work since all restart requests are
+		 * serialized and it prevents the short circuiting of
+		 * restart requests for subsystems already in a restart
+		 * sequence.
+		 */
+		tsk = kthread_run(subsystem_restart_thread, data,
+				"subsystem_subsystem_restart_thread");
+		if (IS_ERR(tsk))
+			panic("%s: Unable to create thread to restart %s",
+				__func__, subsys->name);
 
-		return _subsys_restart(subsys_name, 0);
+		break;
 
 	case RESET_SOC:
 
-		subsys = _find_subsystem(subsys_name);
-
-		if (subsys) {
-
-			mutex_lock(&subsystem_list_lock);
-			list_for_each_entry(subsys, &subsystem_list, list)
-				if (subsys->crash_shutdown)
-					subsys->crash_shutdown(subsys);
-			mutex_unlock(&subsystem_list_lock);
-		}
-
-		WARN_ON(!subsys);
+		mutex_lock(&subsystem_list_lock);
+		list_for_each_entry(subsys, &subsystem_list, list)
+			if (subsys->crash_shutdown)
+				subsys->crash_shutdown(subsys);
+		mutex_unlock(&subsystem_list_lock);
 
 		panic("Resetting the SOC");
-	break;
+		break;
 
 	default:
 		panic("subsys-restart: Unknown restart level!\n");
@@ -342,8 +371,8 @@ int ssr_register_subsystem(struct subsys_data *subsys)
 		goto err;
 
 	subsys->notif_handle = subsys_notif_add_subsys(subsys->name);
-
 	subsys->restart_order = _update_restart_order(subsys);
+	subsys->single_restart_list[0] = subsys;
 
 	mutex_init(&subsys->shutdown_lock);
 	mutex_init(&subsys->powerup_lock);
@@ -389,6 +418,7 @@ static int __init subsys_restart_init(void)
 	int ret = 0;
 
 	restart_level = RESET_SOC;
+
 	ret = ssr_init_soc_restart_orders();
 
 	return ret;

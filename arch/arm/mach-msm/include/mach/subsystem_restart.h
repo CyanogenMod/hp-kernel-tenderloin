@@ -53,6 +53,7 @@ struct subsys_data {
 	struct mutex powerup_lock;
 
 	void *restart_order;
+	struct subsys_data *single_restart_list[1];
 };
 
 #if defined(CONFIG_MSM_SUBSYSTEM_RESTART)
