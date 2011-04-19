@@ -106,7 +106,14 @@ struct apr_hdr {
 
 #define APR_NAME_MAX		0x40
 
+#define RESET_EVENTS		0xFFFFFFFF
+
+#define LPASS_RESTART_EVENT	0x1000
+#define LPASS_RESTART_READY	0x1001
+
 struct apr_client_data {
+	uint16_t reset_event;
+	uint16_t reset_proc;
 	uint16_t payload_size;
 	uint16_t hdr_len;
 	uint16_t msg_type;
@@ -128,6 +135,7 @@ struct apr_svc {
 	uint8_t rvd;
 	uint8_t port_cnt;
 	uint8_t svc_cnt;
+	uint8_t need_reset;
 	apr_fn port_fn[APR_MAX_PORTS];
 	void *port_priv[APR_MAX_PORTS];
 	apr_fn fn;
@@ -177,4 +185,5 @@ void q6audio_dsp_not_responding(void);
 uint32_t core_get_adsp_version(void);
 void *core_open(void);
 int32_t   core_close(void);
+void apr_reset(void *handle);
 #endif

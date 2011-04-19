@@ -101,6 +101,13 @@ static int32_t aprv2_core_fn_q(struct apr_client_data *data, void *priv)
 			pr_info("zero payload for ADSP_GET_VERSION_RSP\n");
 		break;
 	}
+	case RESET_EVENTS:{
+		pr_debug("Reset event received in Core service");
+		apr_reset(core_handle_q);
+		core_handle_q = NULL;
+		break;
+	}
+
 	default:
 		pr_err("Message id from adsp core svc: %d\n", data->opcode);
 		break;

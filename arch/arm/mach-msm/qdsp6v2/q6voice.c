@@ -2370,6 +2370,15 @@ static int32_t modem_mvm_callback(struct apr_client_data *data, void *priv)
 	pr_debug("%s: Payload Length = %d, opcode=%x\n", __func__,
 				data->payload_size, data->opcode);
 
+	if (data->opcode == RESET_EVENTS) {
+		apr_reset(v->apr_mvm);
+		apr_reset(v->apr_q6_mvm);
+		v->apr_q6_mvm = NULL;
+		v->apr_mvm = NULL;
+		pr_debug("Reset event received in Voice service");
+		return 0;
+	}
+
 	if (data->opcode == APR_BASIC_RSP_RESULT) {
 		if (data->payload_size) {
 			ptr = data->payload;
@@ -2458,6 +2467,14 @@ static int32_t modem_cvs_callback(struct apr_client_data *data, void *priv)
 	pr_debug("%s\n", __func__);
 	pr_debug("%s: Payload Length = %d, opcode=%x\n", __func__,
 					data->payload_size, data->opcode);
+
+	if (data->opcode == RESET_EVENTS) {
+		apr_reset(v->apr_cvs);
+		apr_reset(v->apr_q6_cvs);
+		v->apr_q6_cvs = NULL;
+		v->apr_cvs = NULL;
+		return 0;
+	}
 
 	if (data->opcode == APR_BASIC_RSP_RESULT) {
 		if (data->payload_size) {
@@ -2635,6 +2652,14 @@ static int32_t modem_cvp_callback(struct apr_client_data *data, void *priv)
 	pr_debug("%s\n", __func__);
 	pr_debug("%s: Payload Length = %d, opcode=%x\n", __func__,
 				data->payload_size, data->opcode);
+
+	if (data->opcode == RESET_EVENTS) {
+		apr_reset(v->apr_cvp);
+		apr_reset(v->apr_q6_cvp);
+		v->apr_q6_cvp = NULL;
+		v->apr_cvp = NULL;
+		return 0;
+	}
 
 	if (data->opcode == APR_BASIC_RSP_RESULT) {
 		if (data->payload_size) {

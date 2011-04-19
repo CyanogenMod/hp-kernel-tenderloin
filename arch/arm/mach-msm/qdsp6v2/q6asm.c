@@ -455,6 +455,15 @@ static int32_t q6asm_mmapcallback(struct apr_client_data *data, void *priv)
 	uint32_t token;
 	uint32_t *payload = data->payload;
 
+	if (data->opcode == RESET_EVENTS) {
+		pr_debug("q6asm_mmapcallback: Reset event is received: %d %d\n",
+				data->reset_event, data->reset_proc);
+		apr_reset(this_mmap.apr);
+		this_mmap.apr = NULL;
+		atomic_set(&this_mmap.cmd_state, 0);
+		return 0;
+	}
+
 	pr_debug("%s:ptr0[0x%x]ptr1[0x%x]opcode[0x%x]"
 		"token[0x%x]payload_s[%d] src[%d] dest[%d]\n", __func__,
 		payload[0], payload[1], data->opcode, data->token,
@@ -492,11 +501,20 @@ static int32_t q6asm_callback(struct apr_client_data *data, void *priv)
 	unsigned long dsp_flags;
 	uint32_t *payload;
 
+
 	if ((ac == NULL) || (data == NULL)) {
 		pr_err("ac or priv NULL\n");
 		return -EINVAL;
 	}
 	payload = data->payload;
+
+	if (data->opcode == RESET_EVENTS) {
+		apr_reset(ac->apr);
+		q6asm_session_free(ac);
+		pr_debug("q6asm_callback: Reset event is received: %d %d\n",
+				data->reset_event, data->reset_proc);
+		return 0;
+	}
 
 	pr_debug("%s: session[%d]opcode[0x%x] \
 		token[0x%x]payload_s[%d] src[%d] dest[%d]\n", __func__,

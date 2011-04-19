@@ -43,8 +43,24 @@ static struct adm_ctl			this_adm;
 static int32_t adm_callback(struct apr_client_data *data, void *priv)
 {
 	uint32_t *payload;
-	int index;
+	int i, index;
 	payload = data->payload;
+
+	if (data->opcode == RESET_EVENTS) {
+		pr_debug("adm_callback: Reset event is received: %d %d\n",
+				data->reset_event, data->reset_proc);
+		if (this_adm.apr) {
+			apr_reset(this_adm.apr);
+			for (i = 0; i < AFE_MAX_PORTS; i++) {
+				atomic_set(&this_adm.copp_id[i], 0);
+				atomic_set(&this_adm.copp_cnt[i], 0);
+				atomic_set(&this_adm.copp_stat[i], 0);
+			}
+			this_adm.apr = NULL;
+		}
+		return 0;
+	}
+
 	pr_debug("%s: code = 0x%x %x %x size = %d\n", __func__,
 			data->opcode, payload[0], payload[1],
 					data->payload_size);

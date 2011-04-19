@@ -21,6 +21,7 @@
 #include <linux/uaccess.h>
 #include <linux/wait.h>
 #include <linux/jiffies.h>
+#include <linux/sched.h>
 #include <mach/qdsp6v2/apr_audio.h>
 #include <mach/qdsp6v2/q6afe.h>
 
@@ -28,6 +29,7 @@ struct afe_ctl {
 	void *apr;
 	atomic_t state;
 	wait_queue_head_t wait;
+	struct task_struct *task;
 };
 
 static struct afe_ctl this_afe;
@@ -38,6 +40,19 @@ static struct afe_ctl this_afe;
 
 static int32_t afe_callback(struct apr_client_data *data, void *priv)
 {
+	if (data->opcode == RESET_EVENTS) {
+		pr_debug("q6afe: reset event = %d %d\n",
+			data->reset_event, data->reset_proc);
+		if (this_afe.apr) {
+			apr_reset(this_afe.apr);
+			atomic_set(&this_afe.state, 0);
+			this_afe.apr = NULL;
+		}
+		/* send info to user */
+		pr_debug("task_name = %s pid = %d\n",
+			this_afe.task->comm, this_afe.task->pid);
+		send_sig(SIGUSR1, this_afe.task, 0);
+	}
 	if (data->payload_size) {
 		uint32_t *payload;
 		payload = data->payload;
@@ -209,6 +224,12 @@ int afe_open(u16 port_id, union afe_port_config *afe_config, int rate)
 		ret = -EINVAL;
 		goto fail_cmd;
 	}
+
+	if (this_afe.task != current)
+		this_afe.task = current;
+
+	pr_debug("task_name = %s pid = %d\n",
+			this_afe.task->comm, this_afe.task->pid);
 	return 0;
 fail_cmd:
 	return ret;

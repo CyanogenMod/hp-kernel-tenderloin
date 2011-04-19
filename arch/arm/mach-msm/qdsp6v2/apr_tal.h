@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -46,6 +46,8 @@
 #define APR_DEST_MAX   2
 
 #define APR_MAX_BUF   8192
+
+#define APR_OPEN_TIMEOUT_MS 5000
 
 typedef void (*apr_svc_cb_fn)(void *buf, int len, void *priv);
 struct apr_svc_ch_dev *apr_tal_open(uint32_t svc, uint32_t dest,
