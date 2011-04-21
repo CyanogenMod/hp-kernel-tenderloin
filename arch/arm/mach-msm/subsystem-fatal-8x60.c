@@ -33,6 +33,7 @@
 
 #include "smd_private.h"
 #include "modem_notifier.h"
+#include "ramdump.h"
 
 #define MODEM_HWIO_MSS_RESET_ADDR       0x00902C48
 #define SCM_Q6_NMI_CMD                  0x1
@@ -56,6 +57,7 @@ static void do_soc_restart(void);
 /* Subsystem restart: QDSP6 data, functions */
 static void q6_fatal_fn(struct work_struct *);
 static DECLARE_WORK(q6_fatal_work, q6_fatal_fn);
+static void *q6_ramdump_dev, *modem_ramdump_dev;
 
 static void q6_fatal_fn(struct work_struct *work)
 {
@@ -88,6 +90,16 @@ int subsys_q6_powerup(void)
 	int ret = pil_force_boot("q6");
 	enable_irq(LPASS_Q6SS_WDOG_EXPIRED);
 	return ret;
+}
+
+static int subsys_q6_ramdump(int enable)
+{
+	/* FIXME: Get address, size from PIL */
+	if (enable)
+		return do_ramdump(q6_ramdump_dev, 0x42F00000,
+				0x47F00000 - 0x46700000);
+	else
+		return 0;
 }
 
 void subsys_q6_crash_shutdown(struct subsys_data *subsys)
@@ -211,6 +223,16 @@ static int subsys_modem_powerup(void)
 	return ret;
 }
 
+static int subsys_modem_ramdump(int enable)
+{
+	/* FIXME: Get address, size from PIL */
+	if (enable)
+		return do_ramdump(modem_ramdump_dev, 0x46700000,
+				0x46000000 - 0x42F00000);
+	else
+		return 0;
+}
+
 static void subsys_modem_crash_shutdown(struct subsys_data *subsys)
 {
 	/* If modem hasn't already crashed, send SMSM_RESET. */
@@ -259,6 +281,7 @@ static struct subsys_data subsys_8x60_q6 = {
 	.name = "lpass",
 	.shutdown = subsys_q6_shutdown,
 	.powerup = subsys_q6_powerup,
+	.ramdump = subsys_q6_ramdump,
 	.crash_shutdown = subsys_q6_crash_shutdown
 };
 
@@ -266,6 +289,7 @@ static struct subsys_data subsys_8x60_modem = {
 	.name = "modem",
 	.shutdown = subsys_modem_shutdown,
 	.powerup = subsys_modem_powerup,
+	.ramdump = subsys_modem_ramdump,
 	.crash_shutdown = subsys_modem_crash_shutdown
 };
 
@@ -311,8 +335,21 @@ static int __init subsystem_fatal_init(void)
 		goto out;
 	}
 
-	ret = subsystem_restart_8x60_init();
+	q6_ramdump_dev = create_ramdump_device("lpass");
 
+	if (!q6_ramdump_dev) {
+		ret = -ENOMEM;
+		goto out;
+	}
+
+	modem_ramdump_dev = create_ramdump_device("modem");
+
+	if (!modem_ramdump_dev) {
+		ret = -ENOMEM;
+		goto out;
+	}
+
+	ret = subsystem_restart_8x60_init();
 out:
 	return ret;
 }
