@@ -96,7 +96,7 @@ static int subsys_q6_ramdump(int enable)
 {
 	/* FIXME: Get address, size from PIL */
 	if (enable)
-		return do_ramdump(q6_ramdump_dev, 0x42F00000,
+		return do_ramdump(q6_ramdump_dev, 0x46700000,
 				0x47F00000 - 0x46700000);
 	else
 		return 0;
@@ -227,7 +227,7 @@ static int subsys_modem_ramdump(int enable)
 {
 	/* FIXME: Get address, size from PIL */
 	if (enable)
-		return do_ramdump(modem_ramdump_dev, 0x46700000,
+		return do_ramdump(modem_ramdump_dev, 0x42F00000,
 				0x46000000 - 0x42F00000);
 	else
 		return 0;
