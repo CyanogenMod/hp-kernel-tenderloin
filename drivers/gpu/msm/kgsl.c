@@ -894,9 +894,6 @@ static long kgsl_ioctl_device_waittimestamp(struct kgsl_device_private
 					param->timestamp,
 					param->timeout);
 
-	/* order reads to the buffer written to by the GPU */
-	rmb();
-
 	kgsl_memqueue_drain(dev_priv->device);
 
 	/* Fire off any pending suspend operations that are in flight */
