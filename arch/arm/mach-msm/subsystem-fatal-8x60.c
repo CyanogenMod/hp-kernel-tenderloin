@@ -92,12 +92,14 @@ int subsys_q6_powerup(void)
 	return ret;
 }
 
+/* FIXME: Get address, size from PIL */
+static struct ramdump_segment q6_segments[] = { {0x46700000, 0x47F00000 -
+					0x46700000}, {0x28400000, 0x12800} };
 static int subsys_q6_ramdump(int enable)
 {
-	/* FIXME: Get address, size from PIL */
 	if (enable)
-		return do_ramdump(q6_ramdump_dev, 0x46700000,
-				0x47F00000 - 0x46700000);
+		return do_ramdump(q6_ramdump_dev, q6_segments,
+				ARRAY_SIZE(q6_segments));
 	else
 		return 0;
 }
@@ -223,12 +225,15 @@ static int subsys_modem_powerup(void)
 	return ret;
 }
 
+/* FIXME: Get address, size from PIL */
+static struct ramdump_segment modem_segments[] = {
+	{0x42F00000, 0x46000000 - 0x42F00000} };
+
 static int subsys_modem_ramdump(int enable)
 {
-	/* FIXME: Get address, size from PIL */
 	if (enable)
-		return do_ramdump(modem_ramdump_dev, 0x42F00000,
-				0x46000000 - 0x42F00000);
+		return do_ramdump(modem_ramdump_dev, modem_segments,
+			ARRAY_SIZE(modem_segments));
 	else
 		return 0;
 }

@@ -13,11 +13,13 @@
 #ifndef _RAMDUMP_HEADER
 #define _RAMDUMP_HEADER
 
-#define RAMDUMP_IOCTL_CODE 0xed
-#define RAMDUMP_SIZE		_IO(RAMDUMP_IOCTL_CODE, 1)
-#define RAMDUMP_COMPLETE	_IO(RAMDUMP_IOCTL_CODE, 2)
+struct ramdump_segment {
+	unsigned long address;
+	unsigned long size;
+};
 
 void *create_ramdump_device(const char *dev_name);
-int do_ramdump(void *handle, unsigned long addr, unsigned long size);
+int do_ramdump(void *handle, struct ramdump_segment *segments,
+		int nsegments);
 
 #endif

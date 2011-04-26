@@ -35,8 +35,6 @@
 struct ramdump_device {
 	char name[256];
 
-	unsigned long ramdump_size;
-	unsigned long ramdump_begin_addr;
 	unsigned int data_ready;
 	unsigned int consumer_present;
 	int ramdump_status;
@@ -45,6 +43,8 @@ struct ramdump_device {
 	struct miscdevice device;
 
 	wait_queue_head_t dump_wait_q;
+	int nsegments;
+	struct ramdump_segment *segments;
 };
 
 static int ramdump_open(struct inode *inode, struct file *filep)
@@ -52,6 +52,7 @@ static int ramdump_open(struct inode *inode, struct file *filep)
 	struct ramdump_device *rd_dev = container_of(filep->private_data,
 				struct ramdump_device, device);
 	rd_dev->consumer_present = 1;
+	rd_dev->ramdump_status = 0;
 	return 0;
 }
 
@@ -65,80 +66,96 @@ static int ramdump_release(struct inode *inode, struct file *filep)
 	return 0;
 }
 
-static int ramdump_mmap(struct file *filep, struct vm_area_struct *vma)
+static unsigned long offset_translate(loff_t user_offset,
+		struct ramdump_device *rd_dev, unsigned long *data_left)
 {
-	int ret = 0;
-	struct ramdump_device *rd_dev = container_of(filep->private_data,
-				struct ramdump_device, device);
+	int i = 0;
 
-	if (rd_dev->data_ready == 0) {
-		pr_err("Ramdump(%s): Mmap when there's no dump available!",
-			rd_dev->name);
-		return -EINVAL;
+	for (i = 0; i < rd_dev->nsegments; i++)
+		if (user_offset >= rd_dev->segments[i].size)
+			user_offset -= rd_dev->segments[i].size;
+		else
+			break;
+
+	if (i == rd_dev->nsegments) {
+		pr_debug("Ramdump(%s): offset_translate returning zero\n",
+				rd_dev->name);
+		*data_left = 0;
+		return 0;
 	}
 
-	if (vma->vm_end - vma->vm_start != rd_dev->ramdump_size) {
-		pr_err("Ramdump(%s): Invalid size passed in from userspace in mmap.",
-			rd_dev->name);
-		ret = -EINVAL;
-		goto err;
-	}
+	*data_left = rd_dev->segments[i].size - user_offset;
 
-	vma->vm_flags |= (VM_IO | VM_RESERVED);
-	vma->vm_page_prot = PAGE_READONLY;
+	pr_debug("Ramdump(%s): Returning address: %llx, data_left = %ld\n",
+		rd_dev->name, rd_dev->segments[i].address + user_offset,
+		*data_left);
 
-	ret = io_remap_pfn_range(vma, vma->vm_start,
-		rd_dev->ramdump_begin_addr >> PAGE_SHIFT,
-		vma->vm_end - vma->vm_start, vma->vm_page_prot);
-
-	if (ret) {
-		pr_err("Ramdump(%s): io_remap_pfn_range failed (ret = %d)",
-			rd_dev->name, ret);
-		goto err;
-	}
-
-	return 0;
-
-err:
-	rd_dev->data_ready = 0;
-	complete(&rd_dev->ramdump_complete);
-	return ret;
+	return rd_dev->segments[i].address + user_offset;
 }
 
-static long ramdump_unlocked_ioctl(struct file *filep, unsigned int cmd,
-					unsigned long arg)
+#define MAX_IOREMAP_SIZE SZ_1M
+
+static int ramdump_read(struct file *filep, char __user *buf, size_t count,
+			loff_t *pos)
 {
-	int ret = 0;
 	struct ramdump_device *rd_dev = container_of(filep->private_data,
 				struct ramdump_device, device);
-
-	if (_IOC_TYPE(cmd) != RAMDUMP_IOCTL_CODE) {
-		pr_err("%s: invalid ioctl code\n", __func__);
-		return -EINVAL;
-	}
+	void *device_mem = NULL;
+	unsigned long data_left = 0;
+	unsigned long addr = 0;
+	size_t copy_size = 0;
+	int ret = 0;
 
 	if (rd_dev->data_ready == 0) {
-		pr_err("Ramdump(%s): Ioctl when there's no dump available!",
+		pr_err("Ramdump(%s): Read when there's no dump available!",
 			rd_dev->name);
-		return -EINVAL;
+		return -EPIPE;
 	}
 
-	switch (cmd) {
+	addr = offset_translate(*pos, rd_dev, &data_left);
 
-	case RAMDUMP_SIZE:
-		put_user(rd_dev->ramdump_size, (unsigned long __user *) arg);
-	break;
-
-	case RAMDUMP_COMPLETE:
-		rd_dev->data_ready = 0;
-		get_user(rd_dev->ramdump_status, (unsigned long __user *) arg);
-		complete(&rd_dev->ramdump_complete);
-	break;
-
-	default:
-		ret = -EINVAL;
+	/* EOF check */
+	if (data_left == 0) {
+		pr_debug("Ramdump(%s): Ramdump complete. %lld bytes read.",
+			rd_dev->name, *pos);
+		rd_dev->ramdump_status = 0;
+		ret = 0;
+		goto ramdump_done;
 	}
 
+	copy_size = min(count, (size_t)MAX_IOREMAP_SIZE);
+	copy_size = min((unsigned long)copy_size, data_left);
+	device_mem = ioremap_nocache(addr, copy_size);
+
+	if (device_mem == NULL) {
+		pr_err("Ramdump(%s): Unable to ioremap: addr %lx, size %x\n",
+			rd_dev->name, addr, copy_size);
+		rd_dev->ramdump_status = -1;
+		ret = -ENOMEM;
+		goto ramdump_done;
+	}
+
+	if (copy_to_user(buf, device_mem, copy_size)) {
+		pr_err("Ramdump(%s): Couldn't copy all data to user.",
+			rd_dev->name);
+		iounmap(device_mem);
+		rd_dev->ramdump_status = -1;
+		ret = -EFAULT;
+		goto ramdump_done;
+	}
+
+	iounmap(device_mem);
+	*pos += copy_size;
+
+	pr_debug("Ramdump(%s): Read %d bytes from address %lx.",
+			rd_dev->name, copy_size, addr);
+
+	return copy_size;
+
+ramdump_done:
+	rd_dev->data_ready = 0;
+	*pos = 0;
+	complete(&rd_dev->ramdump_complete);
 	return ret;
 }
 
@@ -159,8 +176,7 @@ static unsigned int ramdump_poll(struct file *filep,
 const struct file_operations ramdump_file_ops = {
 	.open = ramdump_open,
 	.release = ramdump_release,
-	.unlocked_ioctl = ramdump_unlocked_ioctl,
-	.mmap = ramdump_mmap,
+	.read = ramdump_read,
 	.poll = ramdump_poll
 };
 
@@ -205,9 +221,10 @@ void *create_ramdump_device(const char *dev_name)
 	return (void *)rd_dev;
 }
 
-int do_ramdump(void *handle, unsigned long addr, unsigned long size)
+int do_ramdump(void *handle, struct ramdump_segment *segments,
+		int nsegments)
 {
-	int ret;
+	int ret, i;
 	struct ramdump_device *rd_dev = (struct ramdump_device *)handle;
 
 	if (!rd_dev->consumer_present) {
@@ -215,8 +232,11 @@ int do_ramdump(void *handle, unsigned long addr, unsigned long size)
 		return -EPIPE;
 	}
 
-	rd_dev->ramdump_begin_addr = addr;
-	rd_dev->ramdump_size = size;
+	for (i = 0; i < nsegments; i++)
+		segments[i].size = PAGE_ALIGN(segments[i].size);
+
+	rd_dev->segments = segments;
+	rd_dev->nsegments = nsegments;
 
 	rd_dev->data_ready = 1;
 	rd_dev->ramdump_status = -1;
@@ -238,6 +258,5 @@ int do_ramdump(void *handle, unsigned long addr, unsigned long size)
 		ret = (rd_dev->ramdump_status == 0) ? 0 : -EPIPE;
 
 	rd_dev->data_ready = 0;
-
 	return ret;
 }
