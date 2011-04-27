@@ -1992,9 +1992,9 @@ int q6asm_read_nolock(struct audio_client *ac)
 
 		port->dsp_buf = (port->dsp_buf + 1) & (port->max_buf_cnt - 1);
 		pr_debug("%s:buf add[0x%x] token[%d] uid[%d]\n", __func__,
-						read.buf_add,
-						read.hdr.token,
-						read.uid);
+					read.buf_add,
+					read.hdr.token,
+					read.uid);
 		rc = apr_send_pkt(ac->apr, (uint32_t *) &read);
 		if (rc < 0) {
 			pr_err("read op[0x%x]rc[%d]\n", read.hdr.opcode, rc);
@@ -2005,6 +2005,7 @@ int q6asm_read_nolock(struct audio_client *ac)
 fail_cmd:
 	return -EINVAL;
 }
+
 
 static void q6asm_add_hdr_async(struct audio_client *ac, struct apr_hdr *hdr,
 			uint32_t pkt_size, uint32_t cmd_flg)
@@ -2162,7 +2163,7 @@ fail_cmd:
 }
 
 int q6asm_write_nolock(struct audio_client *ac, uint32_t len, uint32_t msw_ts,
-		uint32_t lsw_ts, uint32_t flags)
+			uint32_t lsw_ts, uint32_t flags)
 {
 	int rc = 0;
 	struct asm_stream_cmd_write write;
@@ -2179,7 +2180,7 @@ int q6asm_write_nolock(struct audio_client *ac, uint32_t len, uint32_t msw_ts,
 		port = &ac->port[IN];
 
 		q6asm_add_hdr_async(ac, &write.hdr, sizeof(write),
-				FALSE);
+					FALSE);
 
 		dsp_buf = port->dsp_buf;
 		ab = &port->buf[dsp_buf];
