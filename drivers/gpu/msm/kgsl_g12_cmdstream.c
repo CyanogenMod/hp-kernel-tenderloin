@@ -43,8 +43,8 @@ int kgsl_g12_cmdstream_init(struct kgsl_device *device)
 	struct kgsl_g12_device *g12_device = KGSL_G12_DEVICE(device);
 	memset(&g12_device->ringbuffer, 0, sizeof(struct kgsl_g12_ringbuffer));
 	g12_device->ringbuffer.prevctx = KGSL_G12_INVALID_CONTEXT;
-	return kgsl_sharedmem_alloc_coherent(&g12_device->ringbuffer.cmdbufdesc,
-					     KGSL_G12_RB_SIZE);
+	return kgsl_allocate_contig(&g12_device->ringbuffer.cmdbufdesc,
+		KGSL_G12_RB_SIZE);
 }
 
 static void addmarker(struct kgsl_g12_ringbuffer *rb, unsigned int index)

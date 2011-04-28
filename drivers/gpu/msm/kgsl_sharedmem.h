@@ -108,4 +108,11 @@ kgsl_allocate_user(struct kgsl_memdesc *memdesc,
 {
 	return kgsl_sharedmem_vmalloc_user(memdesc, pagetable, size, flags);
 }
+
+static inline int
+kgsl_allocate_contig(struct kgsl_memdesc *memdesc, size_t size)
+{
+	return kgsl_sharedmem_alloc_coherent(memdesc, size);
+}
+
 #endif /* __GSL_SHAREDMEM_H */

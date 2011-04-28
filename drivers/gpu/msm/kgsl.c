@@ -2219,7 +2219,7 @@ int kgsl_device_platform_probe(struct kgsl_device *device,
 	if (status != 0)
 		goto error_dest_work_q;
 
-	status = kgsl_sharedmem_alloc_coherent(&device->memstore,
+	status = kgsl_allocate_contig(&device->memstore,
 					sizeof(struct kgsl_devmemstore));
 	if (status != 0)
 		goto error_close_mmu;
