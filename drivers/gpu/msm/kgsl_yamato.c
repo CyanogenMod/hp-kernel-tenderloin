@@ -36,6 +36,7 @@
 #include "kgsl_postmortem.h"
 #include "kgsl_cffdump.h"
 #include "kgsl_drawctxt.h"
+#include "kgsl_yamato_debugfs.h"
 
 #include "yamato_reg.h"
 
@@ -508,7 +509,6 @@ kgsl_3d_probe(struct platform_device *pdev)
 	if (status)
 		goto error_close_rb;
 
-	kgsl_postmortem_init(device);
 	kgsl_yamato_debugfs_init(device);
 
 	device->flags &= ~KGSL_FLAGS_SOFT_RESET;

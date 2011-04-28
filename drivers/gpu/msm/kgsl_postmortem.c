@@ -18,9 +18,7 @@
 
 #include <linux/delay.h>
 #include <linux/relay.h>
-#include <linux/debugfs.h>
 #include <linux/vmalloc.h>
-#include <linux/debugfs.h>
 
 #include "kgsl.h"
 #include "kgsl_device.h"
@@ -30,10 +28,9 @@
 #include "kgsl_pm4types.h"
 #include "yamato_reg.h"
 #include "kgsl_yamato.h"
+#include "kgsl_yamato_debugfs.h"
 
 #define INVALID_RB_CMD 0xaaaaaaaa
-
-static int kgsl_pm_regs_enabled;
 
 struct pm_id_name {
 	uint32_t id;
@@ -780,7 +777,7 @@ static int kgsl_dump_yamato(struct kgsl_device *device)
 
 	/* Dump the registers if the user asked for it */
 
-	for (i = 0; kgsl_pm_regs_enabled && kgsl_registers[i].id; i++) {
+	for (i = 0; kgsl_pmregs_enabled() && kgsl_registers[i].id; i++) {
 		if (kgsl_registers[i].id == device->chip_id) {
 			kgsl_dump_regs(device, kgsl_registers[i].registers,
 				       kgsl_registers[i].len);
@@ -876,55 +873,4 @@ int kgsl_postmortem_dump(struct kgsl_device *device, int manual)
 	KGSL_DRV_ERR(device, "Dump Finished\n");
 
 	return 0;
-}
-
-static struct dentry *pm_d_debugfs;
-
-static int pm_dump_set(void *data, u64 val)
-{
-	struct kgsl_device *device = data;
-
-	if (val) {
-		mutex_lock(&device->mutex);
-		kgsl_postmortem_dump(device, 1);
-		mutex_unlock(&device->mutex);
-	}
-
-	return 0;
-}
-
-DEFINE_SIMPLE_ATTRIBUTE(pm_dump_fops,
-			NULL,
-			pm_dump_set, "%llu\n");
-
-static int pm_regs_enabled_set(void *data, u64 val)
-{
-	kgsl_pm_regs_enabled = val ? 1 : 0;
-	return 0;
-}
-
-static int pm_regs_enabled_get(void *data, u64 *val)
-{
-	*val = kgsl_pm_regs_enabled;
-	return 0;
-}
-
-DEFINE_SIMPLE_ATTRIBUTE(pm_regs_enabled_fops,
-			pm_regs_enabled_get,
-			pm_regs_enabled_set, "%llu\n");
-
-void kgsl_postmortem_init(struct kgsl_device *device)
-{
-	if (!device->d_debugfs || IS_ERR(device->d_debugfs))
-		return;
-
-	pm_d_debugfs = debugfs_create_dir("postmortem", device->d_debugfs);
-
-	if (IS_ERR(pm_d_debugfs))
-		return;
-
-	debugfs_create_file("dump",  0600, pm_d_debugfs, device,
-			    &pm_dump_fops);
-	debugfs_create_file("regs_enabled", 0644, pm_d_debugfs, device,
-			    &pm_regs_enabled_fops);
 }

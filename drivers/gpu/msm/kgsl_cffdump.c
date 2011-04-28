@@ -18,7 +18,6 @@
 
 /* #define DEBUG */
 #define ALIGN_CPU
-#define APP_DIR		"kgsl-cff"
 
 #include <linux/spinlock.h>
 #include <linux/debugfs.h>
@@ -30,7 +29,7 @@
 #include "kgsl.h"
 #include "kgsl_pm4types.h"
 #include "kgsl_cffdump.h"
-
+#include "kgsl_debugfs.h"
 
 static struct rchan	*chan;
 static struct dentry	*dir;
@@ -295,6 +294,8 @@ static void cffdump_printline(int id, uint opcode, uint op1, uint op2,
 
 void kgsl_cffdump_init()
 {
+	struct dentry *debugfs_dir = kgsl_get_debugfs_dir();
+
 #ifdef ALIGN_CPU
 	cpumask_t mask;
 
@@ -302,11 +303,16 @@ void kgsl_cffdump_init()
 	cpumask_set_cpu(1, &mask);
 	sched_setaffinity(0, &mask);
 #endif
+	if (!debugfs_dir || IS_ERR(debugfs_dir)) {
+		KGSL_CORE_ERR("Debugfs directory is bad\n");
+		return;
+	}
+
 	kgsl_cff_dump_enable = 1;
 
 	spin_lock_init(&cffdump_lock);
 
-	dir = debugfs_create_dir(APP_DIR, NULL);
+	dir = debugfs_create_dir("cff", debugfs_dir);
 	if (!dir) {
 		KGSL_CORE_ERR("debugfs_create_dir failed\n");
 		return;
@@ -752,7 +758,7 @@ static struct rchan *create_channel(unsigned subbuf_size, unsigned n_subbufs)
 }
 
 /**
- *	destroy_channel - destroys channel /debug/APP_DIR/cpuXXX
+ *	destroy_channel - destroys channel /debug/kgsl/cff/cpuXXX
  *
  *	Destroys channel along with associated produced/consumed control files
  */

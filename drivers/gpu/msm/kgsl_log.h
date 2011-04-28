@@ -116,6 +116,5 @@ KGSL_LOG_CRIT(_dev->dev, _dev->pwr_log, fmt, ##args)
 pr_err("kgsl: %s: " fmt, __func__, ##args)
 
 void kgsl_device_log_init(struct kgsl_device *device);
-int kgsl_yamato_debugfs_init(struct kgsl_device *device);
 
 #endif /* _GSL_LOG_H */
