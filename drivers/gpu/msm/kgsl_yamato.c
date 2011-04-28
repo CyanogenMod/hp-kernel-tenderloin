@@ -287,17 +287,13 @@ static int kgsl_yamato_cleanup_pt(struct kgsl_device *device,
 	struct kgsl_yamato_device *yamato_device = KGSL_YAMATO_DEVICE(device);
 	struct kgsl_ringbuffer *rb = &yamato_device->ringbuffer;
 
-	kgsl_mmu_unmap(pagetable, rb->buffer_desc.gpuaddr,
-			rb->buffer_desc.size);
+	kgsl_mmu_unmap(pagetable, &rb->buffer_desc);
 
-	kgsl_mmu_unmap(pagetable, rb->memptrs_desc.gpuaddr,
-			rb->memptrs_desc.size);
+	kgsl_mmu_unmap(pagetable, &rb->memptrs_desc);
 
-	kgsl_mmu_unmap(pagetable, device->memstore.gpuaddr,
-			device->memstore.size);
+	kgsl_mmu_unmap(pagetable, &device->memstore);
 
-	kgsl_mmu_unmap(pagetable, device->mmu.dummyspace.gpuaddr,
-			device->mmu.dummyspace.size);
+	kgsl_mmu_unmap(pagetable, &device->mmu.dummyspace);
 
 	return 0;
 }
@@ -306,7 +302,6 @@ static int kgsl_yamato_setup_pt(struct kgsl_device *device,
 			struct kgsl_pagetable *pagetable)
 {
 	int result = 0;
-	unsigned int flags = KGSL_MEMFLAGS_CONPHYS | KGSL_MEMFLAGS_ALIGN4K;
 	struct kgsl_yamato_device *yamato_device = KGSL_YAMATO_DEVICE(device);
 	struct kgsl_ringbuffer *rb = &yamato_device->ringbuffer;
 
@@ -317,37 +312,36 @@ static int kgsl_yamato_setup_pt(struct kgsl_device *device,
 	BUG_ON(device->mmu.dummyspace.physaddr == 0);
 #endif
 	result = kgsl_mmu_map_global(pagetable, &rb->buffer_desc,
-				     GSL_PT_PAGE_RV, flags);
+				     GSL_PT_PAGE_RV);
 	if (result)
 		goto error;
 
 	result = kgsl_mmu_map_global(pagetable, &rb->memptrs_desc,
-				     GSL_PT_PAGE_RV | GSL_PT_PAGE_WV, flags);
+				     GSL_PT_PAGE_RV | GSL_PT_PAGE_WV);
 	if (result)
 		goto unmap_buffer_desc;
 
 	result = kgsl_mmu_map_global(pagetable, &device->memstore,
-				     GSL_PT_PAGE_RV | GSL_PT_PAGE_WV, flags);
+				     GSL_PT_PAGE_RV | GSL_PT_PAGE_WV);
 	if (result)
 		goto unmap_memptrs_desc;
 
 	result = kgsl_mmu_map_global(pagetable, &device->mmu.dummyspace,
-				     GSL_PT_PAGE_RV | GSL_PT_PAGE_WV, flags);
+				     GSL_PT_PAGE_RV | GSL_PT_PAGE_WV);
 	if (result)
 		goto unmap_memstore_desc;
 
 	return result;
 
 unmap_memstore_desc:
-	kgsl_mmu_unmap(pagetable, device->memstore.gpuaddr,
-			device->memstore.size);
+	kgsl_mmu_unmap(pagetable, &device->memstore);
 
 unmap_memptrs_desc:
-	kgsl_mmu_unmap(pagetable, rb->memptrs_desc.gpuaddr,
-			rb->memptrs_desc.size);
+	kgsl_mmu_unmap(pagetable, &rb->memptrs_desc);
+
 unmap_buffer_desc:
-	kgsl_mmu_unmap(pagetable, rb->buffer_desc.gpuaddr,
-			rb->buffer_desc.size);
+	kgsl_mmu_unmap(pagetable, &rb->buffer_desc);
+
 error:
 	return result;
 }

@@ -351,17 +351,11 @@ void kgsl_cffdump_syncmem(struct kgsl_device_private *dev_priv,
 	if (clean_cache) {
 		/* Ensure that this memory region is not read from the
 		 * cache but fetched fresh */
-		if (memdesc->priv & KGSL_MEMFLAGS_VMALLOC_MEM) {
-			dsb(); wmb(); mb();
-			kgsl_cache_range_op((ulong)memdesc->physaddr,
-				memdesc->size, KGSL_MEMFLAGS_CACHE_INV |
-				KGSL_MEMFLAGS_VMALLOC_MEM);
-		} else {
-			dsb(); wmb(); mb();
-			kgsl_cache_range_op((unsigned long)memdesc->hostptr,
-				memdesc->size, KGSL_MEMFLAGS_CACHE_INV |
-				KGSL_MEMFLAGS_CONPHYS);
-		}
+
+		dsb(); wmb(); mb();
+
+		kgsl_cache_range_op(memdesc->hostptr, memdesc->size,
+				    memdesc->type, KGSL_CACHE_OP_INV);
 	}
 
 	BUG_ON(physaddr > 0x66000000 && physaddr < 0x66ffffff);
@@ -527,18 +521,10 @@ bool kgsl_cffdump_parse_ibs(struct kgsl_device_private *dev_priv,
 	if (!memdesc->physaddr) {
 		KGSL_CORE_ERR("no physaddr");
 		return true;
-	} else if ((memdesc->priv & KGSL_MEMFLAGS_VMALLOC_MEM)) {
+	else {
 		dsb(); wmb(); mb();
-		/* Ensure that this memory region is not read from the
-		 * cache but fetched fresh */
-		kgsl_cache_range_op((unsigned long)memdesc->physaddr,
-			memdesc->size, KGSL_MEMFLAGS_CACHE_INV |
-			KGSL_MEMFLAGS_VMALLOC_MEM);
-	} else {
-		dsb(); wmb(); mb();
-		kgsl_cache_range_op((unsigned long)memdesc->hostptr,
-			memdesc->size, KGSL_MEMFLAGS_CACHE_INV |
-			KGSL_MEMFLAGS_CONPHYS);
+		kgsl_cache_range_op(memdesc->hostptr, memdesc->size,
+				    memdesc->type, KGSL_CACHE_OP_INV);
 	}
 
 #ifdef DEBUG

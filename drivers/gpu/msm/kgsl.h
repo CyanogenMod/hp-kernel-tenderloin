@@ -138,8 +138,12 @@ struct kgsl_driver {
 
 extern struct kgsl_driver kgsl_driver;
 
+#define KGSL_VMALLOC_MEMORY 0
+#define KGSL_EXTERNAL_MEMORY 1
+
 struct kgsl_mem_entry {
 	struct kgsl_memdesc memdesc;
+	int memtype;
 	struct file *file_ptr;
 	struct list_head list;
 	uint32_t free_timestamp;

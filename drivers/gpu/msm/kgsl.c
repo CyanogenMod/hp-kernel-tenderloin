@@ -57,8 +57,6 @@ module_param_named(ptcount, kgsl_pagetable_count, int, 0);
 MODULE_PARM_DESC(kgsl_pagetable_count,
 "Minimum number of pagetables for KGSL to allocate at initialization time");
 
-static void kgsl_put_phys_file(struct file *file);
-
 /* Allocate a new context id */
 
 struct kgsl_context *
@@ -207,12 +205,9 @@ static void kgsl_clean_cache_all(struct kgsl_process_private *private)
 
 	spin_lock(&private->mem_lock);
 	list_for_each_entry(entry, &private->mem_list, list) {
-		if (KGSL_MEMFLAGS_CACHE_MASK & entry->memdesc.priv) {
-			    kgsl_cache_range_op((unsigned long)entry->
-						   memdesc.hostptr,
-						   entry->memdesc.size,
-						   entry->memdesc.priv);
-		}
+		if (entry->memdesc.priv & KGSL_MEMFLAGS_CACHED)
+			kgsl_cache_range_op(&entry->memdesc,
+					    KGSL_CACHE_OP_CLEAN);
 	}
 	spin_unlock(&private->mem_lock);
 }
@@ -759,21 +754,14 @@ kgsl_sharedmem_find_region(struct kgsl_process_private *private,
 uint8_t *kgsl_gpuaddr_to_vaddr(const struct kgsl_memdesc *memdesc,
 	unsigned int gpuaddr, unsigned int *size)
 {
-	uint8_t *ptr = NULL;
+	BUG_ON(memdesc->hostptr == NULL);
 
-	if ((memdesc->priv & KGSL_MEMFLAGS_VMALLOC_MEM) &&
-		(memdesc->physaddr || !memdesc->hostptr))
-		ptr = (uint8_t *)memdesc->physaddr;
-	else if (memdesc->hostptr == NULL)
-		ptr = __va(memdesc->physaddr);
-	else
-		ptr = memdesc->hostptr;
+	if (memdesc->gpuaddr == 0 || (gpuaddr < memdesc->gpuaddr ||
+		gpuaddr >= memdesc->gpuaddr + memdesc->size))
+		return NULL;
 
-	if (memdesc->size <= (gpuaddr - memdesc->gpuaddr))
-		ptr = NULL;
-
-	*size = ptr ? (memdesc->size - (gpuaddr - memdesc->gpuaddr)) : 0;
-	return (uint8_t *)(ptr ? (ptr  + (gpuaddr - memdesc->gpuaddr)) : NULL);
+	*size = memdesc->size - (memdesc->gpuaddr - gpuaddr);
+	return memdesc->hostptr + (memdesc->gpuaddr - gpuaddr);
 }
 
 uint8_t *kgsl_sharedmem_convertaddr(struct kgsl_device *device,
@@ -1092,10 +1080,6 @@ static long kgsl_ioctl_cmdstream_freememontimestamp(struct kgsl_device_private
 	spin_unlock(&dev_priv->process_priv->mem_lock);
 
 	if (entry) {
-#ifdef CONFIG_MSM_KGSL_MMU
-		if (entry->memdesc.priv & KGSL_MEMFLAGS_VMALLOC_MEM)
-			entry->memdesc.priv &= ~KGSL_MEMFLAGS_CACHE_MASK;
-#endif
 		kgsl_memqueue_freememontimestamp(dev_priv->device, entry,
 					param->timestamp, param->type);
 		kgsl_memqueue_drain(dev_priv->device);
@@ -1161,22 +1145,18 @@ done:
 
 void kgsl_destroy_mem_entry(struct kgsl_mem_entry *entry)
 {
-	kgsl_mmu_unmap(entry->memdesc.pagetable,
-			entry->memdesc.gpuaddr & PAGE_MASK,
-			entry->memdesc.size);
-	if (KGSL_MEMFLAGS_VMALLOC_MEM & entry->memdesc.priv)
-		vfree((void *)entry->memdesc.physaddr);
-	else if (KGSL_MEMFLAGS_HOSTADDR & entry->memdesc.priv &&
-			entry->file_ptr)
-		put_ashmem_file(entry->file_ptr);
-	else
-		kgsl_put_phys_file(entry->file_ptr);
+	size_t size = entry->memdesc.size;
 
-	if (KGSL_MEMFLAGS_VMALLOC_MEM & entry->memdesc.priv) {
-		entry->priv->stats.vmalloc -= entry->memdesc.size;
-		kgsl_driver.stats.vmalloc -= entry->memdesc.size;
-	} else
-		entry->priv->stats.exmem -= entry->memdesc.size;
+	kgsl_sharedmem_free(&entry->memdesc);
+
+	if (entry->memtype == KGSL_VMALLOC_MEMORY)
+		entry->priv->stats.vmalloc -= size;
+	else {
+		if (entry->file_ptr)
+			fput(entry->file_ptr);
+
+		entry->priv->stats.exmem -= size;
+	}
 
 	kfree(entry);
 }
@@ -1226,9 +1206,7 @@ kgsl_ioctl_sharedmem_from_vmalloc(struct kgsl_device_private *dev_priv,
 	struct kgsl_process_private *private = dev_priv->process_priv;
 	struct kgsl_sharedmem_from_vmalloc *param = data;
 	struct kgsl_mem_entry *entry = NULL;
-	void *vmalloc_area;
 	struct vm_area_struct *vma;
-	int order;
 
 	if (!kgsl_mmu_isenabled(&dev_priv->device->mmu))
 		return -ENODEV;
@@ -1284,60 +1262,30 @@ kgsl_ioctl_sharedmem_from_vmalloc(struct kgsl_device_private *dev_priv,
 		goto error;
 	}
 
-	/* allocate memory and map it to user space */
-	vmalloc_area = vmalloc_user(len);
-	if (!vmalloc_area) {
-		KGSL_CORE_ERR("vmalloc_user(%d) failed: allocated=%d\n",
-			      len, kgsl_driver.stats.vmalloc);
-
-		result = -ENOMEM;
-		goto error_free_entry;
-	}
-	kgsl_cache_range_op((unsigned int)vmalloc_area, len,
-		KGSL_MEMFLAGS_CACHE_INV | KGSL_MEMFLAGS_VMALLOC_MEM);
-
-	result = kgsl_mmu_map(private->pagetable,
-			      (unsigned long)vmalloc_area, len,
-			      GSL_PT_PAGE_RV |
-			      ((param->flags & KGSL_MEMFLAGS_GPUREADONLY) ?
-			      0 : GSL_PT_PAGE_WV),
-			      &entry->memdesc.gpuaddr, KGSL_MEMFLAGS_ALIGN4K |
-			      KGSL_MEMFLAGS_VMALLOC_MEM);
+	result = kgsl_sharedmem_vmalloc_user(&entry->memdesc,
+					     private->pagetable, len,
+					     param->flags);
 	if (result != 0)
-		goto error_free_vmalloc;
+		goto error_free_entry;
 
-	entry->memdesc.pagetable = private->pagetable;
-	entry->memdesc.size = len;
-	entry->memdesc.priv = KGSL_MEMFLAGS_VMALLOC_MEM |
-			    KGSL_MEMFLAGS_CACHE_CLEAN |
-			    (param->flags & KGSL_MEMFLAGS_GPUREADONLY);
-	entry->memdesc.physaddr = (unsigned long)vmalloc_area;
 	entry->priv = private;
 
 	if (!kgsl_cache_enable)
 		vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
 
-	result = remap_vmalloc_range(vma, vmalloc_area, 0);
+	result = remap_vmalloc_range(vma, (void *) entry->memdesc.hostptr, 0);
 	if (result) {
 		KGSL_CORE_ERR("remap_vmalloc_range failed: %d\n", result);
-		goto error_unmap_entry;
+		goto error_free_vmalloc;
 	}
-
-	entry->memdesc.hostptr = (void *)param->hostptr;
 
 	param->gpuaddr = entry->memdesc.gpuaddr;
 
+	entry->memtype = KGSL_VMALLOC_MEMORY;
+
 	/* Process specific statistics */
 	KGSL_STATS_ADD(len, private->stats.vmalloc,
-		       private->stats.vmalloc_max);
-
-	KGSL_STATS_ADD(len, kgsl_driver.stats.vmalloc,
-		       kgsl_driver.stats.vmalloc_max);
-
-	order = get_order(len);
-
-	if (order < 16)
-		kgsl_driver.stats.histogram[order]++;
+		private->stats.vmalloc_max);
 
 	spin_lock(&private->mem_lock);
 	list_add(&entry->list, &private->mem_list);
@@ -1346,12 +1294,8 @@ kgsl_ioctl_sharedmem_from_vmalloc(struct kgsl_device_private *dev_priv,
 	kgsl_check_idle(dev_priv->device);
 	return 0;
 
-error_unmap_entry:
-	kgsl_mmu_unmap(private->pagetable, entry->memdesc.gpuaddr,
-		       entry->memdesc.size);
-
 error_free_vmalloc:
-	vfree(vmalloc_area);
+	kgsl_sharedmem_free(&entry->memdesc);
 
 error_free_entry:
 	kfree(entry);
@@ -1398,180 +1342,222 @@ static int kgsl_get_phys_file(int fd, unsigned long *start, unsigned long *len,
 	return ret;
 }
 
-static void kgsl_put_phys_file(struct file *file)
+static inline int _check_region(unsigned long start, unsigned long size,
+				uint64_t len)
 {
-	if (file)
-		put_pmem_file(file);
+	uint64_t end = start + size;
+	return (end > len);
+}
+
+static int kgsl_setup_phys_file(struct kgsl_mem_entry *entry,
+				struct kgsl_pagetable *pagetable,
+				unsigned int fd, unsigned int offset,
+				size_t size)
+{
+	int ret;
+	unsigned long phys, virt, len;
+	struct file *filep;
+
+	ret = kgsl_get_phys_file(fd, &phys, &len, &virt, &filep);
+	if (ret)
+		return ret;
+
+	if (size == 0)
+		size = len;
+
+	size = ALIGN(size, PAGE_SIZE);
+
+	if (_check_region(offset & PAGE_MASK, size, len)) {
+		KGSL_CORE_ERR("Offset (%ld) + size (%d) is larger"
+			      "than pmem region length %ld\n",
+			      offset & PAGE_MASK, size, len);
+		put_pmem_file(filep);
+		return -EINVAL;
+	}
+
+	entry->file_ptr = filep;
+
+	entry->memdesc.pagetable = pagetable;
+	entry->memdesc.size = size;
+	entry->memdesc.physaddr = phys + (offset & PAGE_MASK);
+	entry->memdesc.hostptr = (void *) (virt + (offset & PAGE_MASK));
+	entry->memdesc.ops = &kgsl_contig_ops;
+
+	return 0;
+}
+
+static int kgsl_setup_hostptr(struct kgsl_mem_entry *entry,
+			      struct kgsl_pagetable *pagetable,
+			      void *hostptr, unsigned int offset,
+			      size_t size)
+{
+	struct vm_area_struct *vma;
+	unsigned int len;
+
+	down_read(&current->mm->mmap_sem);
+	vma = find_vma(current->mm, (unsigned int) hostptr);
+	up_read(&current->mm->mmap_sem);
+
+	if (!vma) {
+		KGSL_CORE_ERR("find_vma(%p) failed\n", hostptr);
+		return -EINVAL;
+	}
+
+	/* We don't necessarily start at vma->vm_start */
+	len = vma->vm_end - (unsigned long) hostptr;
+
+	if (!KGSL_IS_PAGE_ALIGNED((unsigned long) hostptr) ||
+	    !KGSL_IS_PAGE_ALIGNED(len)) {
+		KGSL_CORE_ERR("user address len(%u)"
+			      "and start(%p) must be page"
+			      "aligned\n", len, hostptr);
+		return -EINVAL;
+	}
+
+	if (size == 0)
+		size = len;
+
+	size = ALIGN(size, PAGE_SIZE);
+
+	if (_check_region(offset & PAGE_MASK, size, len)) {
+		KGSL_CORE_ERR("Offset (%ld) + size (%d) is larger"
+			      "than region length %d\n",
+			      offset & PAGE_MASK, size, len);
+		return -EINVAL;
+	}
+
+	entry->memdesc.pagetable = pagetable;
+	entry->memdesc.size = size;
+	entry->memdesc.hostptr = hostptr + (offset & PAGE_MASK);
+	entry->memdesc.ops = &kgsl_userptr_ops;
+
+	return 0;
+}
+
+static int kgsl_setup_ashmem(struct kgsl_mem_entry *entry,
+			     struct kgsl_pagetable *pagetable,
+			     int fd, void *hostptr, size_t size)
+{
+	int ret;
+	struct vm_area_struct *vma;
+	struct file *filep, *vmfile;
+	unsigned long len;
+
+	vma = kgsl_get_vma_from_start_addr((unsigned long) hostptr);
+	if (vma == NULL)
+		return -EINVAL;
+
+	len = vma->vm_end - vma->vm_start;
+
+	if (size == 0)
+		size = len;
+
+	if (size != len) {
+		KGSL_CORE_ERR("Invalid size %d for vma region %p\n",
+			      size, hostptr);
+		return -EINVAL;
+	}
+
+	ret = get_ashmem_file(fd, &filep, &vmfile, &len);
+
+	if (ret) {
+		KGSL_CORE_ERR("get_ashmem_file failed\n");
+		return ret;
+	}
+
+	if (vmfile != vma->vm_file) {
+		KGSL_CORE_ERR("ashmem shmem file does not match vma\n");
+		ret = -EINVAL;
+		goto err;
+	}
+
+	entry->file_ptr = filep;
+
+	entry->memdesc.pagetable = pagetable;
+	entry->memdesc.size = ALIGN(size, PAGE_SIZE);
+	entry->memdesc.hostptr = hostptr;
+	entry->memdesc.ops = &kgsl_userptr_ops;
+
+	return 0;
+
+err:
+	put_ashmem_file(filep);
+	return ret;
 }
 
 static long kgsl_ioctl_map_user_mem(struct kgsl_device_private *dev_priv,
-				    unsigned int cmd, void *data)
+				     unsigned int cmd, void *data)
 {
-	int result = 0;
+	int result = -EINVAL;
 	struct kgsl_map_user_mem *param = data;
 	struct kgsl_mem_entry *entry = NULL;
 	struct kgsl_process_private *private = dev_priv->process_priv;
-	unsigned long start = 0, len = 0, vstart = 0;
-	struct file *file_ptr = NULL;
-	uint64_t total_offset;
+
+	entry = kzalloc(sizeof(*entry), GFP_KERNEL);
+	if (entry == NULL) {
+		KGSL_DRV_ERR(dev_priv->device, "kzalloc(%d) failed\n",
+			sizeof(*entry));
+		return -ENOMEM;
+	}
 
 	kgsl_memqueue_drain_unlocked(dev_priv->device);
 
 	switch (param->memtype) {
 	case KGSL_USER_MEM_TYPE_PMEM:
-		if (kgsl_get_phys_file(param->fd, &start,
-					&len, &vstart, &file_ptr)) {
-			result = -EINVAL;
-			goto error;
-		}
-		if (!param->len)
-			param->len = len;
+		if (param->fd == 0 || param->len == 0)
+			break;
 
-		total_offset = param->offset + param->len;
-		if (total_offset > (uint64_t)len) {
-			KGSL_CORE_ERR("region too large "
-				"0x%x + 0x%x >= 0x%lx\n",
-				param->offset, param->len, len);
-			result = -EINVAL;
-			goto error_put_file_ptr;
-		}
+		result = kgsl_setup_phys_file(entry, private->pagetable,
+					      param->fd, param->offset,
+					      param->len);
 		break;
+
 	case KGSL_USER_MEM_TYPE_ADDR:
-	case KGSL_USER_MEM_TYPE_ASHMEM:
-	{
-		struct vm_area_struct *vma;
 #ifndef CONFIG_MSM_KGSL_MMU
-			KGSL_DRV_ERR(dev_priv->device,
-				"MMU disabled; cannot map paged memory\n");
-			result = -EINVAL;
-			goto error;
-#endif
-		if (!param->hostptr) {
-			result = -EINVAL;
-			goto error;
-		}
-		start = param->hostptr;
-
-		if (param->memtype == KGSL_USER_MEM_TYPE_ADDR) {
-			down_read(&current->mm->mmap_sem);
-			vma = find_vma(current->mm, start);
-			up_read(&current->mm->mmap_sem);
-
-			if (!vma) {
-				KGSL_CORE_ERR("find_vma(%lx) failed\n", start);
-				result = -EINVAL;
-				goto error;
-			}
-
-			/* We don't necessarily start at vma->vm_start */
-			len = vma->vm_end - param->hostptr;
-
-			if (!KGSL_IS_PAGE_ALIGNED(len) ||
-					!KGSL_IS_PAGE_ALIGNED(start)) {
-				KGSL_CORE_ERR("user address len(%lu)"
-					"and start(0x%lx) must be page"
-					"aligned\n", len, start);
-				result = -EINVAL;
-				goto error;
-			}
-		} else {
-			vma = kgsl_get_vma_from_start_addr(param->hostptr);
-			if (vma == NULL) {
-				result = -EINVAL;
-				goto error;
-			}
-			len = vma->vm_end - vma->vm_start;
-		}
-
-		if (!param->len)
-			param->len = len;
-
-		if (param->memtype == KGSL_USER_MEM_TYPE_ASHMEM) {
-			struct file *ashmem_vm_file;
-			if (get_ashmem_file(param->fd, &file_ptr,
-					&ashmem_vm_file, &len)) {
-				KGSL_CORE_ERR("get_ashmem_file failed\n");
-				result = -EINVAL;
-				goto error;
-			}
-			if (ashmem_vm_file != vma->vm_file) {
-				KGSL_CORE_ERR("ashmem shmem file(%p) does not "
-					"match to given vma->vm_file(%p)\n",
-					ashmem_vm_file, vma->vm_file);
-				result = -EINVAL;
-				goto error_put_file_ptr;
-			}
-			if (len != (vma->vm_end - vma->vm_start)) {
-				KGSL_CORE_ERR("ashmem region len(%ld) does not "
-					"match vma region len(%ld)",
-					len, vma->vm_end - vma->vm_start);
-				result = -EINVAL;
-				goto error_put_file_ptr;
-			}
-		}
+		KGSL_DRV_ERR(dev_priv->device,
+			"Cannot map paged memory with the MMU disabled\n");
 		break;
-	}
+#endif
+		if (param->hostptr == 0)
+			break;
+
+		result = kgsl_setup_hostptr(entry, private->pagetable,
+					    (void *) param->hostptr,
+					    param->offset, param->len);
+		break;
+
+	case KGSL_USER_MEM_TYPE_ASHMEM:
+#ifndef CONFIG_MSM_KGSL_MMU
+		KGSL_DRV_ERR(dev_priv->device,
+			"Cannot map paged memory with the MMU disabled\n");
+		break;
+#endif
+		if (param->hostptr == 0)
+			break;
+
+		result = kgsl_setup_ashmem(entry, private->pagetable,
+					   param->fd, (void *) param->hostptr,
+					   param->len);
+		break;
 	default:
 		KGSL_CORE_ERR("Invalid memory type: %x\n", param->memtype);
-		result = -EINVAL;
-		goto error;
-	}
-
-	entry = kzalloc(sizeof(*entry), GFP_KERNEL);
-	if (entry == NULL) {
-		result = -ENOMEM;
-		goto error_put_file_ptr;
-	}
-
-	entry->file_ptr = file_ptr;
-
-	entry->memdesc.pagetable = private->pagetable;
-
-	/* Any MMU mapped memory must have a length in multiple of PAGESIZE */
-	entry->memdesc.size = ALIGN(param->len, PAGE_SIZE);
-	/* ensure that MMU mappings are at page boundary */
-	entry->memdesc.physaddr = start + (param->offset & PAGE_MASK);
-	if (param->memtype == KGSL_USER_MEM_TYPE_PMEM)
-		entry->memdesc.hostptr =
-			(void *)(vstart + (param->offset & PAGE_MASK));
-	else
-		entry->memdesc.hostptr = __va(entry->memdesc.physaddr);
-
-	if (entry->memdesc.physaddr == 0) {
-		KGSL_CORE_ERR("Error: memdesc.phyaddr is null.\n");
-		result = -EINVAL;
-		goto error_free_entry;
-	}
-
-	if (param->memtype != KGSL_USER_MEM_TYPE_PMEM) {
-		result = kgsl_mmu_map(private->pagetable,
-				entry->memdesc.physaddr, entry->memdesc.size,
-				GSL_PT_PAGE_RV | GSL_PT_PAGE_WV,
-				&entry->memdesc.gpuaddr,
-				KGSL_MEMFLAGS_ALIGN4K | KGSL_MEMFLAGS_HOSTADDR);
-		entry->memdesc.priv = KGSL_MEMFLAGS_HOSTADDR;
-	} else {
-		result = kgsl_mmu_map(private->pagetable,
-				entry->memdesc.physaddr, entry->memdesc.size,
-				GSL_PT_PAGE_RV | GSL_PT_PAGE_WV,
-				&entry->memdesc.gpuaddr,
-				KGSL_MEMFLAGS_ALIGN4K | KGSL_MEMFLAGS_CONPHYS);
+		break;
 	}
 
 	if (result)
-		goto error_free_entry;
+		goto error;
 
-	/* If the offset is not at 4K boundary then add the correct offset
-	 * value to gpuaddr */
-	total_offset = entry->memdesc.gpuaddr +
-		(param->offset & ~PAGE_MASK);
-	if (total_offset > (uint64_t)UINT_MAX) {
-		result = -EINVAL;
-		goto error_unmap_entry;
-	}
+	result = kgsl_mmu_map(private->pagetable,
+			      &entry->memdesc,
+			      GSL_PT_PAGE_RV | GSL_PT_PAGE_WV);
+
+	if (result)
+		goto error_put_file_ptr;
+
 	entry->priv = private;
-	entry->memdesc.gpuaddr = total_offset;
 	param->gpuaddr = entry->memdesc.gpuaddr;
+
+	entry->memtype = KGSL_EXTERNAL_MEMORY;
 
 	/* Statistics */
 	KGSL_STATS_ADD(param->len, private->stats.exmem,
@@ -1584,20 +1570,12 @@ static long kgsl_ioctl_map_user_mem(struct kgsl_device_private *dev_priv,
 	kgsl_check_idle(dev_priv->device);
 	return result;
 
-error_unmap_entry:
-	kgsl_mmu_unmap(entry->memdesc.pagetable,
-			entry->memdesc.gpuaddr & PAGE_MASK,
-			entry->memdesc.size);
-error_free_entry:
-	kfree(entry);
-
-error_put_file_ptr:
-	if ((param->memtype != KGSL_USER_MEM_TYPE_PMEM) && file_ptr)
-		put_ashmem_file(file_ptr);
-	else
-		kgsl_put_phys_file(file_ptr);
+ error_put_file_ptr:
+	if (entry->file_ptr)
+		fput(entry->file_ptr);
 
 error:
+	kfree(entry);
 	kgsl_check_idle(dev_priv->device);
 	return result;
 }
@@ -1633,12 +1611,7 @@ kgsl_ioctl_sharedmem_flush_cache(struct kgsl_device_private *dev_priv,
 			goto done;
 		}
 
-		kgsl_cache_range_op((unsigned long)entry->memdesc.hostptr,
-				    entry->memdesc.size,
-				    KGSL_MEMFLAGS_CACHE_CLEAN |
-				    KGSL_MEMFLAGS_HOSTADDR);
-		/* Mark memory as being flushed so we don't flush it again */
-		entry->memdesc.priv &= ~KGSL_MEMFLAGS_CACHE_MASK;
+		kgsl_cache_range_op(&entry->memdesc, KGSL_CACHE_OP_CLEAN);
 
 		/* Statistics - keep track of how many flushes each process
 		   does */

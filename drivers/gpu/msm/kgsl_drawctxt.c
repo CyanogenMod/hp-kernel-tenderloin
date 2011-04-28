@@ -1446,10 +1446,8 @@ create_gpustate_shadow(struct kgsl_device *device,
 
 	build_shader_save_restore_cmds(drawctxt, ctx);
 
-	kgsl_cache_range_op((unsigned int) drawctxt->gpustate.hostptr,
-			    drawctxt->gpustate.size,
-			    KGSL_MEMFLAGS_VMALLOC_MEM
-			    | KGSL_MEMFLAGS_CACHE_FLUSH);
+	kgsl_cache_range_op(&drawctxt->gpustate,
+			    KGSL_CACHE_OP_FLUSH);
 
 	return 0;
 }
@@ -1500,11 +1498,8 @@ create_gmem_shadow(struct kgsl_yamato_device *yamato_device,
 	    build_sys2gmem_cmds(device, drawctxt, ctx,
 				&drawctxt->context_gmem_shadow);
 
-	kgsl_cache_range_op((unsigned int)
-			    drawctxt->context_gmem_shadow.gmemshadow.hostptr,
-			    drawctxt->context_gmem_shadow.size,
-			    KGSL_MEMFLAGS_VMALLOC_MEM
-			    | KGSL_MEMFLAGS_CACHE_FLUSH);
+	kgsl_cache_range_op(&drawctxt->context_gmem_shadow.gmemshadow,
+			    KGSL_CACHE_OP_FLUSH);
 
 	return 0;
 }

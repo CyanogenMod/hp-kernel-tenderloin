@@ -244,14 +244,12 @@ static int kgsl_g12_cleanup_pt(struct kgsl_device *device,
 {
 	struct kgsl_g12_device *g12_device = KGSL_G12_DEVICE(device);
 
-	kgsl_mmu_unmap(pagetable, device->mmu.dummyspace.gpuaddr,
-			device->mmu.dummyspace.size);
+	kgsl_mmu_unmap(pagetable, &device->mmu.dummyspace);
 
-	kgsl_mmu_unmap(pagetable, device->memstore.gpuaddr,
-			device->memstore.size);
+	kgsl_mmu_unmap(pagetable, &device->memstore);
 
-	kgsl_mmu_unmap(pagetable, g12_device->ringbuffer.cmdbufdesc.gpuaddr,
-			g12_device->ringbuffer.cmdbufdesc.size);
+	kgsl_mmu_unmap(pagetable, &g12_device->ringbuffer.cmdbufdesc);
+
 	return 0;
 }
 
@@ -259,32 +257,32 @@ static int kgsl_g12_setup_pt(struct kgsl_device *device,
 			     struct kgsl_pagetable *pagetable)
 {
 	int result = 0;
-	unsigned int flags = KGSL_MEMFLAGS_CONPHYS | KGSL_MEMFLAGS_ALIGN4K;
 	struct kgsl_g12_device *g12_device = KGSL_G12_DEVICE(device);
 
 	result = kgsl_mmu_map_global(pagetable, &device->mmu.dummyspace,
-				     GSL_PT_PAGE_RV | GSL_PT_PAGE_WV, flags);
+				     GSL_PT_PAGE_RV | GSL_PT_PAGE_WV);
+
 	if (result)
 		goto error;
 
 	result = kgsl_mmu_map_global(pagetable, &device->memstore,
-				     GSL_PT_PAGE_RV | GSL_PT_PAGE_WV, flags);
+				     GSL_PT_PAGE_RV | GSL_PT_PAGE_WV);
 	if (result)
 		goto error_unmap_dummy;
 
 	result = kgsl_mmu_map_global(pagetable,
 				     &g12_device->ringbuffer.cmdbufdesc,
-				     GSL_PT_PAGE_RV, flags);
+				     GSL_PT_PAGE_RV);
 	if (result)
 		goto error_unmap_memstore;
 	return result;
 
 error_unmap_dummy:
-	kgsl_mmu_unmap(pagetable, device->mmu.dummyspace.gpuaddr,
-			device->mmu.dummyspace.size);
+	kgsl_mmu_unmap(pagetable, &device->mmu.dummyspace);
+
 error_unmap_memstore:
-	kgsl_mmu_unmap(pagetable, device->memstore.gpuaddr,
-			device->memstore.size);
+	kgsl_mmu_unmap(pagetable, &device->memstore);
+
 error:
 	return result;
 }

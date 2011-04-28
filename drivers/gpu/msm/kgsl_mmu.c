@@ -40,6 +40,9 @@ struct kgsl_pte_debug {
 	unsigned int phyaddr:20;
 };
 
+#define KGSL_MMU_ALIGN_SHIFT    13
+#define KGSL_MMU_ALIGN_MASK     (~((1 << KGSL_MMU_ALIGN_SHIFT) - 1))
+
 #define GSL_PT_PAGE_BITS_MASK	0x00000007
 #define GSL_PT_PAGE_ADDR_MASK	PAGE_MASK
 
@@ -893,26 +896,26 @@ error:
 
 #ifdef CONFIG_MSM_KGSL_MMU
 
-unsigned int kgsl_virtaddr_to_physaddr(unsigned int virtaddr)
+unsigned int kgsl_virtaddr_to_physaddr(void *virtaddr)
 {
 	unsigned int physaddr = 0;
 	pgd_t *pgd_ptr = NULL;
 	pmd_t *pmd_ptr = NULL;
 	pte_t *pte_ptr = NULL, pte;
 
-	pgd_ptr = pgd_offset(current->mm, virtaddr);
+	pgd_ptr = pgd_offset(current->mm, (unsigned long) virtaddr);
 	if (pgd_none(*pgd) || pgd_bad(*pgd)) {
 		KGSL_CORE_ERR("Invalid pgd entry\n");
 		return 0;
 	}
 
-	pmd_ptr = pmd_offset(pgd_ptr, virtaddr);
+	pmd_ptr = pmd_offset(pgd_ptr, (unsigned long) virtaddr);
 	if (pmd_none(*pmd_ptr) || pmd_bad(*pmd_ptr)) {
 		KGSL_CORE_ERR("Invalid pmd entry\n");
 		return 0;
 	}
 
-	pte_ptr = pte_offset_map(pmd_ptr, virtaddr);
+	pte_ptr = pte_offset_map(pmd_ptr, (unsigned long) virtaddr);
 	if (!pte_ptr) {
 		KGSL_CORE_ERR("pt_offset_map failed\n");
 		return 0;
@@ -926,58 +929,31 @@ unsigned int kgsl_virtaddr_to_physaddr(unsigned int virtaddr)
 
 int
 kgsl_mmu_map(struct kgsl_pagetable *pagetable,
-				unsigned int address,
-				int range,
-				unsigned int protflags,
-				unsigned int *gpuaddr,
-				unsigned int flags)
+				struct kgsl_memdesc *memdesc,
+				unsigned int protflags)
 {
 	int numpages;
 	unsigned int pte, ptefirst, ptelast, physaddr;
-	int flushtlb, alloc_size;
-	unsigned int align = flags & KGSL_MEMFLAGS_ALIGN_MASK;
+	int flushtlb;
+	unsigned int offset = 0;
 
 	BUG_ON(protflags & ~(GSL_PT_PAGE_RV | GSL_PT_PAGE_WV));
 	BUG_ON(protflags == 0);
-	BUG_ON(range <= 0);
 
-	/* Only support 4K and 8K alignment for now */
-	if (align != KGSL_MEMFLAGS_ALIGN8K && align != KGSL_MEMFLAGS_ALIGN4K) {
-		KGSL_CORE_ERR("invalid flags: %x\n", flags);
-		return -EINVAL;
-	}
+	memdesc->gpuaddr = gen_pool_alloc_aligned(pagetable->pool,
+		memdesc->size, KGSL_MMU_ALIGN_SHIFT);
 
-	/* Make sure address being mapped is at 4K boundary */
-	if (!IS_ALIGNED(address, PAGE_SIZE) || range & ~PAGE_MASK) {
-		KGSL_CORE_ERR("address %x not aligned\n", address);
-		return -EINVAL;
-	}
-	alloc_size = range;
-	if (align == KGSL_MEMFLAGS_ALIGN8K)
-		alloc_size += PAGE_SIZE;
-
-	*gpuaddr = gen_pool_alloc(pagetable->pool, alloc_size);
-	if (*gpuaddr == 0) {
-		KGSL_CORE_ERR("gen_pool_alloc(%d) failed\n", alloc_size);
+	if (memdesc->gpuaddr == 0) {
+		KGSL_CORE_ERR("gen_pool_alloc(%d) failed\n", memdesc->size);
 		KGSL_CORE_ERR(" [%d] allocated=%d, entries=%d\n",
 				pagetable->name, pagetable->stats.mapped,
 				pagetable->stats.entries);
 		return -ENOMEM;
 	}
 
-	if (align == KGSL_MEMFLAGS_ALIGN8K) {
-		if (*gpuaddr & ((1 << 13) - 1)) {
-			/* Not 8k aligned, align it */
-			gen_pool_free(pagetable->pool, *gpuaddr, PAGE_SIZE);
-			*gpuaddr = *gpuaddr + PAGE_SIZE;
-		} else
-			gen_pool_free(pagetable->pool, *gpuaddr + range,
-				      PAGE_SIZE);
-	}
+	numpages = (memdesc->size >> PAGE_SHIFT);
 
-	numpages = (range >> PAGE_SHIFT);
-
-	ptefirst = kgsl_pt_entry_get(pagetable, *gpuaddr);
+	ptefirst = kgsl_pt_entry_get(pagetable, memdesc->gpuaddr);
 	ptelast = ptefirst + numpages;
 
 	pte = ptefirst;
@@ -990,7 +966,7 @@ kgsl_mmu_map(struct kgsl_pagetable *pagetable,
 		flushtlb = 1;
 
 	spin_lock(&pagetable->lock);
-	for (pte = ptefirst; pte < ptelast; pte++) {
+	for (pte = ptefirst; pte < ptelast; pte++, offset += PAGE_SIZE) {
 #ifdef VERBOSE_DEBUG
 		/* check if PTE exists */
 		uint32_t val = kgsl_pt_map_getaddr(pagetable, pte);
@@ -1000,30 +976,10 @@ kgsl_mmu_map(struct kgsl_pagetable *pagetable,
 			if (GSL_TLBFLUSH_FILTER_ISDIRTY(pte / GSL_PT_SUPER_PTE))
 				flushtlb = 1;
 		/* mark pte as in use */
-		if (flags & KGSL_MEMFLAGS_CONPHYS)
-			physaddr = address;
-		else if (flags & KGSL_MEMFLAGS_VMALLOC_MEM) {
-			physaddr = vmalloc_to_pfn((void *)address);
-			physaddr <<= PAGE_SHIFT;
-		} else if (flags & KGSL_MEMFLAGS_HOSTADDR)
-			physaddr = kgsl_virtaddr_to_physaddr(address);
-		else
-			physaddr = 0;
 
-		if (physaddr) {
-			kgsl_pt_map_set(pagetable, pte, physaddr | protflags);
-		} else {
-			KGSL_CORE_ERR("Unable to find physaddr for"
-				"address: %x\n", address);
-			spin_unlock(&pagetable->lock);
-			/* Increase the stats here for proper accounting in
-			kgsl_mmu_unmap */
-			pagetable->stats.entries += 1;
-			pagetable->stats.mapped += alloc_size;
-			kgsl_mmu_unmap(pagetable, *gpuaddr, range);
-			return -EFAULT;
-		}
-		address += PAGE_SIZE;
+		physaddr = memdesc->ops->physaddr(memdesc, offset);
+		BUG_ON(physaddr == 0);
+		kgsl_pt_map_set(pagetable, pte, physaddr | protflags);
 	}
 
 	/* Keep track of the statistics for the sysfs files */
@@ -1031,7 +987,7 @@ kgsl_mmu_map(struct kgsl_pagetable *pagetable,
 	KGSL_STATS_ADD(1, pagetable->stats.entries,
 		       pagetable->stats.max_entries);
 
-	KGSL_STATS_ADD(alloc_size, pagetable->stats.mapped,
+	KGSL_STATS_ADD(memdesc->size, pagetable->stats.mapped,
 		       pagetable->stats.max_mapped);
 
 	mb();
@@ -1049,13 +1005,21 @@ kgsl_mmu_map(struct kgsl_pagetable *pagetable,
 }
 
 int
-kgsl_mmu_unmap(struct kgsl_pagetable *pagetable, unsigned int gpuaddr,
-		int range)
+kgsl_mmu_unmap(struct kgsl_pagetable *pagetable,
+		struct kgsl_memdesc *memdesc)
 {
 	unsigned int numpages;
 	unsigned int pte, ptefirst, ptelast, superpte;
+	unsigned int range = memdesc->size;
 
-	BUG_ON(range <= 0);
+	/* All GPU addresses as assigned are page aligned, but some
+	   functions purturb the gpuaddr with an offset, so apply the
+	   mask here to make sure we have the right address */
+
+	unsigned int gpuaddr = memdesc->gpuaddr &  KGSL_MMU_ALIGN_MASK;
+
+	if (range == 0 || gpuaddr == 0)
+		return 0;
 
 	numpages = (range >> PAGE_SHIFT);
 	if (range & (PAGE_SIZE - 1))
@@ -1093,8 +1057,7 @@ kgsl_mmu_unmap(struct kgsl_pagetable *pagetable, unsigned int gpuaddr,
 #endif /*CONFIG_MSM_KGSL_MMU*/
 
 int kgsl_mmu_map_global(struct kgsl_pagetable *pagetable,
-			struct kgsl_memdesc *memdesc, unsigned int protflags,
-			unsigned int flags)
+			struct kgsl_memdesc *memdesc, unsigned int protflags)
 {
 	int result = -EINVAL;
 	unsigned int gpuaddr = 0;
@@ -1104,24 +1067,22 @@ int kgsl_mmu_map_global(struct kgsl_pagetable *pagetable,
 		goto error;
 	}
 
-	result = kgsl_mmu_map(pagetable, memdesc->physaddr, memdesc->size,
-				protflags, &gpuaddr, flags);
+	gpuaddr = memdesc->gpuaddr;
+
+	result = kgsl_mmu_map(pagetable, memdesc, protflags);
 	if (result)
 		goto error;
 
 	/*global mappings must have the same gpu address in all pagetables*/
-	if (memdesc->gpuaddr == 0)
-		memdesc->gpuaddr = gpuaddr;
-
-	else if (memdesc->gpuaddr != gpuaddr) {
+	if (gpuaddr && gpuaddr != memdesc->gpuaddr) {
 		KGSL_CORE_ERR("pt %p addr mismatch phys 0x%08x"
 			"gpu 0x%0x 0x%08x", pagetable, memdesc->physaddr,
-			memdesc->gpuaddr, gpuaddr);
+			gpuaddr, memdesc->gpuaddr);
 		goto error_unmap;
 	}
 	return result;
 error_unmap:
-	kgsl_mmu_unmap(pagetable, gpuaddr, memdesc->size);
+	kgsl_mmu_unmap(pagetable, memdesc);
 error:
 	return result;
 }

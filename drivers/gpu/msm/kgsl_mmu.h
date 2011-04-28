@@ -187,16 +187,13 @@ static inline unsigned int kgsl_pt_get_flags(struct kgsl_pagetable *pt,
 
 #ifdef CONFIG_MSM_KGSL_MMU
 int kgsl_mmu_map(struct kgsl_pagetable *pagetable,
-		 unsigned int address,
-		 int range,
-		 unsigned int protflags,
-		 unsigned int *gpuaddr,
-		 unsigned int flags);
+		 struct kgsl_memdesc *memdesc,
+		 unsigned int protflags);
 
 int kgsl_mmu_unmap(struct kgsl_pagetable *pagetable,
-					unsigned int gpuaddr, int range);
+		   struct kgsl_memdesc *memdesc);
 
-unsigned int kgsl_virtaddr_to_physaddr(unsigned int virtaddr);
+unsigned int kgsl_virtaddr_to_physaddr(void *virtaddr);
 
 void kgsl_ptpool_destroy(struct kgsl_ptpool *pool);
 
@@ -210,18 +207,16 @@ kgsl_mmu_isenabled(struct kgsl_mmu *mmu)
 
 #else
 static inline int kgsl_mmu_map(struct kgsl_pagetable *pagetable,
-		 unsigned int address,
-		 int range,
+		 struct kgsl_memdesc *memdesc,
 		 unsigned int protflags,
-		 unsigned int *gpuaddr,
 		 unsigned int flags)
 {
-	*gpuaddr = address;
+	memdesc->gpuaddr = memdesc->physaddr;
 	return 0;
 }
 
 static inline int kgsl_mmu_unmap(struct kgsl_pagetable *pagetable,
-					unsigned int gpuaddr, int range)
+				 struct kgsl_memdesc *memdesc)
 { return 0; }
 
 static inline int kgsl_mmu_isenabled(struct kgsl_mmu *mmu) { return 0; }
@@ -237,8 +232,7 @@ static inline void kgsl_ptpool_free(struct kgsl_ptpool *pool) { }
 #endif
 
 int kgsl_mmu_map_global(struct kgsl_pagetable *pagetable,
-			struct kgsl_memdesc *memdesc, unsigned int protflags,
-			unsigned int flags);
+			struct kgsl_memdesc *memdesc, unsigned int protflags);
 
 int kgsl_mmu_querystats(struct kgsl_pagetable *pagetable,
 			struct kgsl_ptstats *stats);

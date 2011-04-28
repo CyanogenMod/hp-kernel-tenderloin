@@ -35,36 +35,23 @@ struct kgsl_pagetable;
 struct kgsl_device;
 struct kgsl_process_private;
 
-/* Memflags for caching operations */
-#define KGSL_MEMFLAGS_CACHE_INV		0x00000001
-#define KGSL_MEMFLAGS_CACHE_FLUSH	0x00000002
-#define KGSL_MEMFLAGS_CACHE_CLEAN	0x00000004
-#define KGSL_MEMFLAGS_CACHE_MASK	0x0000000F
+#define KGSL_CACHE_OP_INV       0x01
+#define KGSL_CACHE_OP_FLUSH     0x02
+#define KGSL_CACHE_OP_CLEAN     0x03
 
-/* Flags to differentiate memory types */
-#define KGSL_MEMFLAGS_CONPHYS 	0x00001000
-#define KGSL_MEMFLAGS_VMALLOC_MEM	0x00002000
-#define KGSL_MEMFLAGS_HOSTADDR		0x00004000
+/** memdesc->priv flags */
 
-#define KGSL_MEMFLAGS_ALIGNANY	0x00000000
-#define KGSL_MEMFLAGS_ALIGN32	0x00000000
-#define KGSL_MEMFLAGS_ALIGN64	0x00060000
-#define KGSL_MEMFLAGS_ALIGN128	0x00070000
-#define KGSL_MEMFLAGS_ALIGN256	0x00080000
-#define KGSL_MEMFLAGS_ALIGN512	0x00090000
-#define KGSL_MEMFLAGS_ALIGN1K	0x000A0000
-#define KGSL_MEMFLAGS_ALIGN2K	0x000B0000
-#define KGSL_MEMFLAGS_ALIGN4K	0x000C0000
-#define KGSL_MEMFLAGS_ALIGN8K	0x000D0000
-#define KGSL_MEMFLAGS_ALIGN16K	0x000E0000
-#define KGSL_MEMFLAGS_ALIGN32K	0x000F0000
-#define KGSL_MEMFLAGS_ALIGN64K	0x00100000
-#define KGSL_MEMFLAGS_ALIGNPAGE	KGSL_MEMFLAGS_ALIGN4K
+/** Set if the memdesc describes cached memory */
+#define KGSL_MEMFLAGS_CACHED    0x00000001
 
+struct kgsl_memdesc;
 
-#define KGSL_MEMFLAGS_ALIGN_MASK 	0x00FF0000
-#define KGSL_MEMFLAGS_ALIGN_SHIFT	16
-
+struct kgsl_memdesc_ops {
+	unsigned long (*physaddr)(struct kgsl_memdesc *memdesc,
+		unsigned int offset);
+	void (*outer_cache)(struct kgsl_memdesc *memdesc, int op);
+	void (*free)(struct kgsl_memdesc *memdesc);
+};
 
 /* shared memory allocation */
 struct kgsl_memdesc {
@@ -74,10 +61,19 @@ struct kgsl_memdesc {
 	unsigned int physaddr;
 	unsigned int size;
 	unsigned int priv;
+	struct kgsl_memdesc_ops *ops;
 };
+
+extern struct kgsl_memdesc_ops kgsl_vmalloc_ops;
+extern struct kgsl_memdesc_ops kgsl_contig_ops;
+extern struct kgsl_memdesc_ops kgsl_userptr_ops;
 
 int kgsl_sharedmem_vmalloc(struct kgsl_memdesc *memdesc,
 			   struct kgsl_pagetable *pagetable, size_t size);
+
+int kgsl_sharedmem_vmalloc_user(struct kgsl_memdesc *memdesc,
+				struct kgsl_pagetable *pagetable,
+				size_t size, int flags);
 
 int kgsl_sharedmem_alloc_coherent(struct kgsl_memdesc *memdesc, size_t size);
 
@@ -97,8 +93,7 @@ int kgsl_sharedmem_set(const struct kgsl_memdesc *memdesc,
 			unsigned int offsetbytes, unsigned int value,
 			unsigned int sizebytes);
 
-void kgsl_cache_range_op(unsigned long addr, int size,
-			 unsigned int flags);
+void kgsl_cache_range_op(struct kgsl_memdesc *memdesc, int op);
 
 void kgsl_process_init_sysfs(struct kgsl_process_private *private);
 void kgsl_process_uninit_sysfs(struct kgsl_process_private *private);
