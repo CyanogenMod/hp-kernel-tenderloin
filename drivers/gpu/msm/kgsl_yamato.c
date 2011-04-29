@@ -636,11 +636,11 @@ static int kgsl_yamato_start(struct kgsl_device *device, unsigned int init_ram)
 #ifdef CONFIG_KGSL_PER_PROCESS_PAGE_TABLE
 	pr_info("kgsl: initialized dev=%d mmu=%s "
 		"per_process_pagetable=on\n",
-		device->id, kgsl_mmu_isenabled(&device->mmu) ? "on" : "off");
+		device->id, kgsl_mmu_enabled() ? "on" : "off");
 #else
 	pr_info("kgsl: initialized dev=%d mmu=%s "
 		"per_process_pagetable=off\n",
-		device->id, kgsl_mmu_isenabled(&device->mmu) ? "on" : "off");
+		device->id, kgsl_mmu_enabled() ? "on" : "off");
 #endif
 	return status;
 
@@ -832,7 +832,7 @@ static int kgsl_yamato_getproperty(struct kgsl_device *device,
 			memset(&devinfo, 0, sizeof(devinfo));
 			devinfo.device_id = device->id+1;
 			devinfo.chip_id = device->chip_id;
-			devinfo.mmu_enabled = kgsl_mmu_isenabled(&device->mmu);
+			devinfo.mmu_enabled = kgsl_mmu_enabled();
 			devinfo.gmem_hostbaseaddr = (unsigned int)
 					yamato_device->gmemspace.mmio_virt_base;
 			devinfo.gmem_gpubaseaddr = yamato_device->gmemspace.

@@ -442,7 +442,7 @@ static int kgsl_g12_getproperty(struct kgsl_device *device,
 		memset(&devinfo, 0, sizeof(devinfo));
 		devinfo.device_id = device->id+1;
 		devinfo.chip_id = device->chip_id;
-		devinfo.mmu_enabled = kgsl_mmu_isenabled(&device->mmu);
+		devinfo.mmu_enabled = kgsl_mmu_enabled();
 
 		if (copy_to_user(value, &devinfo, sizeof(devinfo)) !=
 				0) {

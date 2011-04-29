@@ -35,10 +35,6 @@ struct dentry *kgsl_debugfs_dir;
 
 unsigned int kgsl_cff_dump_enable;
 
-#ifdef CONFIG_MSM_KGSL_MMU
-unsigned int kgsl_cache_enable;
-#endif
-
 static uint32_t kgsl_ib_base;
 static uint32_t kgsl_ib_size;
 
@@ -93,23 +89,6 @@ void kgsl_device_log_init(struct kgsl_device *device)
 }
 
 #ifdef CONFIG_DEBUG_FS
-
-#ifdef CONFIG_MSM_KGSL_MMU
-static int kgsl_cache_enable_set(void *data, u64 val)
-{
-	kgsl_cache_enable = (val != 0);
-	return 0;
-}
-
-static int kgsl_cache_enable_get(void *data, u64 *val)
-{
-	*val = kgsl_cache_enable;
-	return 0;
-}
-
-DEFINE_SIMPLE_ATTRIBUTE(kgsl_cache_enable_fops, kgsl_cache_enable_get,
-			kgsl_cache_enable_set, "%llu\n");
-#endif /*CONFIG_MSM_KGSL_MMU*/
 
 static int kgsl_cff_dump_enable_set(void *data, u64 val)
 {
@@ -495,23 +474,3 @@ int kgsl_yamato_debugfs_init(struct kgsl_device *device)
 	return 0;
 }
 #endif
-
-#ifdef CONFIG_DEBUG_FS
-int kgsl_debug_init(struct dentry *dir)
-{
-	if (!dir || IS_ERR(dir))
-		return 0;
-
-#ifdef CONFIG_MSM_KGSL_MMU
-	debugfs_create_file("cache_enable", 0644, dir, 0,
-				&kgsl_cache_enable_fops);
-#endif
-
-	return 0;
-}
-#else
-int kgsl_debug_init(struct dentry *dir)
-{
-	return 0;
-}
-#endif /* CONFIG_DEBUG_FS */

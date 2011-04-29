@@ -790,6 +790,9 @@ kgsl_gem_map(struct drm_gem_object *obj)
 static int
 kgsl_gem_map(struct drm_gem_object *obj)
 {
+	struct drm_kgsl_gem_object *priv = obj->driver_private;
+	int index;
+
 	if (TYPE_IS_PMEM(priv->type)) {
 		for (index = 0; index < priv->bufcount; index++)
 			priv->bufs[index].gpuaddr =

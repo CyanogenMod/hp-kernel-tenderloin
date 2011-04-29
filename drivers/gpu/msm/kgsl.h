@@ -73,9 +73,13 @@
 #define KGSL_PAGETABLE_ENTRIES(_sz) (((_sz) >> PAGE_SHIFT) + \
 				     KGSL_PT_EXTRA_ENTRIES)
 
+#ifdef CONFIG_MSM_KGSL_MMU
 #define KGSL_PAGETABLE_SIZE \
 ALIGN(KGSL_PAGETABLE_ENTRIES(CONFIG_MSM_KGSL_PAGE_TABLE_SIZE) * \
 KGSL_PAGETABLE_ENTRY_SIZE, PAGE_SIZE)
+#else
+#define KGSL_PAGETABLE_SIZE 0
+#endif
 
 #ifdef CONFIG_KGSL_PER_PROCESS_PAGE_TABLE
 #define KGSL_PAGETABLE_COUNT (CONFIG_MSM_KGSL_PAGE_TABLE_COUNT)
@@ -199,10 +203,6 @@ static inline void kgsl_regwrite_isr(struct kgsl_device *device,
 }
 
 int kgsl_check_timestamp(struct kgsl_device *device, unsigned int timestamp);
-
-int kgsl_setup_pt(struct kgsl_pagetable *);
-
-int kgsl_cleanup_pt(struct kgsl_pagetable *);
 
 int kgsl_register_ts_notifier(struct kgsl_device *device,
 			      struct notifier_block *nb);

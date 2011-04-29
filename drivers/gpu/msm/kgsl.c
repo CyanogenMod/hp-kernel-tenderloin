@@ -244,19 +244,6 @@ static void kgsl_check_idle(struct kgsl_device *device)
 	mutex_unlock(&device->mutex);
 }
 
-static void kgsl_clean_cache_all(struct kgsl_process_private *private)
-{
-	struct kgsl_mem_entry *entry = NULL;
-
-	spin_lock(&private->mem_lock);
-	list_for_each_entry(entry, &private->mem_list, list) {
-		if (entry->memdesc.priv & KGSL_MEMFLAGS_CACHED)
-			kgsl_cache_range_op(&entry->memdesc,
-					    KGSL_CACHE_OP_CLEAN);
-	}
-	spin_unlock(&private->mem_lock);
-}
-
 struct kgsl_device *kgsl_get_device(int dev_idx)
 {
 	int i;
@@ -336,42 +323,6 @@ int kgsl_idle(struct kgsl_device *device, unsigned int timeout)
 		status = device->ftbl.device_idle(device, timeout);
 
 	return status;
-}
-
-
-int kgsl_setup_pt(struct kgsl_pagetable *pt)
-{
-	int i = 0;
-	int status = 0;
-
-	for (i = 0; i < KGSL_DEVICE_MAX; i++) {
-		struct kgsl_device *device = kgsl_driver.devp[i];
-		if (device) {
-			status = device->ftbl.device_setup_pt(device, pt);
-			if (status)
-				goto error_pt;
-		}
-	}
-	return status;
-error_pt:
-	while (i >= 0) {
-		struct kgsl_device *device = kgsl_driver.devp[i];
-		if (device)
-			device->ftbl.device_cleanup_pt(device, pt);
-		i--;
-	}
-	return status;
-}
-
-int kgsl_cleanup_pt(struct kgsl_pagetable *pt)
-{
-	int i;
-	for (i = 0; i < KGSL_DEVICE_MAX; i++) {
-		struct kgsl_device *device = kgsl_driver.devp[i];
-		if (device)
-			device->ftbl.device_cleanup_pt(device, pt);
-	}
-	return 0;
 }
 
 int kgsl_suspend_device(struct kgsl_device *device, pm_message_t state)
@@ -617,11 +568,7 @@ kgsl_put_process_private(struct kgsl_device *device,
 		kgsl_mem_entry_put(entry);
 	}
 
-#ifdef CONFIG_MSM_KGSL_MMU
-	if (private->pagetable != NULL)
-		kgsl_mmu_putpagetable(private->pagetable);
-#endif
-
+	kgsl_mmu_putpagetable(private->pagetable);
 	kfree(private);
 unlock:
 	mutex_unlock(&kgsl_driver.process_mutex);
@@ -997,10 +944,6 @@ static long kgsl_ioctl_rb_issueibcmds(struct kgsl_device_private *dev_priv,
 	struct kgsl_ibdesc *ibdesc;
 	struct kgsl_context *context;
 
-#ifdef CONFIG_MSM_KGSL_MMU
-	if (kgsl_cache_enable)
-		kgsl_clean_cache_all(dev_priv->process_priv);
-#endif
 #ifdef CONFIG_MSM_KGSL_DRM
 	kgsl_gpu_mem_flush(DRM_KGSL_GEM_CACHE_OP_TO_DEV);
 #endif
@@ -1235,7 +1178,7 @@ kgsl_ioctl_sharedmem_from_vmalloc(struct kgsl_device_private *dev_priv,
 	struct kgsl_mem_entry *entry = NULL;
 	struct vm_area_struct *vma;
 
-	if (!kgsl_mmu_isenabled(&dev_priv->device->mmu))
+	if (!kgsl_mmu_enabled())
 		return -ENODEV;
 
 	/* Make sure all pending freed memory is collected */
@@ -1271,8 +1214,7 @@ kgsl_ioctl_sharedmem_from_vmalloc(struct kgsl_device_private *dev_priv,
 	if (result != 0)
 		goto error_free_entry;
 
-	if (!kgsl_cache_enable)
-		vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
+	vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
 
 	result = remap_vmalloc_range(vma, (void *) entry->memdesc.hostptr, 0);
 	if (result) {
@@ -1510,11 +1452,13 @@ static long kgsl_ioctl_map_user_mem(struct kgsl_device_private *dev_priv,
 		break;
 
 	case KGSL_USER_MEM_TYPE_ADDR:
-#ifndef CONFIG_MSM_KGSL_MMU
-		KGSL_DRV_ERR(dev_priv->device,
-			"Cannot map paged memory with the MMU disabled\n");
-		break;
-#endif
+		if (!kgsl_mmu_enabled()) {
+			KGSL_DRV_ERR(dev_priv->device,
+				"Cannot map paged memory with the "
+				"MMU disabled\n");
+			break;
+		}
+
 		if (param->hostptr == 0)
 			break;
 
@@ -1524,11 +1468,13 @@ static long kgsl_ioctl_map_user_mem(struct kgsl_device_private *dev_priv,
 		break;
 
 	case KGSL_USER_MEM_TYPE_ASHMEM:
-#ifndef CONFIG_MSM_KGSL_MMU
-		KGSL_DRV_ERR(dev_priv->device,
-			"Cannot map paged memory with the MMU disabled\n");
-		break;
-#endif
+		if (!kgsl_mmu_enabled()) {
+			KGSL_DRV_ERR(dev_priv->device,
+				"Cannot map paged memory with the "
+				"MMU disabled\n");
+			break;
+		}
+
 		if (param->hostptr == 0)
 			break;
 
@@ -1584,9 +1530,6 @@ kgsl_ioctl_sharedmem_flush_cache(struct kgsl_device_private *dev_priv,
 	struct kgsl_mem_entry *entry;
 	struct kgsl_sharedmem_free *param = data;
 	struct kgsl_process_private *private = dev_priv->process_priv;
-
-	if (!kgsl_mmu_isenabled(&dev_priv->device->mmu))
-		return -ENODEV;
 
 	spin_lock(&private->mem_lock);
 	entry = kgsl_sharedmem_find(private, param->gpuaddr);
@@ -2189,7 +2132,6 @@ static int __init kgsl_core_init(void)
 				       &kgsl_driver.virtdev.kobj);
 
 	kgsl_debugfs_dir = debugfs_create_dir("kgsl", 0);
-	kgsl_debug_init(kgsl_debugfs_dir);
 
 	kgsl_sharedmem_init_sysfs();
 	kgsl_cffdump_init();
