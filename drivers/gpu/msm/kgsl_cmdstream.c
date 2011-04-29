@@ -30,7 +30,7 @@ int kgsl_cmdstream_close(struct kgsl_device *device)
 
 	list_for_each_entry_safe(entry, entry_tmp, &device->memqueue, list) {
 		list_del(&entry->list);
-		kgsl_destroy_mem_entry(entry);
+		kgsl_mem_entry_put(entry);
 	}
 	return 0;
 }

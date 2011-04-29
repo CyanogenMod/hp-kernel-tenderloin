@@ -360,6 +360,31 @@ static void kgsl_vmalloc_outer_cache(struct kgsl_memdesc *memdesc, int op)
 }
 #endif
 
+static int kgsl_vmalloc_vmfault(struct kgsl_memdesc *memdesc,
+				struct vm_area_struct *vma,
+				struct vm_fault *vmf)
+{
+	unsigned long offset, pg;
+	struct page *page;
+
+	offset = (unsigned long) vmf->virtual_address - vma->vm_start;
+	pg = (unsigned long) memdesc->hostptr + offset;
+
+	page = vmalloc_to_page((void *) pg);
+	if (page == NULL)
+		return VM_FAULT_SIGBUS;
+
+	get_page(page);
+
+	vmf->page = page;
+	return 0;
+}
+
+static int kgsl_vmalloc_vmflags(struct kgsl_memdesc *memdesc)
+{
+	return VM_RESERVED | VM_DONTEXPAND;
+}
+
 static void kgsl_vmalloc_free(struct kgsl_memdesc *memdesc)
 {
 	kgsl_driver.stats.vmalloc -= memdesc->size;
@@ -411,6 +436,8 @@ static unsigned long kgsl_userptr_physaddr(struct kgsl_memdesc *memdesc,
 struct kgsl_memdesc_ops kgsl_vmalloc_ops = {
 	.physaddr = kgsl_vmalloc_physaddr,
 	.free = kgsl_vmalloc_free,
+	.vmflags = kgsl_vmalloc_vmflags,
+	.vmfault = kgsl_vmalloc_vmfault,
 #ifdef CONFIG_OUTER_CACHE
 	.outer_cache = kgsl_vmalloc_outer_cache,
 #endif

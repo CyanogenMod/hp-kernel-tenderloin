@@ -142,6 +142,7 @@ extern struct kgsl_driver kgsl_driver;
 #define KGSL_EXTERNAL_MEMORY 1
 
 struct kgsl_mem_entry {
+	struct kref refcount;
 	struct kgsl_memdesc memdesc;
 	int memtype;
 	struct file *file_ptr;
@@ -158,7 +159,7 @@ struct kgsl_mem_entry {
 #define MMU_CONFIG 1
 #endif
 
-void kgsl_destroy_mem_entry(struct kgsl_mem_entry *entry);
+void kgsl_mem_entry_destroy(struct kref *kref);
 uint8_t *kgsl_gpuaddr_to_vaddr(const struct kgsl_memdesc *memdesc,
 	unsigned int gpuaddr, unsigned int *size);
 struct kgsl_mem_entry *kgsl_sharedmem_find_region(
@@ -265,6 +266,18 @@ static inline bool timestamp_cmp(unsigned int new, unsigned int old)
 {
 	int ts_diff = new - old;
 	return (ts_diff >= 0) || (ts_diff < -20000);
+}
+
+static inline void
+kgsl_mem_entry_get(struct kgsl_mem_entry *entry)
+{
+	kref_get(&entry->refcount);
+}
+
+static inline void
+kgsl_mem_entry_put(struct kgsl_mem_entry *entry)
+{
+	kref_put(&entry->refcount, kgsl_mem_entry_destroy);
 }
 
 #endif /* _GSL_DRIVER_H */

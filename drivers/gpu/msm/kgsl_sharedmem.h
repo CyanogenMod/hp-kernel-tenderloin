@@ -47,9 +47,11 @@ struct kgsl_process_private;
 struct kgsl_memdesc;
 
 struct kgsl_memdesc_ops {
-	unsigned long (*physaddr)(struct kgsl_memdesc *memdesc,
-		unsigned int offset);
-	void (*outer_cache)(struct kgsl_memdesc *memdesc, int op);
+	unsigned long (*physaddr)(struct kgsl_memdesc *, unsigned int);
+	void (*outer_cache)(struct kgsl_memdesc *, int);
+	int (*vmflags)(struct kgsl_memdesc *);
+	int (*vmfault)(struct kgsl_memdesc *, struct vm_area_struct *,
+		       struct vm_fault *);
 	void (*free)(struct kgsl_memdesc *memdesc);
 };
 
@@ -101,4 +103,11 @@ void kgsl_process_uninit_sysfs(struct kgsl_process_private *private);
 int kgsl_sharedmem_init_sysfs(void);
 void kgsl_sharedmem_uninit_sysfs(void);
 
+static inline int
+kgsl_allocate_user(struct kgsl_memdesc *memdesc,
+		struct kgsl_pagetable *pagetable,
+		size_t size, unsigned int flags)
+{
+	return kgsl_sharedmem_vmalloc_user(memdesc, pagetable, size, flags);
+}
 #endif /* __GSL_SHAREDMEM_H */
