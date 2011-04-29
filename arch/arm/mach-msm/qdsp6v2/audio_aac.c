@@ -81,6 +81,7 @@ struct timestamp {
 } __attribute__ ((packed));
 
 struct meta_in {
+	unsigned char reserved[18];
 	unsigned short offset;
 	struct timestamp ntimestamp;
 	unsigned int nflags;
@@ -96,6 +97,7 @@ struct meta_out_dsp{
 } __attribute__ ((packed));
 
 struct dec_meta_out{
+	unsigned int reserved[7];
 	unsigned int num_of_frames;
 	struct meta_out_dsp meta_out_dsp[];
 } __attribute__ ((packed));
@@ -204,7 +206,7 @@ static int insert_eos_buf(struct q6audio *audio,
 static void extract_meta_info(struct q6audio *audio,
 	struct audaac_buffer_node *buf_node, int dir)
 {
-	if (dir) { /* Read */
+	if (dir) { /* input buffer - Write */
 		if (audio->buf_cfg.meta_info_enable)
 			memcpy(&buf_node->meta_info.meta_in,
 			(char *)buf_node->kvaddr, sizeof(struct meta_in));
@@ -215,17 +217,19 @@ static void extract_meta_info(struct q6audio *audio,
 			buf_node->meta_info.meta_in.ntimestamp.highpart,
 			buf_node->meta_info.meta_in.ntimestamp.lowpart,
 			buf_node->meta_info.meta_in.nflags);
-	} else { /* Write */
+	} else { /* output buffer - Read */
 		memcpy((char *)buf_node->kvaddr,
-			&buf_node->meta_info.meta_out.num_of_frames,
-			sizeof(buf_node->meta_info.meta_out.num_of_frames));
-		pr_debug("o/p: msw_ts 0x%8x lsw_ts 0x%8x nflags 0x%8x\n",
+			&buf_node->meta_info.meta_out,
+			sizeof(struct dec_meta_out));
+		pr_debug("o/p: msw_ts 0x%8x lsw_ts 0x%8x nflags 0x%8x,"
+				 "num_frames = %d\n",
 		((struct dec_meta_out *)buf_node->kvaddr)->\
 			meta_out_dsp[0].msw_ts,
 		((struct dec_meta_out *)buf_node->kvaddr)->\
 			meta_out_dsp[0].lsw_ts,
 		((struct dec_meta_out *)buf_node->kvaddr)->\
-			meta_out_dsp[0].nflags);
+			meta_out_dsp[0].nflags,
+		((struct dec_meta_out *)buf_node->kvaddr)->num_of_frames);
 	}
 }
 
@@ -415,9 +419,9 @@ static void audaac_async_read(struct q6audio *audio,
 	ac = audio->ac;
 	/* Provide address so driver can append nr frames information */
 	param.paddr = buf_node->paddr +
-			sizeof(buf_node->meta_info.meta_out.num_of_frames);
+			sizeof(struct dec_meta_out);
 	param.len = buf_node->buf.buf_len -
-			sizeof(buf_node->meta_info.meta_out.num_of_frames);
+			sizeof(struct dec_meta_out);
 	param.uid = param.paddr;
 	/* Write command will populate paddr as token */
 	buf_node->token = param.paddr;
@@ -433,13 +437,14 @@ static void audaac_async_write(struct q6audio *audio,
 	struct audio_client *ac;
 	struct audio_aio_write_param param;
 
-	pr_debug("%s: Send write buff %p phy %lx len %d\n", __func__, buf_node,
-		 buf_node->paddr, buf_node->buf.data_len);
+	pr_debug("%s: Send write buff %p phy %lx len %d, meta_enable = %d\n",
+		__func__, buf_node, buf_node->paddr, buf_node->buf.data_len,
+		audio->buf_cfg.meta_info_enable);
 
 	ac = audio->ac;
 	/* Offset with  appropriate meta */
-	param.paddr = buf_node->paddr + buf_node->meta_info.meta_in.offset;
-	param.len = buf_node->buf.data_len - buf_node->meta_info.meta_in.offset;
+	param.paddr = buf_node->paddr + sizeof(struct meta_in);
+	param.len = buf_node->buf.data_len - sizeof(struct meta_in);
 	param.msw_ts = buf_node->meta_info.meta_in.ntimestamp.highpart;
 	param.lsw_ts = buf_node->meta_info.meta_in.ntimestamp.lowpart;
 	/* If no meta_info enaled, indicate no time stamp valid */
@@ -526,8 +531,8 @@ static void audaac_async_read_ack(struct q6audio *audio, uint32_t token,
 				payload[7];
 			event_payload.aio_buf.data_len = payload[2] + \
 			payload[3] + \
-			sizeof(filled_buf->meta_info.meta_out.num_of_frames);
-			pr_debug("nr of frames 0x%8x len=%x\n",
+			sizeof(struct dec_meta_out);
+			pr_debug("nr of frames 0x%8x len=%d\n",
 				filled_buf->meta_info.meta_out.num_of_frames,
 				event_payload.aio_buf.data_len);
 			extract_meta_info(audio, filled_buf, 0);
