@@ -81,8 +81,6 @@ int kgsl_sharedmem_alloc_coherent(struct kgsl_memdesc *memdesc, size_t size);
 
 void kgsl_sharedmem_free(struct kgsl_memdesc *memdesc);
 
-uint kgsl_get_physaddr(const struct kgsl_memdesc *memdesc);
-
 int kgsl_sharedmem_readl(const struct kgsl_memdesc *memdesc,
 			uint32_t *dst,
 			unsigned int offsetbytes);
