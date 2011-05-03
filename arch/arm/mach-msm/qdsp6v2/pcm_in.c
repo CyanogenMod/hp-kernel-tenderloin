@@ -30,7 +30,7 @@
 #include <mach/qdsp6v2/apr_audio.h>
 #include <mach/qdsp6v2/q6asm.h>
 
-#define MAX_BUF 2
+#define MAX_BUF 4
 #define BUFSZ (480 * 8)
 #define BUFFER_SIZE_MULTIPLE 4
 #define MIN_BUFFER_SIZE 160
