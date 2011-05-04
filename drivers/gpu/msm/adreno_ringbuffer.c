@@ -16,21 +16,15 @@
  *
  */
 #include <linux/firmware.h>
-#include <linux/io.h>
-#include <linux/sched.h>
-#include <linux/wait.h>
 #include <linux/slab.h>
 
 #include "kgsl.h"
-#include "kgsl_device.h"
-#include "kgsl_yamato.h"
-#include "kgsl_log.h"
-#include "kgsl_pm4types.h"
-#include "kgsl_ringbuffer.h"
-#include "kgsl_cmdstream.h"
-#include "kgsl_cffdump.h"
 
-#include "yamato_reg.h"
+#include "adreno.h"
+#include "adreno_pm4types.h"
+#include "adreno_ringbuffer.h"
+
+#include "a200_reg.h"
 
 #define VALID_STATUS_COUNT_MAX	10
 #define GSL_RB_NOP_SIZEDWORDS				2
@@ -155,7 +149,7 @@ void kgsl_cp_intrcallback(struct kgsl_device *device)
 		KGSL_CMD_WARN(rb->device, "ringbuffer ib1/rb interrupt\n");
 		wake_up_interruptible_all(&device->wait_queue);
 		atomic_notifier_call_chain(&(device->ts_notifier_list),
-					   KGSL_DEVICE_YAMATO,
+					   device->id,
 					   NULL);
 	}
 }
@@ -766,7 +760,7 @@ int kgsl_ringbuffer_extract(struct kgsl_ringbuffer *rb,
 
 	GSL_RB_GET_READPTR(rb, &rb->rptr);
 
-	retired_timestamp = device->ftbl.device_cmdstream_readtimestamp(
+	retired_timestamp = device->ftbl.device_readtimestamp(
 				device, KGSL_TIMESTAMP_RETIRED);
 	rmb();
 	KGSL_DRV_ERR(device, "GPU successfully executed till ts: %x\n",

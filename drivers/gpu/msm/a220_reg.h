@@ -1,4 +1,4 @@
-/* Copyright (c) 2002,2007-2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -26,15 +26,15 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  */
-#ifndef _KGSL_G12_VGV3TYPES_H
-#define _KGSL_G12_VGV3TYPES_H
+#ifndef __A205_REG_H
+#define __A205_REG_H
 
-#define VGV3_NEXTCMD_JUMP        0x01
+#define REG_LEIA_PC_INDX_OFFSET          REG_VGT_INDX_OFFSET
+#define REG_LEIA_PC_VERTEX_REUSE_BLOCK_CNTL REG_VGT_VERTEX_REUSE_BLOCK_CNTL
+#define REG_LEIA_PC_MAX_VTX_INDX         REG_VGT_MAX_VTX_INDX
+#define REG_LEIA_RB_LRZ_VSC_CONTROL	 0x2209
+#define REG_LEIA_GRAS_CONTROL            0x2210
+#define REG_LEIA_VSC_BIN_SIZE            0x0C01
+#define REG_LEIA_VSC_PIPE_DATA_LENGTH_7  0x0C1D
 
-#define VGV3_NEXTCMD_NEXTCMD_FSHIFT 12
-#define VGV3_NEXTCMD_NEXTCMD_FMASK 0x7
-
-#define VGV3_CONTROL_MARKADD_FSHIFT 0
-#define VGV3_CONTROL_MARKADD_FMASK 0xfff
-
-#endif	/* KGSL_G12_VGV3TYPES_H */
+#endif /*__A205_REG_H */

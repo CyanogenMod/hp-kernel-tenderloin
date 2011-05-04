@@ -1,4 +1,4 @@
-/* Copyright (c) 2002,2007-2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2002,2007-2011, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -26,112 +26,112 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  */
-#ifndef _YAMATO_REG_H
-#define _YAMATO_REG_H
+#ifndef __A200_REG_H
+#define __A200_REG_H
 
 enum VGT_EVENT_TYPE {
- VS_DEALLOC = 0,
- PS_DEALLOC = 1,
- VS_DONE_TS = 2,
- PS_DONE_TS = 3,
- CACHE_FLUSH_TS = 4,
- CONTEXT_DONE = 5,
- CACHE_FLUSH = 6,
- VIZQUERY_START = 7,
- VIZQUERY_END = 8,
- SC_WAIT_WC = 9,
- RST_PIX_CNT = 13,
- RST_VTX_CNT = 14,
- TILE_FLUSH = 15,
- CACHE_FLUSH_AND_INV_TS_EVENT = 20,
- ZPASS_DONE = 21,
- CACHE_FLUSH_AND_INV_EVENT = 22,
- PERFCOUNTER_START = 23,
- PERFCOUNTER_STOP = 24,
- VS_FETCH_DONE = 27,
- FACENESS_FLUSH = 28,
+	VS_DEALLOC = 0,
+	PS_DEALLOC = 1,
+	VS_DONE_TS = 2,
+	PS_DONE_TS = 3,
+	CACHE_FLUSH_TS = 4,
+	CONTEXT_DONE = 5,
+	CACHE_FLUSH = 6,
+	VIZQUERY_START = 7,
+	VIZQUERY_END = 8,
+	SC_WAIT_WC = 9,
+	RST_PIX_CNT = 13,
+	RST_VTX_CNT = 14,
+	TILE_FLUSH = 15,
+	CACHE_FLUSH_AND_INV_TS_EVENT = 20,
+	ZPASS_DONE = 21,
+	CACHE_FLUSH_AND_INV_EVENT = 22,
+	PERFCOUNTER_START = 23,
+	PERFCOUNTER_STOP = 24,
+	VS_FETCH_DONE = 27,
+	FACENESS_FLUSH = 28,
 };
 
 enum COLORFORMATX {
- COLORX_4_4_4_4 = 0,
- COLORX_1_5_5_5 = 1,
- COLORX_5_6_5 = 2,
- COLORX_8 = 3,
- COLORX_8_8 = 4,
- COLORX_8_8_8_8 = 5,
- COLORX_S8_8_8_8 = 6,
- COLORX_16_FLOAT = 7,
- COLORX_16_16_FLOAT = 8,
- COLORX_16_16_16_16_FLOAT = 9,
- COLORX_32_FLOAT = 10,
- COLORX_32_32_FLOAT = 11,
- COLORX_32_32_32_32_FLOAT = 12,
- COLORX_2_3_3 = 13,
- COLORX_8_8_8 = 14,
+	COLORX_4_4_4_4 = 0,
+	COLORX_1_5_5_5 = 1,
+	COLORX_5_6_5 = 2,
+	COLORX_8 = 3,
+	COLORX_8_8 = 4,
+	COLORX_8_8_8_8 = 5,
+	COLORX_S8_8_8_8 = 6,
+	COLORX_16_FLOAT = 7,
+	COLORX_16_16_FLOAT = 8,
+	COLORX_16_16_16_16_FLOAT = 9,
+	COLORX_32_FLOAT = 10,
+	COLORX_32_32_FLOAT = 11,
+	COLORX_32_32_32_32_FLOAT = 12,
+	COLORX_2_3_3 = 13,
+	COLORX_8_8_8 = 14,
 };
 
 enum SURFACEFORMAT {
- FMT_1_REVERSE                  = 0,
- FMT_1                          = 1,
- FMT_8                          = 2,
- FMT_1_5_5_5                    = 3,
- FMT_5_6_5                      = 4,
- FMT_6_5_5                      = 5,
- FMT_8_8_8_8                    = 6,
- FMT_2_10_10_10                 = 7,
- FMT_8_A                        = 8,
- FMT_8_B                        = 9,
- FMT_8_8                        = 10,
- FMT_Cr_Y1_Cb_Y0                = 11,
- FMT_Y1_Cr_Y0_Cb                = 12,
- FMT_5_5_5_1                    = 13,
- FMT_8_8_8_8_A                  = 14,
- FMT_4_4_4_4                    = 15,
- FMT_10_11_11                   = 16,
- FMT_11_11_10                   = 17,
- FMT_DXT1                       = 18,
- FMT_DXT2_3                     = 19,
- FMT_DXT4_5                     = 20,
- FMT_24_8                       = 22,
- FMT_24_8_FLOAT                 = 23,
- FMT_16                         = 24,
- FMT_16_16                      = 25,
- FMT_16_16_16_16                = 26,
- FMT_16_EXPAND                  = 27,
- FMT_16_16_EXPAND               = 28,
- FMT_16_16_16_16_EXPAND         = 29,
- FMT_16_FLOAT                   = 30,
- FMT_16_16_FLOAT                = 31,
- FMT_16_16_16_16_FLOAT          = 32,
- FMT_32                         = 33,
- FMT_32_32                      = 34,
- FMT_32_32_32_32                = 35,
- FMT_32_FLOAT                   = 36,
- FMT_32_32_FLOAT                = 37,
- FMT_32_32_32_32_FLOAT          = 38,
- FMT_32_AS_8                    = 39,
- FMT_32_AS_8_8                  = 40,
- FMT_16_MPEG                    = 41,
- FMT_16_16_MPEG                 = 42,
- FMT_8_INTERLACED               = 43,
- FMT_32_AS_8_INTERLACED         = 44,
- FMT_32_AS_8_8_INTERLACED       = 45,
- FMT_16_INTERLACED              = 46,
- FMT_16_MPEG_INTERLACED         = 47,
- FMT_16_16_MPEG_INTERLACED      = 48,
- FMT_DXN                        = 49,
- FMT_8_8_8_8_AS_16_16_16_16     = 50,
- FMT_DXT1_AS_16_16_16_16        = 51,
- FMT_DXT2_3_AS_16_16_16_16      = 52,
- FMT_DXT4_5_AS_16_16_16_16      = 53,
- FMT_2_10_10_10_AS_16_16_16_16  = 54,
- FMT_10_11_11_AS_16_16_16_16    = 55,
- FMT_11_11_10_AS_16_16_16_16    = 56,
- FMT_32_32_32_FLOAT             = 57,
- FMT_DXT3A                      = 58,
- FMT_DXT5A                      = 59,
- FMT_CTX1                       = 60,
- FMT_DXT3A_AS_1_1_1_1           = 61
+	FMT_1_REVERSE                  = 0,
+	FMT_1                          = 1,
+	FMT_8                          = 2,
+	FMT_1_5_5_5                    = 3,
+	FMT_5_6_5                      = 4,
+	FMT_6_5_5                      = 5,
+	FMT_8_8_8_8                    = 6,
+	FMT_2_10_10_10                 = 7,
+	FMT_8_A                        = 8,
+	FMT_8_B                        = 9,
+	FMT_8_8                        = 10,
+	FMT_Cr_Y1_Cb_Y0                = 11,
+	FMT_Y1_Cr_Y0_Cb                = 12,
+	FMT_5_5_5_1                    = 13,
+	FMT_8_8_8_8_A                  = 14,
+	FMT_4_4_4_4                    = 15,
+	FMT_10_11_11                   = 16,
+	FMT_11_11_10                   = 17,
+	FMT_DXT1                       = 18,
+	FMT_DXT2_3                     = 19,
+	FMT_DXT4_5                     = 20,
+	FMT_24_8                       = 22,
+	FMT_24_8_FLOAT                 = 23,
+	FMT_16                         = 24,
+	FMT_16_16                      = 25,
+	FMT_16_16_16_16                = 26,
+	FMT_16_EXPAND                  = 27,
+	FMT_16_16_EXPAND               = 28,
+	FMT_16_16_16_16_EXPAND         = 29,
+	FMT_16_FLOAT                   = 30,
+	FMT_16_16_FLOAT                = 31,
+	FMT_16_16_16_16_FLOAT          = 32,
+	FMT_32                         = 33,
+	FMT_32_32                      = 34,
+	FMT_32_32_32_32                = 35,
+	FMT_32_FLOAT                   = 36,
+	FMT_32_32_FLOAT                = 37,
+	FMT_32_32_32_32_FLOAT          = 38,
+	FMT_32_AS_8                    = 39,
+	FMT_32_AS_8_8                  = 40,
+	FMT_16_MPEG                    = 41,
+	FMT_16_16_MPEG                 = 42,
+	FMT_8_INTERLACED               = 43,
+	FMT_32_AS_8_INTERLACED         = 44,
+	FMT_32_AS_8_8_INTERLACED       = 45,
+	FMT_16_INTERLACED              = 46,
+	FMT_16_MPEG_INTERLACED         = 47,
+	FMT_16_16_MPEG_INTERLACED      = 48,
+	FMT_DXN                        = 49,
+	FMT_8_8_8_8_AS_16_16_16_16     = 50,
+	FMT_DXT1_AS_16_16_16_16        = 51,
+	FMT_DXT2_3_AS_16_16_16_16      = 52,
+	FMT_DXT4_5_AS_16_16_16_16      = 53,
+	FMT_2_10_10_10_AS_16_16_16_16  = 54,
+	FMT_10_11_11_AS_16_16_16_16    = 55,
+	FMT_11_11_10_AS_16_16_16_16    = 56,
+	FMT_32_32_32_FLOAT             = 57,
+	FMT_DXT3A                      = 58,
+	FMT_DXT5A                      = 59,
+	FMT_CTX1                       = 60,
+	FMT_DXT3A_AS_1_1_1_1           = 61
 };
 
 #define REG_PERF_MODE_CNT	0x0
@@ -213,10 +213,6 @@ union reg_cp_rb_cntl {
 #define SQ_INT_CNTL__PS_WATCHDOG_MASK                      0x00000001L
 #define SQ_INT_CNTL__VS_WATCHDOG_MASK                      0x00000002L
 
-#define MH_INTERRUPT_MASK__AXI_READ_ERROR                  0x00000001L
-#define MH_INTERRUPT_MASK__AXI_WRITE_ERROR                 0x00000002L
-#define MH_INTERRUPT_MASK__MMU_PAGE_FAULT                  0x00000004L
-
 #define RBBM_INT_CNTL__RDERR_INT_MASK                      0x00000001L
 #define RBBM_INT_CNTL__DISPLAY_UPDATE_INT_MASK             0x00000002L
 #define RBBM_INT_CNTL__GUI_IDLE_INT_MASK                   0x00080000L
@@ -260,41 +256,41 @@ union reg_cp_rb_cntl {
 #define RB_EDRAM_INFO__EDRAM_SIZE_MASK                     0x0000000fL
 #define RB_EDRAM_INFO__EDRAM_RANGE_MASK                    0xffffc000L
 
-#define	MH_ARBITER_CONFIG__SAME_PAGE_GRANULARITY__SHIFT    0x00000006
-#define	MH_ARBITER_CONFIG__L1_ARB_ENABLE__SHIFT            0x00000007
-#define	MH_ARBITER_CONFIG__L1_ARB_HOLD_ENABLE__SHIFT       0x00000008
-#define	MH_ARBITER_CONFIG__L2_ARB_CONTROL__SHIFT           0x00000009
-#define	MH_ARBITER_CONFIG__PAGE_SIZE__SHIFT                0x0000000a
-#define	MH_ARBITER_CONFIG__TC_REORDER_ENABLE__SHIFT        0x0000000d
-#define	MH_ARBITER_CONFIG__TC_ARB_HOLD_ENABLE__SHIFT       0x0000000e
-#define	MH_ARBITER_CONFIG__IN_FLIGHT_LIMIT_ENABLE__SHIFT   0x0000000f
-#define	MH_ARBITER_CONFIG__IN_FLIGHT_LIMIT__SHIFT          0x00000010
-#define	MH_ARBITER_CONFIG__CP_CLNT_ENABLE__SHIFT           0x00000016
-#define	MH_ARBITER_CONFIG__VGT_CLNT_ENABLE__SHIFT          0x00000017
-#define	MH_ARBITER_CONFIG__TC_CLNT_ENABLE__SHIFT           0x00000018
-#define	MH_ARBITER_CONFIG__RB_CLNT_ENABLE__SHIFT           0x00000019
-#define	MH_ARBITER_CONFIG__PA_CLNT_ENABLE__SHIFT           0x0000001a
+#define MH_ARBITER_CONFIG__SAME_PAGE_GRANULARITY__SHIFT    0x00000006
+#define MH_ARBITER_CONFIG__L1_ARB_ENABLE__SHIFT            0x00000007
+#define MH_ARBITER_CONFIG__L1_ARB_HOLD_ENABLE__SHIFT       0x00000008
+#define MH_ARBITER_CONFIG__L2_ARB_CONTROL__SHIFT           0x00000009
+#define MH_ARBITER_CONFIG__PAGE_SIZE__SHIFT                0x0000000a
+#define MH_ARBITER_CONFIG__TC_REORDER_ENABLE__SHIFT        0x0000000d
+#define MH_ARBITER_CONFIG__TC_ARB_HOLD_ENABLE__SHIFT       0x0000000e
+#define MH_ARBITER_CONFIG__IN_FLIGHT_LIMIT_ENABLE__SHIFT   0x0000000f
+#define MH_ARBITER_CONFIG__IN_FLIGHT_LIMIT__SHIFT          0x00000010
+#define MH_ARBITER_CONFIG__CP_CLNT_ENABLE__SHIFT           0x00000016
+#define MH_ARBITER_CONFIG__VGT_CLNT_ENABLE__SHIFT          0x00000017
+#define MH_ARBITER_CONFIG__TC_CLNT_ENABLE__SHIFT           0x00000018
+#define MH_ARBITER_CONFIG__RB_CLNT_ENABLE__SHIFT           0x00000019
+#define MH_ARBITER_CONFIG__PA_CLNT_ENABLE__SHIFT           0x0000001a
 
-#define	MH_MMU_CONFIG__RB_W_CLNT_BEHAVIOR__SHIFT           0x00000004
-#define	MH_MMU_CONFIG__CP_W_CLNT_BEHAVIOR__SHIFT           0x00000006
-#define	MH_MMU_CONFIG__CP_R0_CLNT_BEHAVIOR__SHIFT          0x00000008
-#define	MH_MMU_CONFIG__CP_R1_CLNT_BEHAVIOR__SHIFT          0x0000000a
-#define	MH_MMU_CONFIG__CP_R2_CLNT_BEHAVIOR__SHIFT          0x0000000c
-#define	MH_MMU_CONFIG__CP_R3_CLNT_BEHAVIOR__SHIFT          0x0000000e
-#define	MH_MMU_CONFIG__CP_R4_CLNT_BEHAVIOR__SHIFT          0x00000010
-#define	MH_MMU_CONFIG__VGT_R0_CLNT_BEHAVIOR__SHIFT         0x00000012
-#define	MH_MMU_CONFIG__VGT_R1_CLNT_BEHAVIOR__SHIFT         0x00000014
-#define	MH_MMU_CONFIG__TC_R_CLNT_BEHAVIOR__SHIFT           0x00000016
-#define	MH_MMU_CONFIG__PA_W_CLNT_BEHAVIOR__SHIFT           0x00000018
+#define MH_MMU_CONFIG__RB_W_CLNT_BEHAVIOR__SHIFT           0x00000004
+#define MH_MMU_CONFIG__CP_W_CLNT_BEHAVIOR__SHIFT           0x00000006
+#define MH_MMU_CONFIG__CP_R0_CLNT_BEHAVIOR__SHIFT          0x00000008
+#define MH_MMU_CONFIG__CP_R1_CLNT_BEHAVIOR__SHIFT          0x0000000a
+#define MH_MMU_CONFIG__CP_R2_CLNT_BEHAVIOR__SHIFT          0x0000000c
+#define MH_MMU_CONFIG__CP_R3_CLNT_BEHAVIOR__SHIFT          0x0000000e
+#define MH_MMU_CONFIG__CP_R4_CLNT_BEHAVIOR__SHIFT          0x00000010
+#define MH_MMU_CONFIG__VGT_R0_CLNT_BEHAVIOR__SHIFT         0x00000012
+#define MH_MMU_CONFIG__VGT_R1_CLNT_BEHAVIOR__SHIFT         0x00000014
+#define MH_MMU_CONFIG__TC_R_CLNT_BEHAVIOR__SHIFT           0x00000016
+#define MH_MMU_CONFIG__PA_W_CLNT_BEHAVIOR__SHIFT           0x00000018
 
-#define	CP_RB_CNTL__RB_BUFSZ__SHIFT                        0x00000000
-#define	CP_RB_CNTL__RB_BLKSZ__SHIFT                        0x00000008
-#define	CP_RB_CNTL__RB_POLL_EN__SHIFT                      0x00000014
-#define	CP_RB_CNTL__RB_NO_UPDATE__SHIFT                    0x0000001b
+#define CP_RB_CNTL__RB_BUFSZ__SHIFT                        0x00000000
+#define CP_RB_CNTL__RB_BLKSZ__SHIFT                        0x00000008
+#define CP_RB_CNTL__RB_POLL_EN__SHIFT                      0x00000014
+#define CP_RB_CNTL__RB_NO_UPDATE__SHIFT                    0x0000001b
 
-#define	RB_COLOR_INFO__COLOR_FORMAT__SHIFT                 0x00000000
-#define	RB_EDRAM_INFO__EDRAM_MAPPING_MODE__SHIFT           0x00000004
-#define	RB_EDRAM_INFO__EDRAM_RANGE__SHIFT                  0x0000000e
+#define RB_COLOR_INFO__COLOR_FORMAT__SHIFT                 0x00000000
+#define RB_EDRAM_INFO__EDRAM_MAPPING_MODE__SHIFT           0x00000004
+#define RB_EDRAM_INFO__EDRAM_RANGE__SHIFT                  0x0000000e
 
 #define REG_CP_CSQ_IB1_STAT              0x01FE
 #define REG_CP_CSQ_IB2_STAT              0x01FF
@@ -375,7 +371,7 @@ union reg_cp_rb_cntl {
 #define REG_PA_SU_POLY_OFFSET_FRONT_SCALE 0x2380
 #define REG_PA_SU_SC_MODE_CNTL           0x2205
 
-#define REG_PC_INDEX_OFFSET		0x2102
+#define REG_PC_INDEX_OFFSET              0x2102
 
 #define REG_RBBM_CNTL                    0x003B
 #define REG_RBBM_INT_ACK                 0x03B6
@@ -401,7 +397,7 @@ union reg_cp_rb_cntl {
 #define REG_RB_EDRAM_INFO                0x0F02
 #define REG_RB_MODECONTROL               0x2208
 #define REG_RB_SURFACE_INFO              0x2000
-#define REG_RB_SAMPLE_POS		 0x220a
+#define REG_RB_SAMPLE_POS                0x220a
 
 #define REG_SCRATCH_ADDR                 0x01DD
 #define REG_SCRATCH_REG0                 0x0578
@@ -426,9 +422,9 @@ union reg_cp_rb_cntl {
 #define REG_VGT_MAX_VTX_INDX             0x2100
 #define REG_VGT_MIN_VTX_INDX             0x2101
 
-#define REG_TP0_CHICKEN			 0x0E1E
-#define REG_TC_CNTL_STATUS             	 0x0E00
-#define REG_PA_SC_AA_CONFIG            	 0x2301
+#define REG_TP0_CHICKEN                  0x0E1E
+#define REG_TC_CNTL_STATUS               0x0E00
+#define REG_PA_SC_AA_CONFIG              0x2301
 #define REG_VGT_VERTEX_REUSE_BLOCK_CNTL  0x2316
 #define REG_SQ_INTERPOLATOR_CNTL         0x2182
 #define REG_RB_DEPTH_INFO                0x2002
@@ -442,11 +438,11 @@ union reg_cp_rb_cntl {
 #define REG_SQ_CONSTANT_0                0x4000
 #define REG_SQ_FETCH_0                   0x4800
 
-#define REG_MH_AXI_ERROR		 0xA45
-#define REG_MH_DEBUG_CTRL		 0xA4E
-#define REG_MH_DEBUG_DATA		 0xA4F
-#define REG_COHER_BASE_PM4		 0xA2A
-#define REG_COHER_STATUS_PM4		 0xA2B
-#define REG_COHER_SIZE_PM4		 0xA29
+#define REG_MH_AXI_ERROR                 0xA45
+#define REG_MH_DEBUG_CTRL                0xA4E
+#define REG_MH_DEBUG_DATA                0xA4F
+#define REG_COHER_BASE_PM4               0xA2A
+#define REG_COHER_STATUS_PM4             0xA2B
+#define REG_COHER_SIZE_PM4               0xA29
 
-#endif /* _YAMATO_REG_H */
+#endif /* __A200_REG_H */

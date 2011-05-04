@@ -26,31 +26,28 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  */
-#ifndef __GSL_RINGBUFFER_H
-#define __GSL_RINGBUFFER_H
-#include <linux/msm_kgsl.h>
-#include <linux/mutex.h>
-#include "yamato_reg.h"
+#ifndef __ADRENO_RINGBUFFER_H
+#define __ADRENO_RINGBUFFER_H
 
 #define GSL_RB_USE_MEM_RPTR
 #define GSL_RB_USE_MEM_TIMESTAMP
 #define GSL_DEVICE_SHADOW_MEMSTORE_TO_USER
 
 /* ringbuffer sizes log2quadword */
-#define GSL_RB_SIZE_8	 	0
+#define GSL_RB_SIZE_8		0
 #define GSL_RB_SIZE_16		1
 #define GSL_RB_SIZE_32		2
 #define GSL_RB_SIZE_64		3
 #define GSL_RB_SIZE_128		4
 #define GSL_RB_SIZE_256		5
 #define GSL_RB_SIZE_512		6
-#define GSL_RB_SIZE_1K  	7
-#define GSL_RB_SIZE_2K  	8
-#define GSL_RB_SIZE_4K  	9
-#define GSL_RB_SIZE_8K  	10
-#define GSL_RB_SIZE_16K 	11
-#define GSL_RB_SIZE_32K 	12
-#define GSL_RB_SIZE_64K 	13
+#define GSL_RB_SIZE_1K		7
+#define GSL_RB_SIZE_2K		8
+#define GSL_RB_SIZE_4K		9
+#define GSL_RB_SIZE_8K		10
+#define GSL_RB_SIZE_16K		11
+#define GSL_RB_SIZE_32K		12
+#define GSL_RB_SIZE_64K		13
 #define GSL_RB_SIZE_128K	14
 #define GSL_RB_SIZE_256K	15
 #define GSL_RB_SIZE_512K	16
@@ -173,10 +170,6 @@ void kgsl_ringbuffer_issuecmds(struct kgsl_device *device,
 					unsigned int *cmdaddr,
 					int sizedwords);
 
-int kgsl_ringbuffer_gettimestampshadow(struct kgsl_device *device,
-					unsigned int *sopaddr,
-					unsigned int *eopaddr);
-
 void kgsl_cp_intrcallback(struct kgsl_device *device);
 
 int kgsl_ringbuffer_extract(struct kgsl_ringbuffer *rb,
@@ -202,4 +195,4 @@ static inline unsigned int adreno_ringbuffer_inc_wrapped(unsigned int val,
 	return (val + sizeof(unsigned int)) % size;
 }
 
-#endif  /* __GSL_RINGBUFFER_H */
+#endif  /* __ADRENO_RINGBUFFER_H */

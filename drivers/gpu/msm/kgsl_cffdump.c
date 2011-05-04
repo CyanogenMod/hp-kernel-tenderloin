@@ -27,7 +27,6 @@
 #include <linux/sched.h>
 
 #include "kgsl.h"
-#include "kgsl_pm4types.h"
 #include "kgsl_cffdump.h"
 #include "kgsl_debugfs.h"
 

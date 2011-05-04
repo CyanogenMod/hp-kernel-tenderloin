@@ -26,16 +26,10 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  */
-#ifndef _GSL_PWRCTRL_H
-#define _GSL_PWRCTRL_H
+#ifndef __KGSL_PWRCTRL_H
+#define __KGSL_PWRCTRL_H
 
-#include <linux/types.h>
-#include <linux/wait.h>
-#include <linux/clk.h>
-#include <linux/mutex.h>
-#include <mach/clk.h>
 #include <mach/internal_power_rail.h>
-#include <linux/pm_qos_params.h>
 
 /*****************************************************************************
 ** power flags
@@ -110,4 +104,4 @@ void kgsl_pwrctrl_pwrlevel_change(struct kgsl_device *device,
 int kgsl_pwrctrl_init_sysfs(struct kgsl_device *device);
 void kgsl_pwrctrl_uninit_sysfs(struct kgsl_device *device);
 
-#endif /* _GSL_PWRCTRL_H */
+#endif /* __KGSL_PWRCTRL_H */

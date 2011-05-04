@@ -1,4 +1,4 @@
-/* Copyright (c) 2009-2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2009-2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -26,10 +26,8 @@
 
 #include "kgsl.h"
 #include "kgsl_device.h"
-#include "kgsl_drawctxt.h"
 #include "kgsl_drm.h"
 #include "kgsl_mmu.h"
-#include "kgsl_yamato.h"
 #include "kgsl_sharedmem.h"
 
 #define DRIVER_AUTHOR           "Qualcomm"
@@ -746,15 +744,6 @@ kgsl_gem_map(struct drm_gem_object *obj)
 	/* Get the global page table */
 
 	if (priv->pagetable == NULL) {
-		struct kgsl_device *kgsldev =
-			kgsl_get_device(KGSL_DEVICE_YAMATO);
-		struct kgsl_mmu *mmu = kgsl_get_mmu(kgsldev);
-
-		if (mmu == NULL) {
-			DRM_ERROR("The GPU MMU is not enabled\n");
-			return -EINVAL;
-		}
-
 		priv->pagetable = kgsl_mmu_getpagetable(KGSL_MMU_GLOBAL_PT);
 
 		if (priv->pagetable == NULL) {

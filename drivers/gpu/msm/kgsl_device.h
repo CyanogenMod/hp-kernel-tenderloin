@@ -26,20 +26,12 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  */
-#ifndef _KGSL_DEVICE_H
-#define _KGSL_DEVICE_H
+#ifndef __KGSL_DEVICE_H
+#define __KGSL_DEVICE_H
 
-#include <linux/types.h>
-#include <linux/irqreturn.h>
-#include <linux/wait.h>
-#include <linux/workqueue.h>
-#include <linux/mutex.h>
-#include <linux/msm_kgsl.h>
 #include <linux/idr.h>
 #include <linux/wakelock.h>
 #include <linux/earlysuspend.h>
-
-#include <asm/atomic.h>
 
 #include "kgsl_mmu.h"
 #include "kgsl_pwrctrl.h"
@@ -109,7 +101,7 @@ struct kgsl_functable {
 	int (*device_waittimestamp) (struct kgsl_device *device,
 					unsigned int timestamp,
 					unsigned int msecs);
-	unsigned int (*device_cmdstream_readtimestamp) (
+	unsigned int (*device_readtimestamp) (
 					struct kgsl_device *device,
 					enum kgsl_timestamp_type type);
 	int (*device_issueibcmds) (struct kgsl_device_private *dev_priv,
@@ -135,10 +127,10 @@ struct kgsl_functable {
 };
 
 struct kgsl_memregion {
-	unsigned char  *mmio_virt_base;
-	unsigned int   mmio_phys_base;
-	uint32_t      gpu_base;
-	unsigned int   sizebytes;
+	unsigned char *mmio_virt_base;
+	unsigned int mmio_phys_base;
+	uint32_t gpu_base;
+	unsigned int sizebytes;
 };
 
 struct kgsl_event {
@@ -153,14 +145,14 @@ struct kgsl_device {
 	const char *name;
 	unsigned int ver_major;
 	unsigned int ver_minor;
-	uint32_t       flags;
-	enum kgsl_deviceid    id;
-	unsigned int      chip_id;
+	uint32_t flags;
+	enum kgsl_deviceid id;
+	unsigned int chip_id;
 	struct kgsl_memregion regspace;
 	struct kgsl_memdesc memstore;
 	const char *iomemname;
 
-	struct kgsl_mmu 	  mmu;
+	struct kgsl_mmu mmu;
 	struct completion hwaccess_gate;
 	struct kgsl_functable ftbl;
 	struct work_struct idle_check_ws;
@@ -170,8 +162,8 @@ struct kgsl_device {
 
 	struct atomic_notifier_head ts_notifier_list;
 	struct mutex mutex;
-	uint32_t		state;
-	uint32_t		requested_state;
+	uint32_t state;
+	uint32_t requested_state;
 
 	struct list_head memqueue;
 	unsigned int active_cnt;
@@ -229,18 +221,6 @@ struct kgsl_device_private {
 	struct kgsl_process_private *process_priv;
 };
 
-struct kgsl_devconfig {
-	struct kgsl_memregion regspace;
-
-	unsigned int     mmu_config;
-	uint32_t        mpu_base;
-	int              mpu_range;
-	uint32_t        va_base;
-	unsigned int     va_range;
-
-	struct kgsl_memregion gmemspace;
-};
-
 struct kgsl_power_stats {
 	s64 total_time;
 	s64 busy_time;
@@ -277,4 +257,4 @@ kgsl_find_context(struct kgsl_device_private *dev_priv, uint32_t id)
 	return  (ctxt && ctxt->dev_priv == dev_priv) ? ctxt : NULL;
 }
 
-#endif  /* _KGSL_DEVICE_H */
+#endif  /* __KGSL_DEVICE_H */

@@ -1,4 +1,4 @@
-/* Copyright (c) 2002,2007-2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2002,2008-2011, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -26,13 +26,31 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  */
-#ifndef _GSL_CMDWINDOW_H
-#define _GSL_CMDWINDOW_H
+#ifndef __ADRENO_DEBUGFS_H
+#define __ADRENO_DEBUGFS_H
 
-struct kgsl_device;
+#ifdef CONFIG_DEBUG_FS
 
-int kgsl_g12_cmdwindow_write(struct kgsl_device *device,
-		enum kgsl_cmdwindow_type target, unsigned int addr,
-		unsigned int data);
+int kgsl_yamato_debugfs_init(struct kgsl_device *device);
 
-#endif /* _GSL_CMDWINDOW_H */
+extern int kgsl_pm_regs_enabled;
+
+static inline int kgsl_pmregs_enabled(void)
+{
+	return kgsl_pm_regs_enabled;
+}
+
+#else
+static inline int kgsl_yamato_debugfs_init(struct kgsl_device *device)
+{
+	return 0;
+}
+
+static inline int kgsl_pmregs_enabled(void)
+{
+	/* If debugfs is turned off, then always print registers */
+	return 1;
+}
+#endif
+
+#endif /* __ADRENO_DEBUGFS_H */

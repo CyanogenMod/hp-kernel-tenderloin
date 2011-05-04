@@ -1,4 +1,4 @@
-/* Copyright (c) 2002,2007-2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2002,2007-2011, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -26,16 +26,12 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  */
-#ifndef _G12_REG_H
-#define _G12_REG_H
+#ifndef __Z80_REG_H
+#define __Z80_REG_H
 
 #define REG_VGC_IRQSTATUS__MH_MASK                         0x00000001L
 #define REG_VGC_IRQSTATUS__G2D_MASK                        0x00000002L
 #define REG_VGC_IRQSTATUS__FIFO_MASK                       0x00000004L
-
-#define MH_INTERRUPT_MASK__AXI_READ_ERROR                  0x00000001L
-#define MH_INTERRUPT_MASK__AXI_WRITE_ERROR                 0x00000002L
-#define MH_INTERRUPT_MASK__MMU_PAGE_FAULT                  0x00000004L
 
 #define	MH_ARBITER_CONFIG__SAME_PAGE_GRANULARITY__SHIFT    0x00000006
 #define	MH_ARBITER_CONFIG__L1_ARB_ENABLE__SHIFT            0x00000007
@@ -94,4 +90,4 @@
 #define ADDR_VGV3_NEXTCMD                0x0076
 #define ADDR_VGV3_WRITEADDR              0x0072
 
-#endif /* _G12_REG_H */
+#endif /* __Z180_REG_H */

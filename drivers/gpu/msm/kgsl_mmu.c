@@ -16,27 +16,13 @@
  *
  */
 #include <linux/types.h>
-#include <linux/mutex.h>
+#include <linux/device.h>
 #include <linux/spinlock.h>
 #include <linux/genalloc.h>
 #include <linux/slab.h>
-#include <linux/io.h>
-#include <linux/bitmap.h>
-#include <asm/pgalloc.h>
-#include <asm/pgtable.h>
-#include "kgsl_mmu.h"
-#include "kgsl_drawctxt.h"
-#include "kgsl.h"
-#include "kgsl_log.h"
-#include "kgsl_device.h"
 
-struct kgsl_pte_debug {
-	unsigned int read:1;
-	unsigned int write:1;
-	unsigned int dirty:1;
-	unsigned int reserved:9;
-	unsigned int phyaddr:20;
-};
+#include "kgsl.h"
+#include "kgsl_mmu.h"
 
 #define KGSL_MMU_ALIGN_SHIFT    13
 #define KGSL_MMU_ALIGN_MASK     (~((1 << KGSL_MMU_ALIGN_SHIFT) - 1))

@@ -26,8 +26,8 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  */
-#ifndef _GSL_LOG_H
-#define _GSL_LOG_H
+#ifndef __KGSL_LOG_H
+#define __KGSL_LOG_H
 
 extern unsigned int kgsl_cff_dump_enable;
 
@@ -115,6 +115,4 @@ KGSL_LOG_CRIT(_dev->dev, _dev->pwr_log, fmt, ##args)
 #define KGSL_CORE_ERR(fmt, args...) \
 pr_err("kgsl: %s: " fmt, __func__, ##args)
 
-void kgsl_device_log_init(struct kgsl_device *device);
-
-#endif /* _GSL_LOG_H */
+#endif /* __KGSL_LOG_H */

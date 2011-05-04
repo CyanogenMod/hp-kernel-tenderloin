@@ -26,13 +26,14 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  */
-#ifndef _GSL_DRIVER_H
-#define _GSL_DRIVER_H
+#ifndef __KGSL_H
+#define __KGSL_H
 
 #include <linux/types.h>
 #include <linux/msm_kgsl.h>
 #include <linux/platform_device.h>
 #include <linux/clk.h>
+#include <linux/interrupt.h>
 #include <linux/mutex.h>
 #include <linux/cdev.h>
 #include <linux/regulator/consumer.h>
@@ -40,7 +41,10 @@
 #include <asm/atomic.h>
 
 #include "kgsl_device.h"
+#include "kgsl_pwrctrl.h"
 #include "kgsl_sharedmem.h"
+#include "kgsl_log.h"
+#include "kgsl_cffdump.h"
 
 #define KGSL_NAME "kgsl"
 
@@ -57,9 +61,6 @@
 /*cache coherency ops */
 #define DRM_KGSL_GEM_CACHE_OP_TO_DEV	0x0001
 #define DRM_KGSL_GEM_CACHE_OP_FROM_DEV	0x0002
-
-#define KGSL_NUM_2D_DEVICES 2
-#define IDX_2D(X) ((X)-KGSL_DEVICE_2D0)
 
 /* The size of each entry in a page table */
 #define KGSL_PAGETABLE_ENTRY_SIZE  4
@@ -169,8 +170,6 @@ uint8_t *kgsl_gpuaddr_to_vaddr(const struct kgsl_memdesc *memdesc,
 struct kgsl_mem_entry *kgsl_sharedmem_find_region(
 	struct kgsl_process_private *private, unsigned int gpuaddr,
 	size_t size);
-uint8_t *kgsl_sharedmem_convertaddr(struct kgsl_device *device,
-	unsigned int pt_base, unsigned int gpuaddr, unsigned int *size);
 int kgsl_idle(struct kgsl_device *device, unsigned int timeout);
 int kgsl_setstate(struct kgsl_device *device, uint32_t flags);
 
@@ -276,4 +275,4 @@ kgsl_mem_entry_put(struct kgsl_mem_entry *entry)
 	kref_put(&entry->refcount, kgsl_mem_entry_destroy);
 }
 
-#endif /* _GSL_DRIVER_H */
+#endif /* __KGSL_H */

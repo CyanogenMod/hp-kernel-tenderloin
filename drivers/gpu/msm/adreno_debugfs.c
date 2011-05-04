@@ -19,13 +19,12 @@
 #include <linux/delay.h>
 #include <linux/debugfs.h>
 #include <linux/uaccess.h>
-#include <linux/io.h>
 
 #include "kgsl.h"
-#include "kgsl_log.h"
-#include "kgsl_device.h"
-#include "kgsl_postmortem.h"
-#include "kgsl_yamato.h"
+#include "adreno_postmortem.h"
+#include "adreno.h"
+
+#include "a200_reg.h"
 
 unsigned int kgsl_cff_dump_enable;
 int kgsl_pm_regs_enabled;
@@ -34,7 +33,6 @@ static uint32_t kgsl_ib_base;
 static uint32_t kgsl_ib_size;
 
 static struct dentry *pm_d_debugfs;
-
 
 static int pm_dump_set(void *data, u64 val)
 {

@@ -1,4 +1,4 @@
-/* Copyright (c) 2002,2007-2009, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2002,2007-2011, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -26,8 +26,8 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  */
-#ifndef __GSL_PM4TYPES_H
-#define __GSL_PM4TYPES_H
+#ifndef __ADRENO_PM4TYPES_H
+#define __ADRENO_PM4TYPES_H
 
 
 #define PM4_PKT_MASK	0xc0000000
@@ -190,4 +190,4 @@
 #define PM4_HDR_INDIRECT_BUFFER_PFD pm4_type3_packet(PM4_INDIRECT_BUFFER_PFD, 2)
 #define PM4_HDR_INDIRECT_BUFFER	pm4_type3_packet(PM4_INDIRECT_BUFFER, 2)
 
-#endif	/* __GSL_PM4TYPES_H */
+#endif	/* __ADRENO_PM4TYPES_H */

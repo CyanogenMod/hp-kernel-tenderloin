@@ -1,4 +1,4 @@
-/* Copyright (c) 2002,2007-2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2002,2007-2011, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -26,13 +26,16 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  */
-#ifndef __GSL_DRAWCTXT_H
-#define __GSL_DRAWCTXT_H
+#ifndef __ADRENO_DRAWCTXT_H
+#define __ADRENO_DRAWCTXT_H
+
+#include "a200_reg.h"
+#include "a220_reg.h"
 
 /* Flags */
 
 #define CTXT_FLAGS_NOT_IN_USE		0x00000000
-#define CTXT_FLAGS_IN_USE			0x00000001
+#define CTXT_FLAGS_IN_USE		0x00000001
 
 /* state shadow memory allocated */
 #define CTXT_FLAGS_STATE_SHADOW		0x00000010
@@ -50,16 +53,10 @@
 /* Context has caused a GPU hang */
 #define CTXT_FLAGS_GPU_HANG		0x00008000
 
-#include <linux/msm_kgsl.h>
-#include "kgsl_sharedmem.h"
-#include "yamato_reg.h"
-
 struct kgsl_device;
 struct kgsl_yamato_device;
 struct kgsl_device_private;
 struct kgsl_context;
-
-/*  types */
 
 /* draw context */
 struct gmem_shadow_t {
@@ -84,16 +81,16 @@ struct gmem_shadow_t {
 };
 
 struct kgsl_yamato_context {
-	uint32_t         flags;
+	uint32_t flags;
 	struct kgsl_pagetable *pagetable;
-	struct kgsl_memdesc       gpustate;
-	unsigned int        reg_save[3];
-	unsigned int        reg_restore[3];
-	unsigned int        shader_save[3];
-	unsigned int        shader_fixup[3];
-	unsigned int        shader_restore[3];
-	unsigned int		chicken_restore[3];
-	unsigned int 	    bin_base_offset;
+	struct kgsl_memdesc gpustate;
+	unsigned int reg_save[3];
+	unsigned int reg_restore[3];
+	unsigned int shader_save[3];
+	unsigned int shader_fixup[3];
+	unsigned int shader_restore[3];
+	unsigned int chicken_restore[3];
+	unsigned int bin_base_offset;
 	/* Information of the GMEM shadow that is created in context create */
 	struct gmem_shadow_t context_gmem_shadow;
 };
@@ -113,4 +110,4 @@ int kgsl_drawctxt_set_bin_base_offset(struct kgsl_device *device,
 				      struct kgsl_context *context,
 					unsigned int offset);
 
-#endif  /* __GSL_DRAWCTXT_H */
+#endif  /* __ADRENO_DRAWCTXT_H */

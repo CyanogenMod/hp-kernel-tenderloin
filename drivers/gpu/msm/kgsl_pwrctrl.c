@@ -24,7 +24,6 @@
 #include <mach/msm_iomap.h>
 
 #include "kgsl.h"
-#include "kgsl_log.h"
 
 #define SWITCH_OFF		200
 #define SWITCH_OFF_RESET_TH 40
