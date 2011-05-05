@@ -54,6 +54,10 @@ int apr_send_pkt(void *handle, uint32_t *buf)
 	uint16_t w_len;
 	unsigned long flags;
 
+	if (!handle || !buf) {
+		pr_err("APR: Wrong parameters\n");
+		return -EINVAL;
+	}
 	if (svc->need_reset) {
 		pr_err("apr: send_pkt service need reset\n");
 		return -ENETRESET;
@@ -67,10 +71,6 @@ int apr_send_pkt(void *handle, uint32_t *buf)
 		return -ENETRESET;
 	}
 
-	if (!handle || !buf) {
-		pr_err("APR: Wrong parameters\n");
-		return -EINVAL;
-	}
 
 	spin_lock_irqsave(&svc->w_lock, flags);
 	dest_id = svc->dest_id;

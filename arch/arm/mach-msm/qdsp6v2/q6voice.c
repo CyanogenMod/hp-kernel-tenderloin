@@ -257,7 +257,8 @@ static int voice_apr_register(struct voice_data *v)
 		}
 
 		if (apr_mvm == NULL) {
-			pr_err("Unable to register MVM\n");
+			pr_err("Unable to register MVM %d\n",
+						is_adsp_support_cvd());
 			rc = -ENODEV;
 			goto done;
 		}
@@ -280,7 +281,8 @@ static int voice_apr_register(struct voice_data *v)
 		}
 
 		if (apr_cvs == NULL) {
-			pr_err("Unable to register CVS\n");
+			pr_err("Unable to register CVS %d\n",
+							is_adsp_support_cvd());
 			rc = -ENODEV;
 			goto err;
 		}
@@ -303,7 +305,8 @@ static int voice_apr_register(struct voice_data *v)
 	}
 
 		if (apr_cvp == NULL) {
-			pr_err("Unable to register CVP\n");
+			pr_err("Unable to register CVP %d\n",
+							is_adsp_support_cvd());
 			rc = -ENODEV;
 			goto err1;
 		}
@@ -2085,7 +2088,7 @@ static void voice_auddev_cb_function(u32 evt_id,
 {
 	struct voice_data *v = &voice;
 	struct sidetone_cal sidetone_cal_data;
-
+	int rc = 0;
 	pr_info("auddev_cb_function, evt_id=%d,\n", evt_id);
 	if ((evt_id != AUDDEV_EVT_START_VOICE) ||
 			(evt_id != AUDDEV_EVT_END_VOICE)) {
@@ -2104,7 +2107,12 @@ static void voice_auddev_cb_function(u32 evt_id,
 			v->v_call_status = VOICE_CALL_START;
 			if ((v->dev_rx.enabled == VOICE_DEV_ENABLED)
 				&& (v->dev_tx.enabled == VOICE_DEV_ENABLED)) {
-				voice_apr_register(v);
+				rc = voice_apr_register(v);
+				if (rc < 0) {
+					pr_err("%s: voice apr registration"
+						"failed\n", __func__);
+					return;
+				}
 				voice_create_mvm_cvs_session(v);
 				voice_setup_modem_voice(v);
 				voice_attach_vocproc(v);
@@ -2210,7 +2218,12 @@ static void voice_auddev_cb_function(u32 evt_id,
 			if ((v->dev_rx.enabled == VOICE_DEV_ENABLED) &&
 				(v->dev_tx.enabled == VOICE_DEV_ENABLED) &&
 				(v->v_call_status == VOICE_CALL_START)) {
-				voice_apr_register(v);
+				rc = voice_apr_register(v);
+				if (rc < 0) {
+					pr_err("%s: voice apr registration"
+						"failed\n", __func__);
+					return;
+				}
 				voice_create_mvm_cvs_session(v);
 				voice_setup_modem_voice(v);
 				voice_attach_vocproc(v);
