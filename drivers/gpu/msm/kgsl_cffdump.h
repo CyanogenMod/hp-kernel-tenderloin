@@ -51,6 +51,9 @@ void kgsl_cffdump_regpoll(enum kgsl_deviceid device_id, uint addr,
 bool kgsl_cffdump_parse_ibs(struct kgsl_device_private *dev_priv,
 	const struct kgsl_memdesc *memdesc, uint gpuaddr, int sizedwords,
 	bool check_only);
+void kgsl_cffdump_user_event(unsigned int cff_opcode, unsigned int op1,
+		unsigned int op2, unsigned int op3,
+		unsigned int op4, unsigned int op5);
 static inline bool kgsl_cffdump_flags_no_memzero(void) { return true; }
 
 #else
@@ -67,6 +70,10 @@ static inline bool kgsl_cffdump_flags_no_memzero(void) { return true; }
 #define kgsl_cffdump_parse_ibs(dev_priv, memdesc, gpuaddr, \
 	sizedwords, check_only)					true
 #define kgsl_cffdump_flags_no_memzero()				true
+#define kgsl_cffdump_memory_base(base, range, gmemsize)		(void)0
+#define kgsl_cffdump_hang(device_id)				(void)0
+#define kgsl_cffdump_user_event(cff_opcode, op1, op2, op3, op4, op5) \
+	(void)param
 
 #endif /* CONFIG_MSM_KGSL_CFF_DUMP */
 
