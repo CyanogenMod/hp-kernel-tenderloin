@@ -47,6 +47,8 @@
 uint32 mdp4_extn_disp;
 static struct clk *mdp_clk;
 static struct clk *mdp_pclk;
+int mdp_rev;
+
 struct regulator *footswitch;
 
 struct completion mdp_ppp_comp;
@@ -1221,6 +1223,7 @@ static int mdp_probe(struct platform_device *pdev)
 		if (unlikely(!msm_mdp_base))
 			return -ENOMEM;
 
+		mdp_rev = mdp_pdata->mdp_rev;
 		rc = mdp_irq_clk_setup();
 
 		if (rc)
