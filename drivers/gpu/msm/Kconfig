@@ -1,7 +1,7 @@
 config MSM_KGSL
 	tristate "MSM 3D Graphics driver"
 	default n
-	depends on FB && ARM && ARCH_MSM && !MSM_HW3D && ANDROID_PMEM
+	depends on FB && ARM && ARCH_MSM && !MSM_HW3D
 	select GENERIC_ALLOCATOR
 	select FW_LOADER
 	select RELAY
