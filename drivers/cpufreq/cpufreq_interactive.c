@@ -61,6 +61,15 @@ static spinlock_t down_cpumask_lock;
 #define DEFAULT_GO_MAXSPEED_LOAD 85
 static unsigned long go_maxspeed_load;
 
+/* Base of exponential raise to max speed; if 0 - jump to maximum */
+static unsigned long boost_factor;
+
+/*
+ * Targeted sustainable load relatively to current frequency.
+ * If 0, target is set realtively to the max speed
+ */
+static unsigned long sustain_load;
+
 /*
  * The minimum amount of time to spend at a frequency before we can ramp down.
  */
@@ -167,6 +176,36 @@ struct cpufreq_governor cpufreq_gov_interactive = {
 	.owner = THIS_MODULE,
 };
 
+static unsigned int cpufreq_interactive_get_target(
+	int cpu_load, int load_since_change, struct cpufreq_policy *policy)
+{
+	unsigned int target_freq;
+
+	/*
+	 * Choose greater of short-term load (since last idle timer
+	 * started or timer function re-armed itself) or long-term load
+	 * (since last frequency change).
+	 */
+	if (load_since_change > cpu_load)
+		cpu_load = load_since_change;
+
+	if (cpu_load >= go_maxspeed_load) {
+		if (!boost_factor)
+			return policy->max;
+
+		target_freq = policy->cur * boost_factor;
+	}
+	else {
+		if (!sustain_load)
+			return policy->max * cpu_load / 100;
+
+		target_freq = policy->cur * cpu_load / sustain_load;
+	}
+
+	target_freq = min(target_freq, policy->max);
+	return target_freq;
+}
+
 static void cpufreq_interactive_timer(unsigned long data)
 {
 	unsigned int delta_idle;
@@ -243,17 +282,12 @@ static void cpufreq_interactive_timer(unsigned long data)
 			100 * (delta_time - delta_idle) / delta_time;
 
 	/*
-	 * Choose greater of short-term load (since last idle timer
-	 * started or timer function re-armed itself) or long-term load
-	 * (since last frequency change).
+	 * Combine short-term load (since last idle timer started or timer
+	 * function re-armed itself) and long-term load (since last frequency
+	 * change) to determine new target frequency
 	 */
-	if (load_since_change > cpu_load)
-		cpu_load = load_since_change;
-
-	if (cpu_load >= go_maxspeed_load)
-		new_freq = pcpu->policy->max;
-	else
-		new_freq = pcpu->policy->max * cpu_load / 100;
+	new_freq = cpufreq_interactive_get_target(cpu_load, load_since_change,
+						  pcpu->policy);
 
 	if (cpufreq_frequency_table_target(pcpu->policy, pcpu->freq_table,
 					   new_freq, CPUFREQ_RELATION_H,
@@ -542,6 +576,36 @@ static ssize_t store_go_maxspeed_load(struct kobject *kobj,
 static struct global_attr go_maxspeed_load_attr = __ATTR(go_maxspeed_load, 0644,
 		show_go_maxspeed_load, store_go_maxspeed_load);
 
+static ssize_t show_boost_factor(struct kobject *kobj,
+				     struct attribute *attr, char *buf)
+{
+	return sprintf(buf, "%lu\n", boost_factor);
+}
+
+static ssize_t store_boost_factor(struct kobject *kobj,
+			struct attribute *attr, const char *buf, size_t count)
+{
+	return strict_strtoul(buf, 0, &boost_factor);
+}
+
+static struct global_attr boost_factor_attr = __ATTR(boost_factor, 0644,
+		show_boost_factor, store_boost_factor);
+
+static ssize_t show_sustain_load(struct kobject *kobj,
+				     struct attribute *attr, char *buf)
+{
+	return sprintf(buf, "%lu\n", sustain_load);
+}
+
+static ssize_t store_sustain_load(struct kobject *kobj,
+			struct attribute *attr, const char *buf, size_t count)
+{
+	return strict_strtoul(buf, 0, &sustain_load);
+}
+
+static struct global_attr sustain_load_attr = __ATTR(sustain_load, 0644,
+		show_sustain_load, store_sustain_load);
+
 static ssize_t show_min_sample_time(struct kobject *kobj,
 				struct attribute *attr, char *buf)
 {
@@ -559,6 +623,8 @@ static struct global_attr min_sample_time_attr = __ATTR(min_sample_time, 0644,
 
 static struct attribute *interactive_attributes[] = {
 	&go_maxspeed_load_attr.attr,
+	&boost_factor_attr.attr,
+	&sustain_load_attr.attr,
 	&min_sample_time_attr.attr,
 	NULL,
 };
