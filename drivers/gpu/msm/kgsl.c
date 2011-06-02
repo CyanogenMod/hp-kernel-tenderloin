@@ -774,6 +774,8 @@ kgsl_sharedmem_find(struct kgsl_process_private *private, unsigned int gpuaddr)
 
 	BUG_ON(private == NULL);
 
+	gpuaddr &= PAGE_MASK;
+
 	list_for_each_entry(entry, &private->mem_list, list) {
 		if (entry->memdesc.gpuaddr == gpuaddr) {
 			result = entry;
@@ -1310,6 +1312,9 @@ static int kgsl_setup_phys_file(struct kgsl_mem_entry *entry,
 	if (size == 0)
 		size = len;
 
+	/* Adjust the size of the region to account for the offset */
+	size += offset & ~PAGE_MASK;
+
 	size = ALIGN(size, PAGE_SIZE);
 
 	if (_check_region(offset & PAGE_MASK, size, len)) {
@@ -1370,6 +1375,9 @@ static int kgsl_setup_hostptr(struct kgsl_mem_entry *entry,
 
 	if (size == 0)
 		size = len;
+
+	/* Adjust the size of the region to account for the offset */
+	size += offset & ~PAGE_MASK;
 
 	size = ALIGN(size, PAGE_SIZE);
 
@@ -1519,7 +1527,8 @@ static long kgsl_ioctl_map_user_mem(struct kgsl_device_private *dev_priv,
 	if (result)
 		goto error_put_file_ptr;
 
-	param->gpuaddr = entry->memdesc.gpuaddr;
+	/* Adjust the returned value for a non 4k aligned offset */
+	param->gpuaddr = entry->memdesc.gpuaddr + (param->offset & ~PAGE_MASK);
 
 	entry->memtype = KGSL_EXTERNAL_MEMORY;
 
