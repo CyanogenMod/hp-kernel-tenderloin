@@ -858,24 +858,6 @@ static long kgsl_ioctl_device_getproperty(struct kgsl_device_private *dev_priv,
 	return result;
 }
 
-static long kgsl_ioctl_device_regread(struct kgsl_device_private *dev_priv,
-				      unsigned int cmd, void *data)
-{
-	struct kgsl_device_regread *param = data;
-
-	if (param->offsetwords*sizeof(uint32_t) >=
-	    dev_priv->device->regspace.sizebytes) {
-		KGSL_DRV_ERR(dev_priv->device, "invalid offset %d\n",
-			     param->offsetwords);
-		return -ERANGE;
-	}
-
-	kgsl_regread(dev_priv->device, param->offsetwords, &param->value);
-
-	return 0;
-}
-
-
 static long kgsl_ioctl_device_waittimestamp(struct kgsl_device_private
 						*dev_priv, unsigned int cmd,
 						void *data)
@@ -1770,8 +1752,6 @@ static const struct {
 } kgsl_ioctl_funcs[] = {
 	KGSL_IOCTL_FUNC(IOCTL_KGSL_DEVICE_GETPROPERTY,
 			kgsl_ioctl_device_getproperty, 1),
-	KGSL_IOCTL_FUNC(IOCTL_KGSL_DEVICE_REGREAD,
-			kgsl_ioctl_device_regread, 1),
 	KGSL_IOCTL_FUNC(IOCTL_KGSL_DEVICE_WAITTIMESTAMP,
 			kgsl_ioctl_device_waittimestamp, 1),
 	KGSL_IOCTL_FUNC(IOCTL_KGSL_RINGBUFFER_ISSUEIBCMDS,
