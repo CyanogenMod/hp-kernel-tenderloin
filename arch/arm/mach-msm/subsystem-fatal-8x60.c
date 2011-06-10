@@ -134,7 +134,16 @@ static struct notifier_block modem_notif_nb = {
 
 static void modem_unlock_timeout(struct work_struct *work)
 {
+	void __iomem *hwio_modem_reset_addr =
+			ioremap_nocache(MODEM_HWIO_MSS_RESET_ADDR, 8);
 	pr_crit("%s: Timeout waiting for modem to unlock.\n", MODULE_NAME);
+
+	/* Set MSS_MODEM_RESET to 0x0 since the unlock didn't work */
+	writel_relaxed(0x0, hwio_modem_reset_addr);
+	/* Write needs to go through before the modem is restarted. */
+	mb();
+	iounmap(hwio_modem_reset_addr);
+
 	subsystem_restart("modem");
 }
 
