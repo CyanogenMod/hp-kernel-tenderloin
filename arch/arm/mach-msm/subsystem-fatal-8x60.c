@@ -40,6 +40,7 @@
 #define MODULE_NAME			"subsystem_fatal_8x60"
 #define Q6SS_SOFT_INTR_WAKEUP		0x288A001C
 #define MODEM_WDOG_ENABLE		0x10020008
+#define Q6SS_WDOG_ENABLE		0x28882024
 
 #define SUBSYS_FATAL_DEBUG
 
@@ -87,7 +88,15 @@ static void send_q6_nmi(void)
 
 int subsys_q6_shutdown(void)
 {
+	void __iomem *q6_wdog_addr =
+		ioremap_nocache(Q6SS_WDOG_ENABLE, 8);
+
 	send_q6_nmi();
+	writel_relaxed(0x0, q6_wdog_addr);
+	/* The write needs to go through before the q6 is shutdown. */
+	mb();
+	iounmap(q6_wdog_addr);
+
 	pil_force_shutdown("q6");
 	disable_irq_nosync(LPASS_Q6SS_WDOG_EXPIRED);
 
