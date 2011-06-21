@@ -463,8 +463,11 @@ static int32_t q6asm_mmapcallback(struct apr_client_data *data, void *priv)
 	uint32_t *payload = data->payload;
 
 	if (data->opcode == RESET_EVENTS) {
-		pr_debug("q6asm_mmapcallback: Reset event is received: %d %d\n",
-				data->reset_event, data->reset_proc);
+		pr_debug("%s: Reset event is received: %d %d apr[%p]\n",
+				__func__,
+				data->reset_event,
+				data->reset_proc,
+				this_mmap.apr);
 		apr_reset(this_mmap.apr);
 		this_mmap.apr = NULL;
 		atomic_set(&this_mmap.cmd_state, 0);
@@ -516,10 +519,9 @@ static int32_t q6asm_callback(struct apr_client_data *data, void *priv)
 	payload = data->payload;
 
 	if (data->opcode == RESET_EVENTS) {
+		pr_debug("q6asm_callback: Reset event is received: %d %d apr[%p]\n",
+				data->reset_event, data->reset_proc, ac->apr);
 		apr_reset(ac->apr);
-		q6asm_session_free(ac);
-		pr_debug("q6asm_callback: Reset event is received: %d %d\n",
-				data->reset_event, data->reset_proc);
 		return 0;
 	}
 

@@ -31,6 +31,7 @@
 #include <linux/platform_device.h>
 #include <linux/sysfs.h>
 #include <linux/device.h>
+#include <linux/slab.h>
 #include <mach/peripheral-loader.h>
 #include <mach/msm_smd.h>
 #include <mach/qdsp6v2/apr.h>
@@ -41,8 +42,19 @@
 
 struct apr_q6 q6;
 struct apr_client client[APR_DEST_MAX][APR_CLIENT_MAX];
-static int modem_state = 1;
-static int dsp_state = 1;
+static atomic_t dsp_state;
+static atomic_t modem_state;
+
+static wait_queue_head_t  dsp_wait;
+static wait_queue_head_t  modem_wait;
+/* Subsystem restart: QDSP6 data, functions */
+static struct workqueue_struct *apr_reset_workqueue;
+static void apr_reset_deregister(struct work_struct *work);
+struct apr_reset_work {
+	void *handle;
+	struct work_struct work;
+};
+
 
 int apr_send_pkt(void *handle, uint32_t *buf)
 {
@@ -63,10 +75,12 @@ int apr_send_pkt(void *handle, uint32_t *buf)
 		return -ENETRESET;
 	}
 
-	if ((svc->dest_id == APR_DEST_QDSP6) && (!dsp_state)) {
+	if ((svc->dest_id == APR_DEST_QDSP6) &&
+					(atomic_read(&dsp_state) == 0)) {
 		pr_err("apr: Still dsp is not Up\n");
 		return -ENETRESET;
-	} else if ((svc->dest_id == APR_DEST_MODEM) && (!modem_state)) {
+	} else if ((svc->dest_id == APR_DEST_MODEM) &&
+					(atomic_read(&modem_state) == 0)) {
 		pr_err("apr: Still Modem is not Up\n");
 		return -ENETRESET;
 	}
@@ -239,6 +253,7 @@ struct apr_svc *apr_register(char *dest, char *svc_name, apr_fn svc_fn,
 	int dest_id = 0;
 	int temp_port = 0;
 	struct apr_svc *svc = NULL;
+	int rc = 0;
 
 	if (!dest || !svc_name || !svc_fn)
 		return NULL;
@@ -252,12 +267,22 @@ struct apr_svc *apr_register(char *dest, char *svc_name, apr_fn svc_fn,
 		goto done;
 	}
 
-	if ((dest_id == APR_DEST_QDSP6) && (!dsp_state)) {
-		pr_err("apr: Still dsp is not Up\n");
-		return NULL;
-	} else if ((dest_id == APR_DEST_MODEM) && (!modem_state)) {
-		pr_err("apr: Still Modem is not Up\n");
-		return NULL;
+	if ((dest_id == APR_DEST_QDSP6) &&
+				(atomic_read(&dsp_state) == 0)) {
+		rc = wait_event_timeout(dsp_wait,
+				(atomic_read(&dsp_state) == 1), 5*HZ);
+		if (rc == 0) {
+			pr_err("apr: Still dsp is not Up\n");
+			return NULL;
+		}
+	} else if ((dest_id == APR_DEST_MODEM) &&
+					(atomic_read(&modem_state) == 0)) {
+		rc = wait_event_timeout(modem_wait,
+			(atomic_read(&modem_state) == 1), 5*HZ);
+		if (rc == 0) {
+			pr_err("apr: Still Modem is not Up\n");
+			return NULL;
+		}
 	}
 
 	if (!strcmp(svc_name, "AFE")) {
@@ -396,6 +421,19 @@ done:
 	return svc;
 }
 
+static void apr_reset_deregister(struct work_struct *work)
+{
+	struct apr_svc *handle = NULL;
+	struct apr_reset_work *apr_reset =
+			container_of(work, struct apr_reset_work, work);
+
+	handle = apr_reset->handle;
+	pr_debug("%s:handle[%p]\n", __func__, handle);
+	apr_deregister(handle);
+	kfree(apr_reset);
+	msleep(5);
+}
+
 int apr_deregister(void *handle)
 {
 	struct apr_svc *svc = handle;
@@ -420,8 +458,13 @@ int apr_deregister(void *handle)
 			client[dest_id][client_id].svc_cnt--;
 			svc->need_reset = 0x0;
 		}
-	} else if (client[dest_id][client_id].svc_cnt > 0)
+	} else if (client[dest_id][client_id].svc_cnt > 0) {
 		client[dest_id][client_id].svc_cnt--;
+		if (!client[dest_id][client_id].svc_cnt) {
+			svc->need_reset = 0x0;
+			pr_debug("%s: service is reset %p\n", __func__, svc);
+		}
+	}
 
 	if (!svc->port_cnt && !svc->svc_cnt) {
 		svc->priv = NULL;
@@ -429,6 +472,7 @@ int apr_deregister(void *handle)
 		svc->fn = NULL;
 		svc->dest_id = 0;
 		svc->client_id = 0;
+		svc->need_reset = 0x0;
 	}
 	if (client[dest_id][client_id].handle &&
 		!client[dest_id][client_id].svc_cnt) {
@@ -442,24 +486,21 @@ int apr_deregister(void *handle)
 
 void apr_reset(void *handle)
 {
-	struct apr_svc *svc = handle;
-
-	pr_debug("In Apr reset\n");
+	struct apr_reset_work *apr_reset_worker = NULL;
 
 	if (!handle)
 		return;
-	if (svc->port_cnt)
-		svc->port_cnt--;
-	else if (svc->svc_cnt)
-		svc->svc_cnt--;
-	if (!svc->port_cnt && !svc->svc_cnt) {
-		svc->need_reset = 0x0;
-		svc->priv = NULL;
-		svc->id = 0;
-		svc->fn = NULL;
-		svc->dest_id = 0;
-		svc->client_id = 0;
+	pr_debug("%s: handle[%p]\n", __func__, handle);
+
+	apr_reset_worker = kzalloc(sizeof(struct apr_reset_work),
+					GFP_ATOMIC);
+	if (apr_reset_worker == NULL || apr_reset_workqueue == NULL) {
+		pr_err("%s: mem failure\n", __func__);
+		return;
 	}
+	apr_reset_worker->handle = handle;
+	INIT_WORK(&apr_reset_worker->work, apr_reset_deregister);
+	queue_work(apr_reset_workqueue, &apr_reset_worker->work);
 }
 
 void change_q6_state(int state)
@@ -530,18 +571,11 @@ void dispatch_event(unsigned long code, unsigned short proc)
 static int modem_notifier_cb(struct notifier_block *this, unsigned long code,
 								void *_cmd)
 {
-	int i, j;
 	switch (code) {
 	case SUBSYS_BEFORE_SHUTDOWN:
 		pr_debug("M-Notify: Shutdown started\n");
-		modem_state = 0;
+		atomic_set(&modem_state, 0);
 		dispatch_event(code, APR_DEST_MODEM);
-		for (i = 0 ; i < APR_DEST_MAX; i++)
-			for (j = 0 ; j < APR_CLIENT_MAX; j++)
-				if (client[i][j].handle) {
-					apr_tal_close(client[i][j].handle);
-					client[i][j].handle = NULL;
-				}
 		break;
 	case SUBSYS_AFTER_SHUTDOWN:
 		pr_debug("M-Notify: Shutdown Completed\n");
@@ -550,11 +584,14 @@ static int modem_notifier_cb(struct notifier_block *this, unsigned long code,
 		pr_debug("M-notify: Bootup started\n");
 		break;
 	case SUBSYS_AFTER_POWERUP:
-		modem_state = 1;
+		if (atomic_read(&modem_state) == 0) {
+			atomic_set(&modem_state, 1);
+			wake_up(&modem_wait);
+		}
 		pr_debug("M-Notify: Bootup Completed\n");
 		break;
 	default:
-		pr_debug("M-Notify: General: %lu\n", code);
+		pr_err("M-Notify: General: %lu\n", code);
 		break;
 	}
 	return NOTIFY_DONE;
@@ -570,7 +607,7 @@ static int lpass_notifier_cb(struct notifier_block *this, unsigned long code,
 	switch (code) {
 	case SUBSYS_BEFORE_SHUTDOWN:
 		pr_debug("L-Notify: Shutdown started\n");
-		dsp_state = 0;
+		atomic_set(&dsp_state, 0);
 		dispatch_event(code, APR_DEST_QDSP6);
 		break;
 	case SUBSYS_AFTER_SHUTDOWN:
@@ -580,11 +617,14 @@ static int lpass_notifier_cb(struct notifier_block *this, unsigned long code,
 		pr_debug("L-notify: Bootup started\n");
 		break;
 	case SUBSYS_AFTER_POWERUP:
-		dsp_state = 1;
+		if (atomic_read(&dsp_state) == 0) {
+			atomic_set(&dsp_state, 1);
+			wake_up(&dsp_wait);
+		}
 		pr_debug("L-Notify: Bootup Completed\n");
 		break;
 	default:
-		pr_debug("L-Notify: Generel: %lu\n", code);
+		pr_err("L-Notify: Generel: %lu\n", code);
 		break;
 	}
 	return NOTIFY_DONE;
@@ -609,6 +649,10 @@ static int __init apr_init(void)
 		}
 	mutex_init(&q6.lock);
 	dsp_debug_register(adsp_state);
+	apr_reset_workqueue =
+		create_singlethread_workqueue("apr_driver");
+	if (!apr_reset_workqueue)
+		return -ENOMEM;
 	return 0;
 }
 device_initcall(apr_init);
@@ -616,7 +660,10 @@ device_initcall(apr_init);
 static int __init apr_late_init(void)
 {
 	void *ret;
-
+	init_waitqueue_head(&dsp_wait);
+	init_waitqueue_head(&modem_wait);
+	atomic_set(&dsp_state, 1);
+	atomic_set(&modem_state, 1);
 	ret = subsys_notif_register_notifier("modem", &mnb);
 	pr_debug("subsys_register_notifier: ret1 = %p\n", ret);
 	ret = subsys_notif_register_notifier("lpass", &lnb);

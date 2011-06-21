@@ -2140,6 +2140,7 @@ static void voice_auddev_cb_function(u32 evt_id,
 				&& (v->dev_tx.enabled == VOICE_DEV_ENABLED)) {
 				rc = voice_apr_register(v);
 				if (rc < 0) {
+					mutex_unlock(&v->lock);
 					pr_err("%s: voice apr registration"
 						"failed\n", __func__);
 					return;
@@ -2251,6 +2252,7 @@ static void voice_auddev_cb_function(u32 evt_id,
 				(v->v_call_status == VOICE_CALL_START)) {
 				rc = voice_apr_register(v);
 				if (rc < 0) {
+					mutex_unlock(&v->lock);
 					pr_err("%s: voice apr registration"
 						"failed\n", __func__);
 					return;
@@ -2415,11 +2417,12 @@ static int32_t modem_mvm_callback(struct apr_client_data *data, void *priv)
 				data->payload_size, data->opcode);
 
 	if (data->opcode == RESET_EVENTS) {
+		pr_debug("%s:Reset event received in Voice service MVM\n",
+					__func__);
 		apr_reset(v->apr_mvm);
 		apr_reset(v->apr_q6_mvm);
 		v->apr_q6_mvm = NULL;
 		v->apr_mvm = NULL;
-		pr_debug("Reset event received in Voice service");
 		return 0;
 	}
 
@@ -2513,6 +2516,8 @@ static int32_t modem_cvs_callback(struct apr_client_data *data, void *priv)
 					data->payload_size, data->opcode);
 
 	if (data->opcode == RESET_EVENTS) {
+		pr_debug("%s:Reset event received in Voice service CVS\n",
+						__func__);
 		apr_reset(v->apr_cvs);
 		apr_reset(v->apr_q6_cvs);
 		v->apr_q6_cvs = NULL;
@@ -2698,6 +2703,8 @@ static int32_t modem_cvp_callback(struct apr_client_data *data, void *priv)
 				data->payload_size, data->opcode);
 
 	if (data->opcode == RESET_EVENTS) {
+		pr_debug("%s:Reset event received in Voice service CVP\n",
+							__func__);
 		apr_reset(v->apr_cvp);
 		apr_reset(v->apr_q6_cvp);
 		v->apr_q6_cvp = NULL;

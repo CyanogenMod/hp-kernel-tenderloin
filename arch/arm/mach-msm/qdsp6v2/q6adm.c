@@ -47,8 +47,9 @@ static int32_t adm_callback(struct apr_client_data *data, void *priv)
 	payload = data->payload;
 
 	if (data->opcode == RESET_EVENTS) {
-		pr_debug("adm_callback: Reset event is received: %d %d\n",
-				data->reset_event, data->reset_proc);
+		pr_debug("adm_callback: Reset event is received: %d %d apr[%p]\n",
+				data->reset_event, data->reset_proc,
+				this_adm.apr);
 		if (this_adm.apr) {
 			apr_reset(this_adm.apr);
 			for (i = 0; i < AFE_MAX_PORTS; i++) {
