@@ -43,7 +43,7 @@
 #endif
 
 struct subsys_soc_restart_order {
-	const char **subsystem_list;
+	const char * const *subsystem_list;
 	int count;
 
 	struct mutex shutdown_lock;
@@ -66,7 +66,7 @@ static DEFINE_MUTEX(soc_order_reg_lock);
 /* SOC specific restart orders go here */
 
 /* MSM 8x60 restart ordering info */
-static const char *order_8x60[] = {"external_modem", "modem", "lpass"};
+static const char * const order_8x60[] = {"external_modem", "modem", "lpass"};
 
 static struct subsys_soc_restart_order restart_orders_8x60_one = {
 	.subsystem_list = order_8x60,
