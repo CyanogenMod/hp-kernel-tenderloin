@@ -2423,6 +2423,8 @@ static int32_t modem_mvm_callback(struct apr_client_data *data, void *priv)
 		apr_reset(v->apr_q6_mvm);
 		v->apr_q6_mvm = NULL;
 		v->apr_mvm = NULL;
+		v->mvm_handle = 0;
+		v->mvm_q6_handle = 0;
 		return 0;
 	}
 
@@ -2522,6 +2524,8 @@ static int32_t modem_cvs_callback(struct apr_client_data *data, void *priv)
 		apr_reset(v->apr_q6_cvs);
 		v->apr_q6_cvs = NULL;
 		v->apr_cvs = NULL;
+		v->cvs_handle = 0;
+		v->cvs_q6_handle = 0;
 		return 0;
 	}
 
@@ -2709,6 +2713,8 @@ static int32_t modem_cvp_callback(struct apr_client_data *data, void *priv)
 		apr_reset(v->apr_q6_cvp);
 		v->apr_q6_cvp = NULL;
 		v->apr_cvp = NULL;
+		v->cvp_handle = 0;
+		v->cvp_q6_handle = 0;
 		return 0;
 	}
 
