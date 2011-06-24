@@ -65,18 +65,19 @@ static DEFINE_MUTEX(soc_order_reg_lock);
 
 /* SOC specific restart orders go here */
 
+#define DEFINE_SINGLE_RESTART_ORDER(name, order)		\
+	static struct subsys_soc_restart_order __##name = {	\
+		.subsystem_list = order,			\
+		.count = ARRAY_SIZE(order),			\
+		.subsys_ptrs = {[ARRAY_SIZE(order)] = NULL}	\
+	};							\
+	static struct subsys_soc_restart_order *name[] = {      \
+		&__##name,					\
+	}
+
 /* MSM 8x60 restart ordering info */
 static const char * const order_8x60[] = {"external_modem", "modem", "lpass"};
-
-static struct subsys_soc_restart_order restart_orders_8x60_one = {
-	.subsystem_list = order_8x60,
-	.count = ARRAY_SIZE(order_8x60),
-	.subsys_ptrs = {[ARRAY_SIZE(order_8x60)] = NULL}
-	};
-
-static struct subsys_soc_restart_order *restart_orders_8x60[] = {
-	&restart_orders_8x60_one,
-};
+DEFINE_SINGLE_RESTART_ORDER(orders_8x60_all, order_8x60);
 
 /* These will be assigned to one of the sets above after
  * runtime SoC identification.
@@ -84,8 +85,60 @@ static struct subsys_soc_restart_order *restart_orders_8x60[] = {
 static struct subsys_soc_restart_order **restart_orders;
 static int n_restart_orders;
 
-module_param(restart_level, int, S_IRUGO | S_IWUSR);
 module_param(enable_ramdumps, int, S_IRUGO | S_IWUSR);
+
+static struct subsys_soc_restart_order *_update_restart_order(
+		struct subsys_data *subsys);
+
+int get_restart_level()
+{
+	return restart_level;
+}
+EXPORT_SYMBOL(get_restart_level);
+
+static void restart_level_changed(void)
+{
+	struct subsys_data *subsys;
+
+	mutex_lock(&subsystem_list_lock);
+	list_for_each_entry(subsys, &subsystem_list, list)
+		subsys->restart_order = _update_restart_order(subsys);
+	mutex_unlock(&subsystem_list_lock);
+}
+
+static int restart_level_set(const char *val, struct kernel_param *kp)
+{
+	int ret;
+	int old_val = restart_level;
+
+	ret = param_set_int(val, kp);
+	if (ret)
+		return ret;
+
+	switch (restart_level) {
+
+	case RESET_SOC:
+	case RESET_SUBSYS_COUPLED:
+	case RESET_SUBSYS_INDEPENDENT:
+		pr_info("Subsystem Restart: Phase %d behavior activated.\n",
+				restart_level);
+	break;
+
+	default:
+		restart_level = old_val;
+		return -EINVAL;
+	break;
+
+	}
+
+	if (restart_level != old_val)
+		restart_level_changed();
+
+	return 0;
+}
+
+module_param_call(restart_level, restart_level_set, param_get_int,
+			&restart_level, 0644);
 
 static struct subsys_data *_find_subsystem(const char *subsys_name)
 {
@@ -311,8 +364,11 @@ int subsystem_restart(const char *subsys_name)
 			pr_warn("%s: Failed to alloc restart data. Resetting.",
 				__func__);
 		} else {
-			data->coupled =
-				restart_level == RESET_SUBSYS_COUPLED ? 1 : 0;
+			if (restart_level == RESET_SUBSYS_COUPLED)
+				data->coupled = 1;
+			else
+				data->coupled = 0;
+
 			data->subsys = subsys;
 		}
 	}
@@ -391,23 +447,20 @@ EXPORT_SYMBOL(ssr_register_subsystem);
 static int __init ssr_init_soc_restart_orders(void)
 {
 	int i;
-	struct subsys_soc_restart_order *soc_order;
 
 	if (cpu_is_msm8x60()) {
-		restart_orders = restart_orders_8x60;
-		n_restart_orders = ARRAY_SIZE(restart_orders_8x60);
+		for (i = 0; i < ARRAY_SIZE(orders_8x60_all); i++) {
+			mutex_init(&orders_8x60_all[i]->powerup_lock);
+			mutex_init(&orders_8x60_all[i]->shutdown_lock);
+		}
+
+		restart_orders = orders_8x60_all;
+		n_restart_orders = ARRAY_SIZE(orders_8x60_all);
 	}
 
 	if (restart_orders == NULL || n_restart_orders < 1) {
 		WARN_ON(1);
 		return -EINVAL;
-	}
-
-	for (i = 0; i < n_restart_orders; i++) {
-		soc_order = restart_orders[i];
-
-		mutex_init(&soc_order->powerup_lock);
-		mutex_init(&soc_order->shutdown_lock);
 	}
 
 	return 0;
