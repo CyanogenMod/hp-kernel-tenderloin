@@ -44,7 +44,6 @@
 #define SUBSYS_FATAL_DEBUG
 
 #if defined(SUBSYS_FATAL_DEBUG)
-static void subsys_notif_reg_test_notifier(const char *subsys_name);
 static void debug_crash_modem_fn(struct work_struct *);
 static int reset_modem;
 
@@ -336,11 +335,6 @@ static int __init subsystem_restart_8x60_init(void)
 	ssr_register_subsystem(&subsys_8x60_modem);
 	ssr_register_subsystem(&subsys_8x60_q6);
 
-#ifdef SUBSYS_FATAL_DEBUG
-	subsys_notif_reg_test_notifier("modem");
-	subsys_notif_reg_test_notifier("lpass");
-#endif
-
 	return 0;
 }
 
@@ -399,54 +393,6 @@ static void __exit subsystem_fatal_exit(void)
 }
 
 #ifdef SUBSYS_FATAL_DEBUG
-static const char *notif_to_string(enum subsys_notif_type notif_type)
-{
-	switch (notif_type) {
-
-	case	SUBSYS_BEFORE_SHUTDOWN:
-		return __stringify(SUBSYS_BEFORE_SHUTDOWN);
-
-	case	SUBSYS_AFTER_SHUTDOWN:
-		return __stringify(SUBSYS_AFTER_SHUTDOWN);
-
-	case	SUBSYS_BEFORE_POWERUP:
-		return __stringify(SUBSYS_BEFORE_POWERUP);
-
-	case	SUBSYS_AFTER_POWERUP:
-		return __stringify(SUBSYS_AFTER_POWERUP);
-
-	default:
-		return "unknown";
-	}
-}
-
-static int subsys_notifier_test_call(struct notifier_block *this,
-				  unsigned long code,
-				  void *data)
-{
-	switch (code) {
-
-	default:
-		pr_warn("%s: Notification %s from subsystem %p\n",
-			__func__, notif_to_string(code), data);
-	break;
-
-	}
-
-	return NOTIFY_DONE;
-}
-
-static struct notifier_block nb = {
-	.notifier_call = subsys_notifier_test_call,
-};
-
-static void subsys_notif_reg_test_notifier(const char *subsys_name)
-{
-	void *handle = subsys_notif_register_notifier(subsys_name, &nb);
-	pr_warn("%s: Registered test notifier, handle=%p",
-			__func__, handle);
-}
-
 static void debug_crash_modem_fn(struct work_struct *work)
 {
 	if (reset_modem == 1)
