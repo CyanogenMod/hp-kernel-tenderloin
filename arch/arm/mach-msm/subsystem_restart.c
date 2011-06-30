@@ -76,8 +76,13 @@ static DEFINE_MUTEX(soc_order_reg_lock);
 	}
 
 /* MSM 8x60 restart ordering info */
-static const char * const order_8x60[] = {"external_modem", "modem", "lpass"};
-DEFINE_SINGLE_RESTART_ORDER(orders_8x60_all, order_8x60);
+static const char * const _order_8x60_all[] = {
+	"external_modem",  "modem", "lpass"
+};
+DEFINE_SINGLE_RESTART_ORDER(orders_8x60_all, _order_8x60_all);
+
+static const char * const _order_8x60_modems[] = {"external_modem", "modem"};
+DEFINE_SINGLE_RESTART_ORDER(orders_8x60_modems, _order_8x60_modems);
 
 /* These will be assigned to one of the sets above after
  * runtime SoC identification.
@@ -99,6 +104,16 @@ EXPORT_SYMBOL(get_restart_level);
 static void restart_level_changed(void)
 {
 	struct subsys_data *subsys;
+
+	if (cpu_is_msm8x60() && restart_level == RESET_SUBSYS_COUPLED) {
+		restart_orders = orders_8x60_all;
+		n_restart_orders = ARRAY_SIZE(orders_8x60_all);
+	}
+
+	if (cpu_is_msm8x60() && restart_level == RESET_SUBSYS_MIXED) {
+		restart_orders = orders_8x60_modems;
+		n_restart_orders = ARRAY_SIZE(orders_8x60_modems);
+	}
 
 	mutex_lock(&subsystem_list_lock);
 	list_for_each_entry(subsys, &subsystem_list, list)
@@ -122,6 +137,10 @@ static int restart_level_set(const char *val, struct kernel_param *kp)
 	case RESET_SUBSYS_INDEPENDENT:
 		pr_info("Subsystem Restart: Phase %d behavior activated.\n",
 				restart_level);
+	break;
+
+	case RESET_SUBSYS_MIXED:
+		pr_info("Subsystem Restart: Phase 2+ behavior activated.\n");
 	break;
 
 	default:
@@ -364,7 +383,8 @@ int subsystem_restart(const char *subsys_name)
 			pr_warn("%s: Failed to alloc restart data. Resetting.",
 				__func__);
 		} else {
-			if (restart_level == RESET_SUBSYS_COUPLED)
+			if (restart_level == RESET_SUBSYS_COUPLED ||
+					restart_level == RESET_SUBSYS_MIXED)
 				data->coupled = 1;
 			else
 				data->coupled = 0;
@@ -376,6 +396,7 @@ int subsystem_restart(const char *subsys_name)
 	switch (restart_level) {
 
 	case RESET_SUBSYS_COUPLED:
+	case RESET_SUBSYS_MIXED:
 	case RESET_SUBSYS_INDEPENDENT:
 		dprintk("%s: Restarting %s [level=%d]!\n", __func__,
 			subsys_name, restart_level);
@@ -452,6 +473,11 @@ static int __init ssr_init_soc_restart_orders(void)
 		for (i = 0; i < ARRAY_SIZE(orders_8x60_all); i++) {
 			mutex_init(&orders_8x60_all[i]->powerup_lock);
 			mutex_init(&orders_8x60_all[i]->shutdown_lock);
+		}
+
+		for (i = 0; i < ARRAY_SIZE(orders_8x60_modems); i++) {
+			mutex_init(&orders_8x60_modems[i]->powerup_lock);
+			mutex_init(&orders_8x60_modems[i]->shutdown_lock);
 		}
 
 		restart_orders = orders_8x60_all;
