@@ -385,14 +385,34 @@ static int shutdown_modem_trusted(void)
 #define Q6_STRAP_TCM_BASE	(0x28C << 15)
 #define Q6_STRAP_TCM_CONFIG	0x28B
 
+static void remove_q6_proxy_votes(unsigned long data)
+{
+	local_src_disable(PLL_4);
+}
+static DEFINE_TIMER(q6_timer, remove_q6_proxy_votes, 0, 0);
+
+static void make_q6_proxy_votes(void)
+{
+	/* Make proxy votes for Q6 and set up timer to disable it. */
+	local_src_enable(PLL_4);
+	mod_timer(&q6_timer, jiffies + msecs_to_jiffies(PROXY_VOTE_TIMEOUT));
+}
+
+static void remove_q6_proxy_votes_now(void)
+{
+	/*
+	 * If the Q6 proxy vote hasn't been removed yet, them remove the
+	 * votes immediately.
+	 */
+	if (del_timer(&q6_timer))
+		remove_q6_proxy_votes(0);
+}
+
 static int reset_q6_untrusted(void)
 {
-	int ret;
 	u32 reg;
 
-	ret = local_src_enable(PLL_4);
-	if (ret)
-		goto err;
+	make_q6_proxy_votes();
 
 	/* Put Q6 into reset */
 	reg = readl(LCC_Q6_FUNC);
@@ -430,18 +450,11 @@ static int reset_q6_untrusted(void)
 	writel(reg, LCC_Q6_FUNC);
 
 	return 0;
-
-err:
-	return ret;
 }
 
 static int reset_q6_trusted(void)
 {
-	int ret;
-
-	ret = local_src_enable(PLL_4);
-	if (ret)
-		return ret;
+	make_q6_proxy_votes();
 
 	return auth_and_reset_trusted(PAS_Q6);
 }
@@ -456,12 +469,23 @@ static int shutdown_q6_untrusted(void)
 		CORE_TCM_MEM_PERPH_EN);
 	reg |= CLAMP_IO | CORE_GFM4_CLK_EN;
 	writel(reg, LCC_Q6_FUNC);
+
+	remove_q6_proxy_votes_now();
+
 	return 0;
 }
 
 static int shutdown_q6_trusted(void)
 {
-	return shutdown_trusted(PAS_Q6);
+	int ret;
+
+	ret = shutdown_trusted(PAS_Q6);
+	if (ret)
+		return ret;
+
+	remove_q6_proxy_votes_now();
+
+	return 0;
 }
 
 static int reset_dsps_untrusted(void)

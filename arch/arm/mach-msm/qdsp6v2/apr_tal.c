@@ -233,7 +233,6 @@ static int apr_smd_probe(struct platform_device *pdev)
 		wake_up(&apr_svc_ch[APR_DL_SMD][dest][clnt].dest);
 	} else if (pdev->id == APR_DEST_QDSP6) {
 		pr_info("apr_tal:Q6 Is Up\n");
-		local_src_disable(PLL_4);
 		dest = APR_DEST_QDSP6;
 		clnt = APR_CLIENT_AUDIO;
 		apr_svc_ch[APR_DL_SMD][dest][clnt].dest_state = 1;
