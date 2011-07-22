@@ -1366,6 +1366,8 @@ static int mdp_probe(struct platform_device *pdev)
 			if_no = SECONDARY_INTF_SEL;
 			mfd->dma = &dma_s_data;
 		}
+		mfd->lut_update = mdp_lut_update_nonlcdc;
+		mfd->do_histogram = mdp_do_histogram;
 		mdp4_display_intf_sel(if_no, DSI_CMD_INTF);
 
 		mdp_config_vsync(mfd);
