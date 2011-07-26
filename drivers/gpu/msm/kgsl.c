@@ -1183,9 +1183,30 @@ kgsl_ioctl_sharedmem_from_vmalloc(struct kgsl_device_private *dev_priv,
 		result = -EINVAL;
 		goto error;
 	}
-	len = vma->vm_end - vma->vm_start;
-	if (len == 0) {
-		KGSL_CORE_ERR("Invalid vma region length %d\n", len);
+
+	/*
+	 * If the user specified a length, use it, otherwise try to
+	 * infer the length if the vma region
+	 */
+	if (param->gpuaddr != 0) {
+		len = param->gpuaddr;
+	} else {
+		/*
+		 * For this to work, we have to assume the VMA region is only
+		 * for this single allocation.  If it isn't, then bail out
+		 */
+		if (vma->vm_pgoff || (param->hostptr != vma->vm_start)) {
+			KGSL_CORE_ERR("VMA region does not match hostaddr\n");
+			result = -EINVAL;
+			goto error;
+		}
+
+		len = vma->vm_end - vma->vm_start;
+	}
+
+	/* Make sure it fits */
+	if (len == 0 || param->hostptr + len > vma->vm_end) {
+		KGSL_CORE_ERR("Invalid memory allocation length %d\n", len);
 		result = -EINVAL;
 		goto error;
 	}
@@ -1387,10 +1408,16 @@ static int kgsl_setup_ashmem(struct kgsl_mem_entry *entry,
 	struct vm_area_struct *vma;
 	struct file *filep, *vmfile;
 	unsigned long len;
+	unsigned int hostaddr = (unsigned int) hostptr;
 
-	vma = kgsl_get_vma_from_start_addr((unsigned long) hostptr);
+	vma = kgsl_get_vma_from_start_addr(hostaddr);
 	if (vma == NULL)
 		return -EINVAL;
+
+	if (vma->vm_pgoff || vma->vm_start != hostaddr) {
+		KGSL_CORE_ERR("Invalid vma region\n");
+		return -EINVAL;
+	}
 
 	len = vma->vm_end - vma->vm_start;
 
