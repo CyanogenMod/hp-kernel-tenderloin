@@ -66,6 +66,7 @@ static void q6_fatal_fn(struct work_struct *work)
 {
 	pr_err("%s: Watchdog bite received from Q6!\n", MODULE_NAME);
 	subsystem_restart("lpass");
+	enable_irq(LPASS_Q6SS_WDOG_EXPIRED);
 }
 
 static void send_q6_nmi(void)
@@ -158,6 +159,7 @@ static void modem_unlock_timeout(struct work_struct *work)
 	iounmap(hwio_modem_reset_addr);
 
 	subsystem_restart("modem");
+	enable_irq(MARM_WDOG_EXPIRED);
 }
 
 static void modem_fatal_fn(struct work_struct *work)
@@ -175,6 +177,7 @@ static void modem_fatal_fn(struct work_struct *work)
 	if (modem_state == 0 || modem_state & panic_smsm_states) {
 
 		subsystem_restart("modem");
+		enable_irq(MARM_WDOG_EXPIRED);
 
 	} else if (modem_state & reset_smsm_states) {
 
