@@ -107,6 +107,10 @@
 #include <linux/mfd/wm8994/core.h>
 #endif
 
+#ifdef CONFIG_USB_ANDROID
+#include <linux/usb/android_composite.h>
+#endif
+
 #include "devices.h"
 #include "devices-msm8x60.h"
 #include "devices-tenderloin.h"
@@ -125,6 +129,7 @@
 #include <linux/notifier.h>
 #include <linux/reboot.h>
 #include <linux/mdmgpio.h>
+#include <mach/htc_usb.h>
 
 
 
@@ -804,6 +809,49 @@ static irqreturn_t pmic_id_on_irq(int irq, void *data)
 
 	return IRQ_HANDLED;
 }
+
+#ifdef CONFIG_USB_ANDROID
+static struct usb_mass_storage_platform_data mass_storage_pdata = {
+	.nluns		= 1,
+	.vendor		= "HP",
+	.product	= "Android Tablet",
+};
+
+static struct platform_device usb_mass_storage_device = {
+	.name	= "usb_mass_storage",
+	.id	= -1,
+	.dev	= {
+		.platform_data = &mass_storage_pdata,
+	},
+};
+
+static struct android_usb_platform_data android_usb_pdata = {
+	.vendor_id	= 0x0BB4,
+	.product_id	= 0x0c86,
+	.version	= 0x0100,
+	.product_name		= "Android Tablet",
+	.manufacturer_name	= "HP",
+	.num_products = ARRAY_SIZE(usb_products),
+	.products = usb_products,
+	.num_functions = ARRAY_SIZE(usb_functions_all),
+	.functions = usb_functions_all,
+};
+static struct platform_device android_usb_device = {
+	.name	= "android_usb",
+	.id		= -1,
+	.dev		= {
+		.platform_data = &android_usb_pdata,
+	},
+};
+
+static int __init board_serialno_setup(char *serialno)
+{
+	android_usb_pdata.serial_number = serialno;
+	return 1;
+}
+__setup("androidboot.serialno=", board_serialno_setup);
+#endif
+
 
 static int msm_hsusb_pmic_id_notif_init(void (*callback)(int online), int init)
 {
@@ -6672,6 +6720,15 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
 		isp1763_modem_poweron(1);
 	}
 #endif
+
+#ifdef CONFIG_USB_ANDROID
+    platform_device_register(&usb_diag_device);
+    android_usb_pdata.products[0].product_id =
+		android_usb_pdata.product_id;
+    platform_device_register(&usb_mass_storage_device);
+    platform_device_register(&android_usb_device);
+#endif
+
 	if (boardtype_is_3g())
 		platform_device_register(&mdmgpio_device);
 	msm_fb_add_devices();
