@@ -78,6 +78,17 @@ enum ctype {
 	SOFTLOCKUP,
 	HARDLOCKUP,
 	HUNG_TASK,
+	KMALLOC_ORDER0,
+	KMALLOC_ORDER1,
+	KMALLOC_ORDER2,
+	KMALLOC_ORDER3,
+	KMALLOC_ORDER4,
+	KMALLOC_ORDER5,
+	KMALLOC_ORDER6,
+	KMALLOC_ORDER7,
+	KMALLOC_ORDER8,
+	KMALLOC_ORDER9,
+	KMALLOC_ORDER10,
 };
 
 static char* cp_name[] = {
@@ -105,6 +116,17 @@ static char* cp_type[] = {
 	"SOFTLOCKUP",
 	"HARDLOCKUP",
 	"HUNG_TASK",
+	"KMALLOCORDER0",
+	"KMALLOCORDER1",
+	"KMALLOCORDER2",
+	"KMALLOCORDER3",
+	"KMALLOCORDER4",
+	"KMALLOCORDER5",
+	"KMALLOCORDER6",
+	"KMALLOCORDER7",
+	"KMALLOCORDER8",
+	"KMALLOCORDER9",
+	"KMALLOCORDER10",
 };
 
 static struct jprobe lkdtm;
@@ -324,6 +346,24 @@ static void lkdtm_do_action(enum ctype which)
 		kfree(data);
 		schedule();
 		memset(data, 0x78, len);
+		break;
+	}
+	case KMALLOC_ORDER0:
+	case KMALLOC_ORDER1:
+	case KMALLOC_ORDER2:
+	case KMALLOC_ORDER3:
+	case KMALLOC_ORDER4:
+	case KMALLOC_ORDER5:
+	case KMALLOC_ORDER6:
+	case KMALLOC_ORDER7:
+	case KMALLOC_ORDER8:
+	case KMALLOC_ORDER9:
+	case KMALLOC_ORDER10:
+	{
+		u32 *data;
+		size_t len   = 4096 * (0x1UL << (which - KMALLOC_ORDER0));
+		printk("kmalloc_leak %dK\n", len);
+		data = kmalloc(len, GFP_ATOMIC);
 		break;
 	}
 	case SOFTLOCKUP:

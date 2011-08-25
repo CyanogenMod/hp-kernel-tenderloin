@@ -28,6 +28,7 @@
 #include <linux/notifier.h>
 #include <linux/memcontrol.h>
 #include <linux/security.h>
+#include <linux/reboot.h>
 
 int sysctl_panic_on_oom;
 int sysctl_oom_kill_allocating_task;
@@ -588,6 +589,41 @@ retry:
 		goto retry;
 }
 
+/* 
+ * Palm-specific:
+ * Routines to support restarting ourselves cleanly (with a sync)
+ * on an OOM. Kill a process, then call kernel_restart(). If this doesn't
+ * succeed in kernel reboot within 30 seconds (this number 
+ * based on the MSM 8660 shutdown sequence), then panic(). 
+ */
+
+#define OOM_PANIC_TIMEOUT 30
+
+#define OOM_OOM_TYPE 	1
+#define PF_OOM_TYPE	2
+
+void oom_panic(unsigned long arg)
+{	panic("OOM panic: kernel_restart failed!\n");
+}
+
+void oom_restart(int type)
+{	
+	struct timer_list oom_timer;
+
+	printk(KERN_CRIT "Calling oom_restart(), type=%d\n", type);
+	init_timer(&oom_timer);
+	oom_timer.function = oom_panic;
+	oom_timer.data = 0;	/* currently unused */
+	oom_timer.expires = jiffies + OOM_PANIC_TIMEOUT * HZ;
+	add_timer(&oom_timer);
+
+	/* "panic" is used (slightly misleadingly) as the argument to 
+	 * kernel_restart() in order to  to trigger log collection 
+	 */
+	kernel_restart("panic");
+
+}
+
 /*
  * pagefault handler calls into here because it is out of memory but
  * doesn't know exactly how or why.
@@ -614,6 +650,7 @@ void pagefault_out_of_memory(void)
 	 */
 	if (!test_thread_flag(TIF_MEMDIE))
 		schedule_timeout_uninterruptible(1);
+	oom_restart(PF_OOM_TYPE);
 }
 
 /**
@@ -675,4 +712,5 @@ void out_of_memory(struct zonelist *zonelist, gfp_t gfp_mask,
 	 */
 	if (!test_thread_flag(TIF_MEMDIE))
 		schedule_timeout_uninterruptible(1);
+	oom_restart(OOM_OOM_TYPE);
 }

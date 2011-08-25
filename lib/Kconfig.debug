@@ -400,6 +400,13 @@ config DEBUG_KMEMLEAK_TEST
 
 	  If unsure, say N.
 
+config DEBUG_KMEMLEAK_DEFAULT_OFF
+	bool "Default kmemleak to off"
+	depends on DEBUG_KMEMLEAK
+	help
+	  Say Y here to disable kmemleak by default. It can then be enabled
+	  on the command line via kmemleak=on.
+
 config DEBUG_PREEMPT
 	bool "Debug preemptible kernel"
 	depends on DEBUG_KERNEL && PREEMPT && TRACE_IRQFLAGS_SUPPORT
@@ -587,8 +594,23 @@ config DEBUG_LOCKING_API_SELFTESTS
 	  mutexes and rwsems.
 
 config STACKTRACE
-	bool
+	bool "Stacktrace"
 	depends on STACKTRACE_SUPPORT
+	default y
+
+config MINI_CORE
+    bool "Enable minicore dumps"
+    default y
+    help
+      Enable minicore dumps as an alternative to full coredumps.
+      /proc/sys/kernel/minicore_pattern is used for control.
+
+config MINI_CORE
+    bool "Enable minicore dumps"
+    default y
+    help
+      Enable minicore dumps as an alternative to full coredumps.
+      /proc/sys/kernel/minicore_pattern is used for control.
 
 config DEBUG_KOBJECT
 	bool "kobject debugging"

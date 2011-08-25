@@ -20,15 +20,42 @@
 #include <linux/usb.h>
 #include <linux/usbdevice_fs.h>
 #include <linux/usb/hcd.h>
+#include <linux/usb/quirks.h>
 #include <linux/kthread.h>
 #include <linux/mutex.h>
 #include <linux/freezer.h>
 #include <linux/pm_runtime.h>
+#include <linux/usb/otg.h>
 
 #include <asm/uaccess.h>
 #include <asm/byteorder.h>
 
 #include "usb.h"
+
+#ifdef CONFIG_USB_PEHCI_HCD
+#include <linux/usb/hcd.h>
+#include <linux/usb/ch11.h>
+
+int portno;
+int No_Data_Phase;
+EXPORT_SYMBOL(No_Data_Phase);
+int No_Status_Phase;
+EXPORT_SYMBOL(No_Status_Phase);
+unsigned char hub_tier;
+
+#define PDC_HOST_NOTIFY		0x8001	/*completion from core */
+#define UNSUPPORTED_DEVICE	0x8099
+#define UNWANTED_SUSPEND	0x8098
+#define PDC_POWERMANAGEMENT	0x8097
+
+int Unwanted_SecondReset;
+EXPORT_SYMBOL(Unwanted_SecondReset);
+int HostComplianceTest;
+EXPORT_SYMBOL(HostComplianceTest);
+int HostTest;
+EXPORT_SYMBOL(HostTest);
+#endif
+
 
 /* if we are in debug mode, always announce new devices */
 #ifdef DEBUG
@@ -340,12 +367,24 @@ static int get_hub_status(struct usb_device *hdev,
 static int get_port_status(struct usb_device *hdev, int port1,
 		struct usb_port_status *data)
 {
-	int i, status = -ETIMEDOUT;
+	int i,j, status = -ETIMEDOUT;
 
 	for (i = 0; i < USB_STS_RETRIES && status == -ETIMEDOUT; i++) {
-		status = usb_control_msg(hdev, usb_rcvctrlpipe(hdev, 0),
-			USB_REQ_GET_STATUS, USB_DIR_IN | USB_RT_PORT, 0, port1,
-			data, sizeof(*data), USB_STS_TIMEOUT);
+		for(j=0; j<3; j++){
+			status = usb_control_msg(hdev, usb_rcvctrlpipe(hdev, 0),
+				USB_REQ_GET_STATUS, USB_DIR_IN | USB_RT_PORT, 0, port1,
+				data, sizeof(*data), USB_STS_TIMEOUT);
+			if (status==4)
+			{
+				printk(KERN_DEBUG"%s port=%x,portstatus=%x, portchange=%x \n",
+					__func__, port1, data->wPortStatus, data->wPortChange);
+				break;
+			}
+			else
+				printk("trying to get port status again *****status%x portstatus=%x\n",
+					status, data->wPortStatus);
+
+			}
 	}
 	return status;
 }
@@ -706,6 +745,10 @@ static void hub_activate(struct usb_hub *hub, enum hub_activation_type type)
 		 */
 		if (type == HUB_INIT) {
 			delay = hub_power_on(hub, false);
+#ifdef CONFIG_USB_OTG
+			if (hdev->bus->is_b_host)
+				goto init2;
+#endif
 			PREPARE_DELAYED_WORK(&hub->init_work, hub_init_func2);
 			schedule_delayed_work(&hub->init_work,
 					msecs_to_jiffies(delay));
@@ -817,6 +860,11 @@ static void hub_activate(struct usb_hub *hub, enum hub_activation_type type)
 	 * will see them later and handle them normally.
 	 */
 	if (need_debounce_delay) {
+#ifdef CONFIG_USB_OTG
+		if (hdev->bus->is_b_host && type == HUB_INIT)
+			goto init3;
+#endif
+
 		delay = HUB_DEBOUNCE_STABLE;
 
 		/* Don't do a long sleep inside a workqueue routine */
@@ -1241,6 +1289,7 @@ static int hub_probe(struct usb_interface *intf, const struct usb_device_id *id)
 #ifdef	CONFIG_USB_OTG_BLACKLIST_HUB
 	if (hdev->parent) {
 		dev_warn(&intf->dev, "ignoring external hub\n");
+		otg_send_event(OTG_EVENT_HUB_NOT_SUPPORTED);
 		return -ENODEV;
 	}
 #endif
@@ -1577,6 +1626,13 @@ void usb_disconnect(struct usb_device **pdev)
 	usb_set_device_state(udev, USB_STATE_NOTATTACHED);
 	dev_info (&udev->dev, "USB disconnect, address %d\n", udev->devnum);
 
+#ifdef CONFIG_USB_OTG
+	if (udev->bus->hnp_support && udev->portnum == udev->bus->otg_port) {
+		cancel_delayed_work(&udev->bus->hnp_polling);
+		udev->bus->hnp_support = 0;
+	}
+#endif
+
 	usb_lock_device(udev);
 
 	/* Free up all the children before we remove this device */
@@ -1681,15 +1737,30 @@ static int usb_enumerate_device_otg(struct usb_device *udev)
 					(port1 == bus->otg_port)
 						? "" : "non-");
 
+				/* a_alt_hnp_support is obsoleted */
+				if (port1 != bus->otg_port)
+					goto out;
+
+				bus->hnp_support = 1;
+
+				/* a_hnp_support is not required for devices
+				 * compliant to revision 2.0 or subsequent
+				 * versions.
+				 */
+				if (le16_to_cpu(desc->bcdOTG) >= 0x0200)
+					goto out;
+
+				/* Legacy B-device i.e compliant to spec
+				 * revision 1.3 expect A-device to set
+				 * a_hnp_support or b_hnp_enable before
+				 * selecting configuration.
+				 */
+
 				/* enable HNP before suspend, it's simpler */
-				if (port1 == bus->otg_port)
-					bus->b_hnp_enable = 1;
 				err = usb_control_msg(udev,
 					usb_sndctrlpipe(udev, 0),
 					USB_REQ_SET_FEATURE, 0,
-					bus->b_hnp_enable
-						? USB_DEVICE_B_HNP_ENABLE
-						: USB_DEVICE_A_ALT_HNP_SUPPORT,
+					USB_DEVICE_A_HNP_SUPPORT,
 					0, NULL, 0, USB_CTRL_SET_TIMEOUT);
 				if (err < 0) {
 					/* OTG MESSAGE: report errors here,
@@ -1698,26 +1769,35 @@ static int usb_enumerate_device_otg(struct usb_device *udev)
 					dev_info(&udev->dev,
 						"can't set HNP mode: %d\n",
 						err);
-					bus->b_hnp_enable = 0;
+					bus->hnp_support = 0;
 				}
 			}
 		}
 	}
-
+out:
 	if (!is_targeted(udev)) {
+
+		otg_send_event(OTG_EVENT_DEV_NOT_SUPPORTED);
 
 		/* Maybe it can talk to us, though we can't talk to it.
 		 * (Includes HNP test device.)
 		 */
-		if (udev->bus->b_hnp_enable || udev->bus->is_b_host) {
+		if (udev->bus->hnp_support) {
 			err = usb_port_suspend(udev, PMSG_SUSPEND);
 			if (err < 0)
 				dev_dbg(&udev->dev, "HNP fail, %d\n", err);
 		}
 		err = -ENOTSUPP;
-		goto fail;
+	} else if (udev->bus->hnp_support &&
+		udev->portnum == udev->bus->otg_port) {
+		/* HNP polling is introduced in OTG supplement Rev 2.0
+		 * and older devices may not support. Work is not
+		 * re-armed if device returns STALL. B-Host also perform
+		 * HNP polling.
+		 */
+		schedule_delayed_work(&udev->bus->hnp_polling,
+			msecs_to_jiffies(THOST_REQ_POLL));
 	}
-fail:
 #endif
 	return err;
 }
@@ -1801,7 +1881,6 @@ int usb_new_device(struct usb_device *udev)
 	pm_runtime_set_active(&udev->dev);
 	pm_runtime_enable(&udev->dev);
 
-	usb_detect_quirks(udev);
 	err = usb_enumerate_device(udev);	/* Read descriptors */
 	if (err < 0)
 		goto fail;
@@ -2197,6 +2276,22 @@ int usb_port_suspend(struct usb_device *udev, pm_message_t msg)
 				return status;
 		}
 	}
+#ifdef CONFIG_USB_OTG
+	if (!udev->bus->is_b_host && udev->bus->hnp_support &&
+		udev->portnum == udev->bus->otg_port) {
+		status = usb_control_msg(udev, usb_sndctrlpipe(udev, 0),
+				USB_REQ_SET_FEATURE, 0,
+				USB_DEVICE_B_HNP_ENABLE,
+				0, NULL, 0, USB_CTRL_SET_TIMEOUT);
+		if (status < 0) {
+			otg_send_event(OTG_EVENT_NO_RESP_FOR_HNP_ENABLE);
+			dev_dbg(&udev->dev, "can't enable HNP on port %d, "
+					"status %d\n", port1, status);
+		} else {
+			udev->bus->b_hnp_enable = 1;
+		}
+	}
+#endif
 
 	/* see 7.1.7.6 */
 	status = set_port_feature(hub->hdev, port1, USB_PORT_FEAT_SUSPEND);
@@ -2233,7 +2328,7 @@ int usb_port_suspend(struct usb_device *udev, pm_message_t msg)
  */
 static int finish_port_resume(struct usb_device *udev)
 {
-	int	status = 0;
+	int	i, status = 0;
 	u16	devstatus;
 
 	/* caller owns the udev device lock */
@@ -2264,7 +2359,15 @@ static int finish_port_resume(struct usb_device *udev)
 	 */
 	if (status == 0) {
 		devstatus = 0;
-		status = usb_get_status(udev, USB_RECIP_DEVICE, 0, &devstatus);
+
+		for(i=0; i<3; i++){
+			status = usb_get_status(udev, USB_RECIP_DEVICE, 0, &devstatus);
+			if (status > 0)
+				break;
+			else
+				printk("trying to get device status again****status=%u\n", status);
+			mdelay(100);
+		}
 		if (status >= 0)
 			status = (status > 0 ? 0 : -ENODEV);
 
@@ -2784,14 +2887,22 @@ hub_port_init (struct usb_hub *hub, struct usb_device *udev, int port1,
 					buf->bMaxPacketSize0;
 			kfree(buf);
 
-			retval = hub_port_reset(hub, port1, udev, delay);
-			if (retval < 0)		/* error or disconnect */
-				goto fail;
-			if (oldspeed != udev->speed) {
-				dev_dbg(&udev->dev,
-					"device reset changed speed!\n");
-				retval = -ENODEV;
-				goto fail;
+			/*
+			 * If it is a HSET Test device, we don't issue a
+			 * second reset which results in failure due to
+			 * speed change.
+			 */
+			if (le16_to_cpu(buf->idVendor) != 0x1a0a) {
+				retval = hub_port_reset(hub, port1, udev,
+							 delay);
+				if (retval < 0)	/* error or disconnect */
+					goto fail;
+				if (oldspeed != udev->speed) {
+					dev_dbg(&udev->dev,
+					       "device reset changed speed!\n");
+					retval = -ENODEV;
+					goto fail;
+				}
 			}
 			if (r) {
 				dev_err(&udev->dev,
@@ -3029,6 +3140,9 @@ static void hub_port_connect_change(struct usb_hub *hub, int port1,
 			(portchange & USB_PORT_STAT_C_CONNECTION))
 		clear_bit(port1, hub->removed_bits);
 
+#ifdef CONFIG_USB_PEHCI_HCD
+	if (Unwanted_SecondReset == 0)   /*stericsson*/
+#endif
 	if (portchange & (USB_PORT_STAT_C_CONNECTION |
 				USB_PORT_STAT_C_ENABLE)) {
 		status = hub_port_debounce(hub, port1);
@@ -3111,6 +3225,10 @@ static void hub_port_connect_change(struct usb_hub *hub, int port1,
 		if (status < 0)
 			goto loop;
 
+		usb_detect_quirks(udev);
+		if (udev->quirks & USB_QUIRK_DELAY_INIT)
+			msleep(1000);
+
 		/* consecutive bus-powered hubs aren't reliable; they can
 		 * violate the voltage drop budget.  if the new child has
 		 * a "powered" LED, users should notice we didn't enable it
@@ -3181,7 +3299,32 @@ static void hub_port_connect_change(struct usb_hub *hub, int port1,
 		status = hub_power_remaining(hub);
 		if (status)
 			dev_dbg(hub_dev, "%dmA power budget left\n", status);
+#ifdef CONFIG_USB_PEHCI_HCD
+		if (HostComplianceTest == 1 && udev->devnum > 1) {
+			if (HostTest == 7) {	/*SINGLE_STEP_GET_DEV_DESC */
+				dev_info(hub_dev, "Testing "
+						"SINGLE_STEP_GET_DEV_DESC\n");
+				/* Test the Single Step Get Device Descriptor ,
+				 * take care it should not get status phase
+				 */
+				No_Data_Phase = 1;
+				No_Status_Phase = 1;
 
+				usb_get_device_descriptor(udev, 8);
+				No_Data_Phase = 0;
+				No_Status_Phase = 0;
+			}
+
+			if (HostTest == 8) {
+				dev_info(hub_dev, "Testing "
+						"SINGLE_STEP_SET_FEATURE\n");
+				/* Test Single Step Set Feature */
+				No_Status_Phase = 1;
+				usb_get_device_descriptor(udev, 8);
+				No_Status_Phase = 0;
+			}
+		}
+#endif
 		return;
 
 loop_disable:
@@ -3219,7 +3362,11 @@ static void hub_events(void)
 	u16 portchange;
 	int i, ret;
 	int connect_change;
-
+#ifdef CONFIG_USB_PEHCI_HCD
+	int j;
+	int otgport = 0;
+	struct usb_port_status port_status;
+#endif
 	/*
 	 *  We restart the list every time to avoid a deadlock with
 	 * deleting hubs downstream from this one. This should be
@@ -3294,6 +3441,171 @@ static void hub_events(void)
 
 		/* deal with port status changes */
 		for (i = 1; i <= hub->descriptor->bNbrPorts; i++) {
+#ifdef CONFIG_USB_PEHCI_HCD
+			struct usb_port_status portsts;
+
+			/*if we have something to do on
+			 * otg port
+			 * */
+			if ((hdev->otgstate & USB_OTG_SUSPEND) ||
+			    (hdev->otgstate & USB_OTG_ENUMERATE) ||
+			    (hdev->otgstate & USB_OTG_DISCONNECT) ||
+			    (hdev->otgstate & USB_OTG_RESUME)) {
+				otgport = 1;
+			}
+
+
+			if (hdev->otgstate & USB_OTG_RESUME) {
+				ret = clear_port_feature(hdev, i,
+							 USB_PORT_FEAT_SUSPEND);
+				if (ret < 0) {
+					dev_err(hub_dev, "usb otg port Resume"
+						" fails, %d\n", ret);
+				}
+				hdev->otgstate &= ~USB_OTG_RESUME;
+			}
+			if ((hdev->otgstate & USB_OTG_SUSPEND)
+			    && (hdev->children[0])) {
+				hdev->otgstate &= ~USB_OTG_SUSPEND;
+
+				ret = set_port_feature(hdev, 1,
+						       USB_PORT_FEAT_SUSPEND);
+				if (ret < 0) {
+					dev_err(hub_dev, "usb otg port suspend"
+						" fails, %d\n", ret);
+					break;
+				}
+				msleep(1);
+				ret = get_port_status(hdev, i, &portsts);
+				if (ret < 0) {
+					dev_err(hub_dev, "usb otg get port"
+						" status fails, %d\n", ret);
+					break;
+				}
+				portchange = le16_to_cpu(portsts.wPortChange);
+				if (portchange & USB_PORT_STAT_C_SUSPEND) {
+					clear_port_feature(hdev, i,
+						USB_PORT_FEAT_C_SUSPEND);
+				}
+				break;
+			}
+
+			if (hdev->otgstate & USB_OTG_REMOTEWAKEUP) {
+
+				for (j = 1; j <= hub->descriptor->bNbrPorts;
+				     j++) {
+					if (hdev->children[j - 1]) {
+						dev_dbg(hub_dev, "child"
+						     " found at port %d\n", j);
+						ret = usb_control_msg(hdev->
+						      children[j - 1],
+						      usb_sndctrlpipe(hdev->
+								children[j - 1],
+								0),
+						      USB_REQ_SET_FEATURE,
+						      USB_RECIP_DEVICE,
+						      USB_DEVICE_REMOTE_WAKEUP,
+						      0, NULL,
+						      0,
+						      USB_CTRL_SET_TIMEOUT);
+						if (ret < 0) {
+							dev_err(hub_dev, "Port"
+							  " %d doesn't support"
+							  "remote wakeup\n", j);
+						} else {
+							dev_dbg(hub_dev, "Port"
+							  " %d supports"
+							  "remote wakeup\n", j);
+						}
+						ret = set_port_feature(hdev, j,
+							USB_PORT_FEAT_SUSPEND);
+						if (ret < 0) {
+							dev_err(hub_dev, "Port"
+							  " %d NOT ABLE TO"
+							  " SUSPEND\n", j);
+						} else {
+							dev_dbg(hub_dev, "Port"
+							  " %d is ABLE TO"
+							  " SUSPEND\n", j);
+						}
+					}
+				}
+				ret = usb_control_msg(hdev,
+						      usb_sndctrlpipe(hdev, 0),
+						      USB_REQ_SET_FEATURE,
+						      USB_RECIP_DEVICE,
+						      USB_DEVICE_REMOTE_WAKEUP,
+						      0, NULL, 0,
+						      USB_CTRL_SET_TIMEOUT);
+				if (ret < 0) {
+					dev_err(hub_dev, "HUB doesn't support"
+							" REMOTE WAKEUP\n");
+				} else {
+					dev_dbg(hub_dev, "HUB supports"
+							" REMOTE WAKEUP\n");
+				}
+				ret = 0;
+				msleep(10);
+				if (hdev->parent == hdev->bus->root_hub) {
+					if (hdev->hcd_suspend &&
+					    hdev->hcd_priv) {
+						dev_dbg(hub_dev, "calling"
+						  " suspend after remote wakeup"
+						  " command is issued\n");
+						hdev->hcd_suspend(hdev->
+								   hcd_priv);
+					}
+					if (hdev->otg_notif)
+						hdev->otg_notif(hdev->otgpriv,
+						       PDC_POWERMANAGEMENT, 10);
+				}
+			}
+
+			if (hdev->otgstate & USB_OTG_WAKEUP_ALL) {
+				(void) usb_control_msg(hdev,
+						       usb_sndctrlpipe(hdev, 0),
+						       USB_REQ_CLEAR_FEATURE,
+						       USB_RECIP_DEVICE,
+						       USB_DEVICE_REMOTE_WAKEUP,
+						       0, NULL, 0,
+						       USB_CTRL_SET_TIMEOUT);
+				dev_dbg(hub_dev, "Hub CLEARED REMOTE WAKEUP\n");
+				for (j = 1; j <= hub->descriptor->bNbrPorts;
+				     j++) {
+					if (hdev->children[j - 1]) {
+						dev_dbg(hub_dev, "PORT %d"
+						   " SUSPEND IS CLEARD\n", j);
+						clear_port_feature(hdev, j,
+						   USB_PORT_FEAT_C_SUSPEND);
+						msleep(50);
+						(void) usb_control_msg(hdev->
+						       children[j - 1],
+						       usb_sndctrlpipe(
+							  hdev->children[j - 1],
+							  0),
+						       USB_REQ_CLEAR_FEATURE,
+						       USB_RECIP_DEVICE,
+						       USB_DEVICE_REMOTE_WAKEUP,
+						       0, NULL,
+						       0,
+						       USB_CTRL_SET_TIMEOUT);
+						dev_dbg(hub_dev, "PORT %d "
+							"REMOTE WAKEUP IS "
+							"CLEARD\n", j);
+						msleep(10);
+					}
+				}
+
+
+			}
+
+
+			/*
+			 * reset the state of otg device,
+			 * regardless of otg device
+			 */
+			hdev->otgstate = 0;
+#endif
 			if (test_bit(i, hub->busy_bits))
 				continue;
 			connect_change = test_bit(i, hub->change_bits);
@@ -3381,9 +3693,19 @@ static void hub_events(void)
 					USB_PORT_FEAT_C_RESET);
 			}
 
-			if (connect_change)
+			if (connect_change) {
+#ifdef CONFIG_USB_PEHCI_HCD
+				if (hdev->parent == hdev->bus->root_hub)
+					if (hdev->otg_notif
+					    && (HostComplianceTest == 0))
+						hdev->otg_notif(hdev->otgpriv,
+								PDC_HOST_NOTIFY,
+								5);
+				portno = i;
+#endif
 				hub_port_connect_change(hub, i,
 						portstatus, portchange);
+				}
 		} /* end for i */
 
 		/* deal with hub status changes */
@@ -3408,7 +3730,105 @@ static void hub_events(void)
                         	hub_power_on(hub, true);
 			}
 		}
+#ifdef CONFIG_USB_PEHCI_HCD
+		/* if we have something on otg */
+		if (otgport) {
+			otgport = 0;
+			/* notify otg controller about it */
+			if (hdev->parent == hdev->bus->root_hub)
+				if (hdev->otg_notif)
+					hdev->otg_notif(hdev->otgpriv,
+							PDC_HOST_NOTIFY, 0);
+		}
 
+		if (HostComplianceTest && hdev->devnum > 1) {
+			/* TEST_SE0_NAK */
+			if (HostTest == 1) {
+				dev_info(hub_dev, "Testing for TEST_SE0_NAK\n");
+				ret = clear_port_feature(hdev, portno,
+						 USB_PORT_FEAT_C_CONNECTION);
+				ret = set_port_feature(hdev, portno,
+						       USB_PORT_FEAT_SUSPEND);
+				ret = set_port_feature(hdev, portno | 0x300,
+						       USB_PORT_FEAT_TEST);
+				ret = get_port_status(hdev, portno,
+						      &port_status);
+			}
+			/*TEST_J*/
+			if (HostTest == 2) {
+				dev_info(hub_dev, "Testing TEST_J\n");
+				ret = clear_port_feature(hdev, portno,
+						USB_PORT_FEAT_C_CONNECTION);
+				ret = set_port_feature(hdev, portno,
+						USB_PORT_FEAT_SUSPEND);
+				ret = set_port_feature(hdev, portno | 0x100,
+						       USB_PORT_FEAT_TEST);
+				ret = get_port_status(hdev, portno,
+						      &port_status);
+			}
+			if (HostTest == 3) {
+				dev_info(hub_dev, "Testing TEST_K\n");
+				ret = clear_port_feature(hdev, portno,
+						USB_PORT_FEAT_C_CONNECTION);
+				ret = set_port_feature(hdev, portno,
+						       USB_PORT_FEAT_SUSPEND);
+				ret = set_port_feature(hdev, portno | 0x200,
+						       USB_PORT_FEAT_TEST);
+				ret = get_port_status(hdev, portno,
+						      &port_status);
+			}
+			if (HostTest == 4) {
+				dev_info(hub_dev, "Testing TEST_PACKET at Port"
+						  " %d\n", portno);
+				ret = clear_port_feature(hdev, portno,
+						USB_PORT_FEAT_C_CONNECTION);
+				if (ret < 0)
+					dev_err(hub_dev, "Clear port feature"
+						" C_CONNECTION failed\n");
+
+				ret = set_port_feature(hdev, portno,
+						       USB_PORT_FEAT_SUSPEND);
+				if (ret < 0)
+					dev_err(hub_dev, "Clear port feature"
+						" SUSPEND failed\n");
+
+				ret = set_port_feature(hdev, portno | 0x400,
+						       USB_PORT_FEAT_TEST);
+				if (ret < 0)
+					dev_err(hub_dev, "Clear port feature"
+						" TEST failed\n");
+
+				ret = get_port_status(hdev, portno,
+						      &port_status);
+				if (ret < 0)
+					dev_err(hub_dev, "Get port status"
+						" failed\n");
+			}
+			if (HostTest == 5) {
+				dev_info(hub_dev, "Testing TEST_FORCE_ENBLE\n");
+				ret = clear_port_feature(hdev, portno,
+						 USB_PORT_FEAT_C_CONNECTION);
+				ret = set_port_feature(hdev, portno,
+						 USB_PORT_FEAT_SUSPEND);
+				ret = set_port_feature(hdev, portno | 0x500,
+						       USB_PORT_FEAT_TEST);
+				ret = get_port_status(hdev, portno,
+						      &port_status);
+			}
+			if (HostTest == 6) {
+				dev_info(hub_dev, "Testing "
+					 "HS_HOST_PORT_SUSPEND_RESUME\n");
+				ret = clear_port_feature(hdev, portno,
+						 USB_PORT_FEAT_C_CONNECTION);
+				ret = set_port_feature(hdev, portno,
+						     USB_PORT_FEAT_SUSPEND);
+				msleep(3000);
+				ret = clear_port_feature(hdev, portno,
+						 USB_PORT_FEAT_SUSPEND);
+				HostTest = 0;
+			}
+		}
+#endif
  loop_autopm:
 		/* Balance the usb_autopm_get_interface() above */
 		usb_autopm_put_interface_no_suspend(intf);

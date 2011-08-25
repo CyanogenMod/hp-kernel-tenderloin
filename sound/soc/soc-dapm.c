@@ -669,7 +669,15 @@ static int dapm_supply_check_power(struct snd_soc_dapm_widget *w)
 		    !path->connected(path->source, path->sink))
 			continue;
 
-		if (path->sink && path->sink->power_check &&
+		if (!path->sink)
+			continue;
+
+		if (path->sink->force) {
+			power = 1;
+			break;
+		}
+
+		if (path->sink->power_check &&
 		    path->sink->power_check(path->sink)) {
 			power = 1;
 			break;
@@ -840,6 +848,8 @@ static void dapm_seq_run(struct snd_soc_codec *codec, struct list_head *list,
 			else if (event == SND_SOC_DAPM_STREAM_STOP)
 				ret = w->event(w,
 					       NULL, SND_SOC_DAPM_PRE_PMD);
+			else
+				ret = w->event(w, NULL, 0);
 			break;
 
 		case snd_soc_dapm_post:
@@ -853,6 +863,8 @@ static void dapm_seq_run(struct snd_soc_codec *codec, struct list_head *list,
 			else if (event == SND_SOC_DAPM_STREAM_STOP)
 				ret = w->event(w,
 					       NULL, SND_SOC_DAPM_POST_PMD);
+			else
+				ret = w->event(w, NULL, 0);
 			break;
 
 		case snd_soc_dapm_input:
@@ -2003,8 +2015,10 @@ int snd_soc_dapm_stream_event(struct snd_soc_codec *codec,
 {
 	struct snd_soc_dapm_widget *w;
 
-	if (stream == NULL)
+	if (stream == NULL) {
+		pr_crit("Stream event called with null stream\n");
 		return 0;
+	}
 
 	mutex_lock(&codec->mutex);
 	list_for_each_entry(w, &codec->dapm_widgets, list)
@@ -2016,10 +2030,13 @@ int snd_soc_dapm_stream_event(struct snd_soc_codec *codec,
 		if (strstr(w->sname, stream)) {
 			switch(event) {
 			case SND_SOC_DAPM_STREAM_START:
-				w->active = 1;
+				w->active++;
 				break;
 			case SND_SOC_DAPM_STREAM_STOP:
-				w->active = 0;
+				if (w->active)
+					w->active--;
+				else
+					pr_err ("dapm widget is not active, it is already 0!\n");
 				break;
 			case SND_SOC_DAPM_STREAM_SUSPEND:
 			case SND_SOC_DAPM_STREAM_RESUME:
@@ -2138,6 +2155,29 @@ int snd_soc_dapm_get_pin_status(struct snd_soc_codec *codec, const char *pin)
 	return 0;
 }
 EXPORT_SYMBOL_GPL(snd_soc_dapm_get_pin_status);
+
+/**
+ * snd_soc_dapm_get_pin_pwr_status - get audio pin power status
+ * @codec: audio codec
+ * @pin: audio signal pin endpoint (or start point)
+ *
+ * Get audio pin status - connected or disconnected.
+ *
+ * Returns 1 for connected otherwise 0.
+ */
+int snd_soc_dapm_get_pin_pwr_status(struct snd_soc_codec *codec, const char *pin)
+{
+	struct snd_soc_dapm_widget *w;
+
+	list_for_each_entry(w, &codec->dapm_widgets, list) {
+		if (!strcmp(w->name, pin))
+			return w->power;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(snd_soc_dapm_get_pin_pwr_status);
+
 
 /**
  * snd_soc_dapm_ignore_suspend - ignore suspend status for DAPM endpoint

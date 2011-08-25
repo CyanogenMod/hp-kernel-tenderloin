@@ -11,7 +11,6 @@
  *  option) any later version.
  *
  */
-
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/slab.h>
@@ -41,8 +40,8 @@ static int wm8994_read(struct wm8994 *wm8994, unsigned short reg,
 	for (i = 0; i < bytes / 2; i++) {
 		buf[i] = be16_to_cpu(buf[i]);
 
-		dev_vdbg(wm8994->dev, "Read %04x from R%d(0x%x)\n",
-			 buf[i], reg + i, reg + i);
+//		dev_vdbg(wm8994->dev, "Read %04x from R%d(0x%x)\n",
+//			 buf[i], reg + i, reg + i);
 	}
 
 	return 0;
@@ -86,6 +85,13 @@ int wm8994_bulk_read(struct wm8994 *wm8994, unsigned short reg,
 	int ret;
 
 	mutex_lock(&wm8994->io_lock);
+	while (count > 127)
+	{
+		ret = wm8994_read(wm8994, reg, 127*2, buf);
+		count = count - 127;
+		buf = buf + 127;
+		reg = reg + 127;
+	}
 
 	ret = wm8994_read(wm8994, reg, count * 2, buf);
 
@@ -96,9 +102,9 @@ int wm8994_bulk_read(struct wm8994 *wm8994, unsigned short reg,
 EXPORT_SYMBOL_GPL(wm8994_bulk_read);
 
 static int wm8994_write(struct wm8994 *wm8994, unsigned short reg,
-			int bytes, void *src)
+			int bytes, const void *src)
 {
-	u16 *buf = src;
+	const u16 *buf = src;
 	int i;
 
 	BUG_ON(bytes % 2);
@@ -106,9 +112,7 @@ static int wm8994_write(struct wm8994 *wm8994, unsigned short reg,
 
 	for (i = 0; i < bytes / 2; i++) {
 		dev_vdbg(wm8994->dev, "Write %04x to R%d(0x%x)\n",
-			 buf[i], reg + i, reg + i);
-
-		buf[i] = cpu_to_be16(buf[i]);
+			 be16_to_cpu(buf[i]), reg + i, reg + i);
 	}
 
 	return wm8994->write_dev(wm8994, reg, bytes, src);
@@ -126,6 +130,8 @@ int wm8994_reg_write(struct wm8994 *wm8994, unsigned short reg,
 {
 	int ret;
 
+	val = cpu_to_be16(val);
+
 	mutex_lock(&wm8994->io_lock);
 
 	ret = wm8994_write(wm8994, reg, 2, &val);
@@ -135,6 +141,37 @@ int wm8994_reg_write(struct wm8994 *wm8994, unsigned short reg,
 	return ret;
 }
 EXPORT_SYMBOL_GPL(wm8994_reg_write);
+
+/**
+ * wm8994_bulk_write: Write multiple WM8994 registers
+ *
+ * @wm8994: Device to write to
+ * @reg: First register
+ * @count: Number of registers
+ * @buf: Buffer to write from.  Data must be big-endian formatted.
+ */
+int wm8994_bulk_write(struct wm8994 *wm8994, unsigned short reg,
+		      int count, const u16 *buf)
+{
+	int ret;
+	
+	mutex_lock(&wm8994->io_lock);
+
+	while (count > 127)
+	{
+		ret = wm8994_write(wm8994, reg, 127*2, buf);
+		count = count - 127;
+		buf = buf + 127;
+		reg = reg + 127;
+	}
+
+	ret = wm8994_write(wm8994, reg, count * 2, buf);
+
+	mutex_unlock(&wm8994->io_lock);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(wm8994_bulk_write);
 
 /**
  * wm8994_set_bits: Set the value of a bitfield in a WM8994 register
@@ -158,6 +195,8 @@ int wm8994_set_bits(struct wm8994 *wm8994, unsigned short reg,
 
 	r &= ~mask;
 	r |= val;
+
+	r = cpu_to_be16(r);
 
 	ret = wm8994_write(wm8994, reg, 2, &r);
 
@@ -203,6 +242,9 @@ static struct mfd_cell wm8994_devs[] = {
 	},
 };
 
+#if defined(CONFIG_MACH_MSM8X60_TOPAZ)
+
+#else
 /*
  * Supplies for the main bulk of CODEC; the LDO supplies are ignored
  * and should be handled via the standard regulator API supply
@@ -217,6 +259,19 @@ static const char *wm8994_main_supplies[] = {
 	"SPKVDD1",
 	"SPKVDD2",
 };
+
+static const char *wm8958_main_supplies[] = {
+	"DBVDD1",
+	"DBVDD2",
+	"DBVDD3",
+	"DCVDD",
+	"AVDD1",
+	"AVDD2",
+	"CPVDD",
+	"SPKVDD1",
+	"SPKVDD2",
+};
+#endif
 
 #ifdef CONFIG_PM
 static int wm8994_device_suspend(struct device *dev)
@@ -239,42 +294,58 @@ static int wm8994_device_suspend(struct device *dev)
 	if (ret < 0)
 		dev_err(dev, "Failed to save LDO registers: %d\n", ret);
 
-	ret = regulator_bulk_disable(ARRAY_SIZE(wm8994_main_supplies),
+//#if defined(CONFIG_MACH_MSM8X60_TOPAZ)
+
+#if 0
+    //comment out for palm
+	ret = regulator_bulk_disable(wm8994->num_supplies,
 				     wm8994->supplies);
 	if (ret != 0) {
 		dev_err(dev, "Failed to disable supplies: %d\n", ret);
 		return ret;
 	}
-
+#endif
 	return 0;
 }
 
 static int wm8994_device_resume(struct device *dev)
 {
 	struct wm8994 *wm8994 = dev_get_drvdata(dev);
-	int ret;
+	int i;
 
-	ret = regulator_bulk_enable(ARRAY_SIZE(wm8994_main_supplies),
+//#if defined(CONFIG_MACH_MSM8X60_TOPAZ)
+
+#if 0
+    //comment out for palm
+	ret = regulator_bulk_enable(wm8994->num_supplies,
 				    wm8994->supplies);
 	if (ret != 0) {
 		dev_err(dev, "Failed to enable supplies: %d\n", ret);
 		return ret;
 	}
+#endif
+	for (i = 0; i < WM8994_NUM_IRQ_REGS; i++) {
+		wm8994_set_bits(wm8994, WM8994_INTERRUPT_STATUS_1_MASK + i,
+							0xffff,
+							wm8994->irq_masks_cur[i]);
+	}
 
-	ret = wm8994_write(wm8994, WM8994_INTERRUPT_STATUS_1_MASK,
-			   WM8994_NUM_IRQ_REGS * 2, &wm8994->irq_masks_cur);
-	if (ret < 0)
-		dev_err(dev, "Failed to restore interrupt masks: %d\n", ret);
+	
+	for (i = 0; i < ARRAY_SIZE(wm8994->ldo_regs); i++) {
+		if (wm8994->ldo_regs[i]) {
+			wm8994_set_bits(wm8994, WM8994_LDO_1 + i,
+							0xffff,
+							wm8994->ldo_regs[i]);
+		}
+	}
 
-	ret = wm8994_write(wm8994, WM8994_LDO_1, WM8994_NUM_LDO_REGS * 2,
-			   &wm8994->ldo_regs);
-	if (ret < 0)
-		dev_err(dev, "Failed to restore LDO registers: %d\n", ret);
-
-	ret = wm8994_write(wm8994, WM8994_GPIO_1, WM8994_NUM_GPIO_REGS * 2,
-			   &wm8994->gpio_regs);
-	if (ret < 0)
-		dev_err(dev, "Failed to restore GPIO registers: %d\n", ret);
+	for (i = 0; i < ARRAY_SIZE(wm8994->gpio_regs); i++) {
+		if (wm8994->gpio_regs[i]) {
+			wm8994_set_bits(wm8994, WM8994_GPIO_1 + i,
+							0xffff,
+							wm8994->gpio_regs[i]);
+		}
+	}
 
 	return 0;
 }
@@ -305,9 +376,11 @@ static int wm8994_ldo_in_use(struct wm8994_pdata *pdata, int ldo)
 /*
  * Instantiate the generic non-control parts of the device.
  */
-static int wm8994_device_init(struct wm8994 *wm8994, unsigned long id, int irq)
+static int wm8994_device_init(struct wm8994 *wm8994, int irq)
 {
 	struct wm8994_pdata *pdata = wm8994->dev->platform_data;
+
+	const char *devname;
 	int ret, i;
 
 	mutex_init(&wm8994->io_lock);
@@ -323,41 +396,38 @@ static int wm8994_device_init(struct wm8994 *wm8994, unsigned long id, int irq)
 		goto err;
 	}
 
-	wm8994->supplies = kzalloc(sizeof(struct regulator_bulk_data) *
-				   ARRAY_SIZE(wm8994_main_supplies),
-				   GFP_KERNEL);
-	if (!wm8994->supplies)
-		goto err;
+    if ((pdata)&&(pdata->wm8994_setup))
+		pdata->wm8994_setup();
 
-	for (i = 0; i < ARRAY_SIZE(wm8994_main_supplies); i++)
-		wm8994->supplies[i].supply = wm8994_main_supplies[i];
-
-	ret = regulator_bulk_get(wm8994->dev, ARRAY_SIZE(wm8994_main_supplies),
-				 wm8994->supplies);
-	if (ret != 0) {
-		dev_err(wm8994->dev, "Failed to get supplies: %d\n", ret);
-		goto err_supplies;
-	}
-
-	ret = regulator_bulk_enable(ARRAY_SIZE(wm8994_main_supplies),
-				    wm8994->supplies);
-	if (ret != 0) {
-		dev_err(wm8994->dev, "Failed to enable supplies: %d\n", ret);
-		goto err_get;
-	}
 
 	ret = wm8994_reg_read(wm8994, WM8994_SOFTWARE_RESET);
 	if (ret < 0) {
 		dev_err(wm8994->dev, "Failed to read ID register\n");
 		goto err_enable;
 	}
-	if (ret != 0x8994) {
+	switch (ret) {
+	case 0x8994:
+		devname = "WM8994";
+		if (wm8994->type != WM8994)
+			dev_warn(wm8994->dev, "Device registered as type %d\n",
+				 wm8994->type);
+		wm8994->type = WM8994;
+		break;
+	case 0x8958:
+		devname = "WM8958";
+		if (wm8994->type != WM8958)
+			dev_warn(wm8994->dev, "Device registered as type %d\n",
+				 wm8994->type);
+		wm8994->type = WM8958;
+		break;
+	default:
 		dev_err(wm8994->dev, "Device is not a WM8994, ID is %x\n",
 			ret);
 		ret = -EINVAL;
 		goto err_enable;
 	}
-
+	 dev_err(wm8994->dev, "Audio Codec Device ID: %x\n",
+                                 ret);
 	ret = wm8994_reg_read(wm8994, WM8994_CHIP_REVISION);
 	if (ret < 0) {
 		dev_err(wm8994->dev, "Failed to read revision register: %d\n",
@@ -368,14 +438,17 @@ static int wm8994_device_init(struct wm8994 *wm8994, unsigned long id, int irq)
 	switch (ret) {
 	case 0:
 	case 1:
-		dev_warn(wm8994->dev, "revision %c not fully supported\n",
-			'A' + ret);
+		if (wm8994->type == WM8994)
+			dev_warn(wm8994->dev,
+				 "revision %c not fully supported\n",
+				 'A' + ret);
 		break;
 	default:
 		dev_info(wm8994->dev, "revision %c\n", 'A' + ret);
 		break;
 	}
 
+	dev_info(wm8994->dev, "%s revision %c\n", devname, 'A' + ret);
 
 	if (pdata) {
 		wm8994->irq_base = pdata->irq_base;
@@ -421,12 +494,9 @@ static int wm8994_device_init(struct wm8994 *wm8994, unsigned long id, int irq)
 err_irq:
 	wm8994_irq_exit(wm8994);
 err_enable:
-	regulator_bulk_disable(ARRAY_SIZE(wm8994_main_supplies),
-			       wm8994->supplies);
-err_get:
-	regulator_bulk_free(ARRAY_SIZE(wm8994_main_supplies), wm8994->supplies);
-err_supplies:
-	kfree(wm8994->supplies);
+
+	if ((pdata)&&(pdata->wm8994_shutdown))
+		pdata->wm8994_shutdown();
 err:
 	mfd_remove_devices(wm8994->dev);
 	kfree(wm8994);
@@ -435,12 +505,14 @@ err:
 
 static void wm8994_device_exit(struct wm8994 *wm8994)
 {
+	struct wm8994_pdata *pdata = wm8994->dev->platform_data;
 	mfd_remove_devices(wm8994->dev);
+
 	wm8994_irq_exit(wm8994);
-	regulator_bulk_disable(ARRAY_SIZE(wm8994_main_supplies),
-			       wm8994->supplies);
-	regulator_bulk_free(ARRAY_SIZE(wm8994_main_supplies), wm8994->supplies);
-	kfree(wm8994->supplies);
+
+	if ((pdata)&&(pdata->wm8994_shutdown))
+		pdata->wm8994_shutdown();
+
 	kfree(wm8994);
 }
 
@@ -465,12 +537,8 @@ static int wm8994_i2c_read_device(struct wm8994 *wm8994, unsigned short reg,
 	return 0;
 }
 
-/* Currently we allocate the write buffer on the stack; this is OK for
- * small writes - if we need to do large writes this will need to be
- * revised.
- */
 static int wm8994_i2c_write_device(struct wm8994 *wm8994, unsigned short reg,
-				   int bytes, void *src)
+				   int bytes, const void *src)
 {
 	struct i2c_client *i2c = wm8994->control_data;
 	unsigned char msg[bytes + 2];
@@ -496,7 +564,6 @@ static int wm8994_i2c_probe(struct i2c_client *i2c,
 
 	wm8994 = kzalloc(sizeof(struct wm8994), GFP_KERNEL);
 	if (wm8994 == NULL) {
-		kfree(i2c);
 		return -ENOMEM;
 	}
 
@@ -506,8 +573,9 @@ static int wm8994_i2c_probe(struct i2c_client *i2c,
 	wm8994->read_dev = wm8994_i2c_read_device;
 	wm8994->write_dev = wm8994_i2c_write_device;
 	wm8994->irq = i2c->irq;
-
-	return wm8994_device_init(wm8994, id->driver_data, i2c->irq);
+//	wm8994->type = id->driver_data;
+	wm8994->type = WM8958;
+	return wm8994_device_init(wm8994, i2c->irq);
 }
 
 static int wm8994_i2c_remove(struct i2c_client *i2c)
@@ -535,7 +603,8 @@ static int wm8994_i2c_resume(struct i2c_client *i2c)
 #endif
 
 static const struct i2c_device_id wm8994_i2c_id[] = {
-	{ "wm8994", 0 },
+	{ "wm8994", WM8994 },
+	{ "wm8958", WM8958 },
 	{ }
 };
 MODULE_DEVICE_TABLE(i2c, wm8994_i2c_id);

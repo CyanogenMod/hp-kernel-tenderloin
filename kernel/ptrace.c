@@ -202,8 +202,20 @@ int ptrace_attach(struct task_struct *task)
 		task->ptrace |= PT_PTRACE_CAP;
 
 	__ptrace_link(task, current);
+
+#ifdef CONFIG_MINI_CORE
+	if (task->ptrace_attach_done) {
+		complete(task->ptrace_attach_done);
+
+		/* not really an error case, but we definitely
+		 * want to skip the SIGSTOP */
+		goto done;
+	}
+#endif
+
 	send_sig_info(SIGSTOP, SEND_SIG_FORCED, task);
 
+done:
 	retval = 0;
 unlock_tasklist:
 	write_unlock_irq(&tasklist_lock);

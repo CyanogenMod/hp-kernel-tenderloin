@@ -314,6 +314,8 @@ struct usb_bus {
 	u8 otg_port;			/* 0, or number of OTG/HNP port */
 	unsigned is_b_host:1;		/* true during some HNP roleswitches */
 	unsigned b_hnp_enable:1;	/* OTG: did A-Host enable HNP? */
+	unsigned hnp_support:1;		/* OTG: HNP is supported on OTG port */
+	struct delayed_work hnp_polling;/* OTG: HNP polling work */
 	unsigned sg_tablesize;		/* 0 or largest number of sg list entries */
 
 	int devnum_next;		/* Next open device number in
@@ -355,6 +357,16 @@ struct usb_bus {
  * limit. Because the arrays need to add a bit for hub status data, we
  * do 31, so plus one evens out to four bytes.
  */
+
+#ifdef CONFIG_USB_PEHCI_HCD
+#define USB_OTG_SUSPEND		0x1
+#define USB_OTG_ENUMERATE	0x2
+#define USB_OTG_DISCONNECT	0x4
+#define USB_OTG_RESUME		0x8
+#define USB_OTG_REMOTEWAKEUP	0x10
+#define USB_OTG_WAKEUP_ALL	0x20
+#endif
+
 #define USB_MAXCHILDREN		(31)
 
 struct usb_tt;
@@ -470,6 +482,18 @@ struct usb_device {
 	struct dentry *usbfs_dentry;
 #endif
 
+#ifdef CONFIG_USB_PEHCI_HCD
+	/*otg add ons */
+	u8 otgdevice;				/*device is otg type */
+
+	/*otg states from otg driver, suspend, enumerate, disconnect */
+	u8 otgstate;
+	void *otgpriv;
+	void (*otg_notif) (void *otg_priv,
+				unsigned long notif, unsigned long data);
+	void *hcd_priv;
+	void (*hcd_suspend) (void *hcd_priv);
+#endif
 	int maxchild;
 	struct usb_device *children[USB_MAXCHILDREN];
 

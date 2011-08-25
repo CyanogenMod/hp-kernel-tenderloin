@@ -153,6 +153,11 @@ enum
 	KERN_MAX_LOCK_DEPTH=74, /* int: rtmutex's maximum lock depth */
 	KERN_NMI_WATCHDOG=75, /* int: enable/disable nmi watchdog */
 	KERN_PANIC_ON_NMI=76, /* int: whether we will panic on an unrecovered */
+	KERN_BOOT_REASON = 77, /* int: identify reason system was booted */
+#ifdef CONFIG_MINI_CORE
+	KERN_MINICORE_PATTERN=78,	/* string: pattern for core-files */
+	KERN_MINICORE_TIMEOUT=79,	/* int: minicore timeout in sec */
+#endif
 };
 
 

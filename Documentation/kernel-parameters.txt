@@ -2383,6 +2383,10 @@ and is between 256 and 4096 characters. It is defined in the file
 				1: Fast pin select (default)
 				2: ATC IRMode
 
+	snddev_icodec.msm_codec_i2s_slave_mode= [ARM-MSM]
+			1, codec is I2S master
+			0, MSM is I2S master (default)
+
 	snd-ad1816a=	[HW,ALSA]
 
 	snd-ad1848=	[HW,ALSA]

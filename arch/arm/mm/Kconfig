@@ -572,6 +572,9 @@ config CPU_TLB_V6
 config CPU_TLB_V7
 	bool
 
+config EMULATE_DOMAIN_MANAGER_V7
+	bool
+
 config VERIFY_PERMISSION_FAULT
 	bool
 endif
@@ -782,7 +785,8 @@ config CACHE_L2X0
 	bool "Enable the L2x0 outer cache controller"
 	depends on REALVIEW_EB_ARM11MP || MACH_REALVIEW_PB11MP || MACH_REALVIEW_PB1176 || \
 		   REALVIEW_EB_A9MP || ARCH_MX35 || ARCH_MX31 || MACH_REALVIEW_PBX || \
-		   ARCH_NOMADIK || ARCH_OMAP4 || ARCH_U8500 || ARCH_VEXPRESS_CA9X4
+		   ARCH_NOMADIK || ARCH_OMAP4 || ARCH_U8500 || ARCH_VEXPRESS_CA9X4 || \
+		   MACH_MSM7X27_SURF || MACH_MSM7X27_FFA
 	default y
 	select OUTER_CACHE
 	select OUTER_CACHE_SYNC
@@ -837,3 +841,18 @@ config ARCH_HAS_BARRIERS
 	help
 	  This option allows the use of custom mandatory barriers
 	  included via the mach/barriers.h file.
+
+config VCM_MM
+	bool
+
+config VCM
+	bool "Virtual Contiguous Memory (VCM) Layer"
+	depends on MMU
+	select GENERIC_ALLOCATOR
+	select VCM_MM
+	default n
+	help
+	  Virtual Contiguous Memory layer. This is the layer that is intended to
+	  replace PMEM.
+
+	  If you don't know what this is, say N here.

@@ -10,6 +10,10 @@
 #include "header.h"
 #include "debugfs.h"
 
+#define OPROFILE_BASE "/usr/share/oprofile"
+#define OPROFILE_DIR "arm/armv7"
+#define OPROFILE_FILE "events"
+
 int				nr_counters;
 
 struct perf_event_attr		attrs[MAX_COUNTERS];
@@ -446,6 +450,63 @@ parse_single_tracepoint_event(char *sys_name,
 	return EVT_HANDLED;
 }
 
+static enum event_result
+parse_oprofile_event(const char * base, const char * dir, const char **strp, struct perf_event_attr * attr)
+{
+	char file_path[MAXPATHLEN];
+	char linebuf[1024];
+	snprintf(file_path, MAXPATHLEN, "%s/%s/%s", base, dir, OPROFILE_FILE);
+
+	FILE * file = fopen(file_path, "r");
+
+	if (!file)
+		return EVT_FAILED;
+
+	if (!strp || !*strp)
+		return EVT_FAILED;
+
+	const char * name = *strp;
+	const char * name_end = strchr(name, ':');
+
+	if (!name_end) {
+		name_end = name + strlen(name);
+	}
+
+	int name_len = name_end - name;
+
+	while (fgets(linebuf, sizeof(linebuf), file)) {
+	        if (linebuf[0] && linebuf[strlen(linebuf)-1] == '\n')
+	                linebuf[strlen(linebuf)-1] = '\0';
+		if (strncmp(linebuf, "include:", 8) == 0) {
+			enum event_result nested = parse_oprofile_event(base, linebuf + 8, strp, attr);
+			if (nested != EVT_FAILED)
+				return nested;
+		} else {
+			int event;
+			char * oprofile_name, * name_end;
+			if ((sscanf(linebuf, "event:0x%x", &event) == 1) &&
+				(oprofile_name = strstr(linebuf, "name:")) &&
+				(oprofile_name += 5) &&
+				(strncmp(oprofile_name, name, name_len) == 0) &&
+				(oprofile_name[name_len] == ' ')) {
+
+				if (event == 0xff)
+				        continue; // skip oprofile cpu-cycles counter
+
+				*strp = name + name_len;
+				attr->type = PERF_TYPE_RAW;
+				attr->config = event;
+				fclose(file);
+				return EVT_HANDLED;
+			}
+		}
+	}
+
+	fclose(file);
+
+	return EVT_FAILED;
+}
+
 /* sys + ':' + event + ':' + flags*/
 #define MAX_EVOPT_LEN	(MAX_EVENT_LENGTH * 2 + 2 + 128)
 static enum event_result
@@ -757,6 +818,10 @@ parse_event_symbols(const char **str, struct perf_event_attr *attr)
 	if (ret != EVT_FAILED)
 		goto modifier;
 
+	ret = parse_oprofile_event(OPROFILE_BASE, OPROFILE_DIR, str, attr);
+	if (ret != EVT_FAILED)
+		goto modifier;
+
 	fprintf(stderr, "invalid or unsupported event: '%s'\n", *str);
 	fprintf(stderr, "Run 'perf list' for a list of valid events\n");
 	return EVT_FAILED;
@@ -862,6 +927,46 @@ static const char * const event_type_descriptors[] = {
 };
 
 /*
+ * Print the events from ...oprofile.../events
+ */
+
+static void print_oprofile_events(const char * base, const char * dir)
+{
+	char file_path[MAXPATHLEN];
+	char linebuf[1024];
+	snprintf(file_path, MAXPATHLEN, "%s/%s/%s", base, dir, OPROFILE_FILE);
+
+	FILE * file = fopen(file_path, "r");
+
+	if (!file)
+		return;
+
+	while (fgets(linebuf, sizeof(linebuf), file)) {
+	        if (linebuf[0] && linebuf[strlen(linebuf)-1] == '\n')
+	                linebuf[strlen(linebuf)-1] = '\0';
+		if (strncmp(linebuf, "include:", 8) == 0) {
+			print_oprofile_events(base, linebuf + 8);
+		} else {
+			int event;
+			char * name, * name_end;
+			if ((sscanf(linebuf, "event:0x%x", &event) == 1) &&
+				(name = strstr(linebuf, "name:")) &&
+				(name += 5) &&
+				(name_end = strchr(name, ' '))) {
+
+				if (event == 0xff)
+				        continue; // skip oprofile cpu-cycles counter
+
+				*name_end = '\0';
+				printf("  %-42s [%s %x]\n", name, event_type_descriptors[PERF_TYPE_RAW], event);
+			}
+		}
+	}
+
+	fclose(file);
+}
+
+/*
  * Print the events from <debugfs_mount_point>/tracing/events
  */
 
@@ -925,6 +1030,8 @@ void print_events(void)
 
 		prev_type = type;
 	}
+	printf("\n");
+	print_oprofile_events(OPROFILE_BASE, OPROFILE_DIR);
 
 	printf("\n");
 	for (type = 0; type < PERF_COUNT_HW_CACHE_MAX; type++) {

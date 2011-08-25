@@ -1,0 +1,119 @@
+menu "MSM SoC Audio support"
+
+config SND_MSM_SOC
+	tristate "SoC Audio for the MSM series chips"
+	depends on ARCH_MSM_ARM11 && SND_SOC && MSM_ADSP
+	help
+	  To add support for ALSA PCM driver for MSM board.
+
+config SND_MSM7KV2_SOC
+	tristate "SoC Audio for the MSM7KV2 chip"
+	depends on ARCH_MSM7X30 && SND_SOC && MSM7KV2_AUDIO
+	default y
+	help
+	  To add support for ALSA PCM driver for QSD8k board.
+
+config SND_MSM7KV2_DAI_SOC
+	tristate "SoC CPU/CODEC DAI for the MSM7x30 chip"
+	depends on SND_MSM7KV2_SOC
+	default y
+	help
+	 To add support for ALSA PCM driver for MSM7x30 board.
+
+
+config SND_MSM_DAI_SOC
+	tristate "SoC CPU/CODEC DAI for the MSM chip"
+	depends on SND_MSM_SOC
+	default y
+	help
+	 To add support for ALSA PCM driver for MSM board.
+
+config SND_MSM_SOC_MSM7K
+        tristate "SoC Audio support for MSM7K"
+        depends on SND_MSM_SOC
+	default y
+        help
+	 To add support for SoC audio on msm7k for msm72x1 or msm7x27
+
+config SND_MSM_SOC_MSM7KV2
+	tristate "SoC Audio support for MSM7KV2"
+	depends on SND_MSM7KV2_SOC
+	default y
+	help
+	 To add support for SoC audio on qsd8k.
+
+config SND_MVS_SOC
+	tristate "SoC Mvs support for MSM7X30"
+	depends on MSM7KV2_AUDIO
+	default y
+	help
+	To support Mvs packet capture/playback
+
+config SND_MSM_MVS7x30_SOC
+	tristate "SoC MVS7x30 support for MSM7X30"
+	depends on SND_MVS_SOC
+	default y
+	help
+	To support Mvs packet capture/playback
+
+config SND_MSM_MVS_DAI_SOC
+	tristate "SoC CPU/CODEC DAI for the MSM7x30 chip"
+	depends on SND_MVS_SOC || MSM_8x60_VOIP
+	default y
+	help
+	 To add support for ALSA PCM driver for MSM7x30 board.
+
+config SND_SOC_MSM8X60_PCM
+	tristate
+
+config SND_SOC_MSM8X60_DAI
+	tristate
+
+config SND_SOC_MSM8X60
+	tristate "SoC Audio over DSP support for MSM8660"
+	depends on ARCH_MSM8X60 && SND_SOC && MSM8X60_AUDIO
+	select SND_SOC_MSM8X60_PCM
+	select SND_SOC_MSM8X60_DAI
+	default y
+	help
+	 To add support for SoC audio on MSM8X60. This driver
+	 Adds support for audio over DSP. The driver adds Kcontrols
+	 to do device switch/routing and volume control support for all
+	 audio sessions. The kcontols also does sesion management for
+	 voice calls
+
+
+config SND_SOC_MSM8660_PCM
+	tristate
+
+config SND_SOC_MSM8660_LPAIF
+	tristate
+
+config SND_SOC_MSM8660
+	tristate "SoC Machine driver for MSM8660"
+	depends on !SND_SOC_MSM8X60
+	select SND_SOC_MSM8660_PCM
+	select SND_SOC_MSM8660_LPAIF
+	select SND_SOC_TIMPANI
+	select MARIMBA_CORE
+	default n
+	help
+	 To add support for SoC audio on MSM8660 for direct playback
+	 to LPA buffer over DMA.The interface bypasses DSP and hence
+	 does not support any post/pre processing features.The driver
+	 would support full duplex playback/record sessions.
+
+config SND_VOIP_PCM
+	tristate
+
+config MSM_8x60_VOIP
+	tristate "SoC Machine driver for voip"
+	depends on SND_SOC_MSM8X60
+	select SND_MSM_MVS_DAI_SOC
+	select SND_VOIP_PCM
+	default n
+	help
+	 To support ALSA VOIP driver for MSM8x60 target.
+	 This driver communicates with QDSP6, for getting
+	 uplink and downlink voice packets.
+endmenu

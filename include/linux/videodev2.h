@@ -362,6 +362,8 @@ struct v4l2_pix_format {
 #define V4L2_PIX_FMT_OV518    v4l2_fourcc('O', '5', '1', '8') /* ov518 JPEG */
 #define V4L2_PIX_FMT_STV0680  v4l2_fourcc('S', '6', '8', '0') /* stv0680 bayer */
 #define V4L2_PIX_FMT_TM6000   v4l2_fourcc('T', 'M', '6', '0') /* tm5600/tm60x0 */
+#define V4L2_PIX_FMT_NV12_TILE    v4l2_fourcc('N', 'T', '1', '2') /* 12  Y/CbCr 4:2:0  Tile */
+#define V4L2_PIX_FMT_NV21_TILE    v4l2_fourcc('N', 'T', '2', '1') /* 12  Y/CrCb 4:2:0  Tile */
 
 /*
  *	F O R M A T   E N U M E R A T I O N

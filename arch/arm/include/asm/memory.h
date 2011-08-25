@@ -81,7 +81,7 @@
  * between 2MB and 14MB inclusive.
  */
 #ifndef CONSISTENT_DMA_SIZE
-#define CONSISTENT_DMA_SIZE 	SZ_2M
+#define CONSISTENT_DMA_SIZE 	0xA00000
 #endif
 
 #define CONSISTENT_END		(0xffe00000UL)
@@ -130,6 +130,8 @@
  */
 #ifndef __virt_to_phys
 #define __virt_to_phys(x)	((x) - PAGE_OFFSET + PHYS_OFFSET)
+#endif
+#ifndef __phys_to_virt
 #define __phys_to_virt(x)	((x) - PHYS_OFFSET + PAGE_OFFSET)
 #endif
 
@@ -179,7 +181,7 @@
  * translation for translating DMA addresses.  Use the driver
  * DMA support - see dma-mapping.h.
  */
-static inline unsigned long virt_to_phys(void *x)
+static inline unsigned long virt_to_phys(const void *x)
 {
 	return __virt_to_phys((unsigned long)(x));
 }
@@ -310,6 +312,13 @@ static inline __deprecated void *bus_to_virt(unsigned long x)
  */
 #ifndef arch_is_coherent
 #define arch_is_coherent()		0
+#endif
+
+/*
+ * Set if the architecture speculatively fetches data into cache.
+ */
+#ifndef arch_has_speculative_dfetch
+#define arch_has_speculative_dfetch()	0
 #endif
 
 #endif

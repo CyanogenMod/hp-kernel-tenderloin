@@ -693,6 +693,14 @@ static long uinput_ioctl_handler(struct file *file, unsigned int cmd,
 			phys[length - 1] = '\0';
 			break;
 
+		case UI_SET_COUNTRY:
+			if (udev->state == UIST_CREATED) {
+				retval = -EINVAL;
+				goto out;
+			}
+			udev->dev->country = arg;
+			break;
+
 		case UI_BEGIN_FF_UPLOAD:
 			retval = uinput_ff_upload_from_user(p, &ff_up);
 			if (retval)

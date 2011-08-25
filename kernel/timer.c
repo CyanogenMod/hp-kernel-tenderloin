@@ -848,7 +848,24 @@ EXPORT_SYMBOL(mod_timer_pinned);
  */
 void add_timer(struct timer_list *timer)
 {
-	BUG_ON(timer_pending(timer));
+	/*	BUG_ON(timer_pending(timer)); */
+	if (unlikely(timer_pending(timer))) {
+		printk(KERN_ERR "BUG: failure at %s:%d/%s()!\n",
+				__FILE__, __LINE__, __func__);
+		printk(KERN_ERR "next/prev: %#x / %#x\n",
+				(uint32_t)timer->entry.next,
+				(uint32_t)timer->entry.prev);
+		if (timer->function)
+			print_symbol("function: %s",
+				(unsigned long)timer->function);
+
+		printk(KERN_ERR "function: %#lx\n",
+			(unsigned long)timer->function);
+		printk(KERN_ERR "data: %#lx\n",
+			(unsigned long)timer->data);
+
+		panic("BUG!");
+	}
 	mod_timer(timer, timer->expires);
 }
 EXPORT_SYMBOL(add_timer);
@@ -1237,6 +1254,12 @@ unsigned long get_next_timer_interrupt(unsigned long now)
 	struct tvec_base *base = __get_cpu_var(tvec_bases);
 	unsigned long expires;
 
+	/*
+	 * Pretend that there is no timer pending if the cpu is offline.
+	 * Possible pending timers will be migrated later to an active cpu.
+	 */
+	if (cpu_is_offline(smp_processor_id()))
+		return now + NEXT_TIMER_MAX_DELTA;
 	spin_lock(&base->lock);
 	if (time_before_eq(base->next_timer, base->timer_jiffies))
 		base->next_timer = __next_timer_interrupt(base);
@@ -1750,3 +1773,25 @@ unsigned long msleep_interruptible(unsigned int msecs)
 }
 
 EXPORT_SYMBOL(msleep_interruptible);
+
+static int __sched do_usleep_range(unsigned long min, unsigned long max)
+{
+	ktime_t kmin;
+	unsigned long delta;
+
+	kmin = ktime_set(0, min * NSEC_PER_USEC);
+	delta = max - min;
+	return schedule_hrtimeout_range(&kmin, delta, HRTIMER_MODE_REL);
+}
+
+/**
+ * usleep_range - Drop in replacement for udelay where wakeup is flexible
+ * @min: Minimum time in usecs to sleep
+ * @max: Maximum time in usecs to sleep
+ */
+void usleep_range(unsigned long min, unsigned long max)
+{
+	__set_current_state(TASK_UNINTERRUPTIBLE);
+	do_usleep_range(min, max);
+}
+EXPORT_SYMBOL(usleep_range);

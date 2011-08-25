@@ -352,6 +352,7 @@ struct snd_soc_jack_pin {
  * @report:       value to report when jack detected
  * @invert:       report presence in low state
  * @debouce_time: debouce time in ms
+ * @wake:         true if gpio should be set as wake source
  */
 #ifdef CONFIG_GPIOLIB
 struct snd_soc_jack_gpio {
@@ -362,6 +363,7 @@ struct snd_soc_jack_gpio {
 	int debounce_time;
 	struct snd_soc_jack *jack;
 	struct work_struct work;
+	bool wake;
 
 	int (*jack_status_check)(void);
 };

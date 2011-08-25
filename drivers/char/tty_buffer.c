@@ -196,13 +196,10 @@ static struct tty_buffer *tty_buffer_find(struct tty_struct *tty, size_t size)
  *
  *	Locking: Takes tty->buf.lock
  */
-int tty_buffer_request_room(struct tty_struct *tty, size_t size)
+static int locked_tty_buffer_request_room(struct tty_struct *tty, size_t size)
 {
 	struct tty_buffer *b, *n;
 	int left;
-	unsigned long flags;
-
-	spin_lock_irqsave(&tty->buf.lock, flags);
 
 	/* OPTIMISATION: We could keep a per tty "zero" sized buffer to
 	   remove this conditional if its worth it. This would be invisible
@@ -225,8 +222,18 @@ int tty_buffer_request_room(struct tty_struct *tty, size_t size)
 			size = left;
 	}
 
-	spin_unlock_irqrestore(&tty->buf.lock, flags);
 	return size;
+}
+
+int tty_buffer_request_room(struct tty_struct *tty, size_t size)
+{
+	int retval;
+	unsigned long flags;
+
+	spin_lock_irqsave(&tty->buf.lock, flags);
+	retval = locked_tty_buffer_request_room(tty, size);
+	spin_unlock_irqrestore(&tty->buf.lock, flags);
+	return retval;
 }
 EXPORT_SYMBOL_GPL(tty_buffer_request_room);
 
@@ -247,9 +254,12 @@ int tty_insert_flip_string_fixed_flag(struct tty_struct *tty,
 		const unsigned char *chars, char flag, size_t size)
 {
 	int copied = 0;
+	unsigned long irqflags;
+
+	spin_lock_irqsave(&tty->buf.lock, irqflags);
 	do {
 		int goal = min_t(size_t, size - copied, TTY_BUFFER_PAGE);
-		int space = tty_buffer_request_room(tty, goal);
+		int space = locked_tty_buffer_request_room(tty, goal);
 		struct tty_buffer *tb = tty->buf.tail;
 		/* If there is no space then tb may be NULL */
 		if (unlikely(space == 0))
@@ -262,6 +272,7 @@ int tty_insert_flip_string_fixed_flag(struct tty_struct *tty,
 		/* There is a small chance that we need to split the data over
 		   several buffers. If this is the case we must loop */
 	} while (unlikely(size > copied));
+	spin_unlock_irqrestore(&tty->buf.lock, irqflags);
 	return copied;
 }
 EXPORT_SYMBOL(tty_insert_flip_string_fixed_flag);

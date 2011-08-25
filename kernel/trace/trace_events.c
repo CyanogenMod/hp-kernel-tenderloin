@@ -1158,6 +1158,9 @@ static void trace_module_add_events(struct module *mod)
 	start = mod->trace_events;
 	end = mod->trace_events + mod->num_trace_events;
 
+	if (!start)
+		return;
+
 	if (start == end)
 		return;
 

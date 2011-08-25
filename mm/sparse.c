@@ -118,11 +118,13 @@ static inline int sparse_index_init(unsigned long section_nr, int nid)
  * to also work for the flat array case because
  * NR_SECTION_ROOTS==NR_MEM_SECTIONS.
  */
-int __section_nr(struct mem_section* ms)
+int __section_nr(struct mem_section *ms)
 {
 	unsigned long root_nr;
-	struct mem_section* root;
+	struct mem_section *root;
 
+	if (NR_SECTION_ROOTS == 0)
+		return ms - __nr_to_section(0);
 	for (root_nr = 0; root_nr < NR_SECTION_ROOTS; root_nr++) {
 		root = __nr_to_section(root_nr * SECTIONS_PER_ROOT);
 		if (!root)

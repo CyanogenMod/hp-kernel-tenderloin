@@ -64,3 +64,18 @@ int otg_set_transceiver(struct otg_transceiver *x)
 	return 0;
 }
 EXPORT_SYMBOL(otg_set_transceiver);
+
+int otg_send_event(enum usb_otg_event event)
+{
+	struct otg_transceiver *otg = otg_get_transceiver();
+	int ret = -ENOTSUPP;
+
+	if (otg && otg->send_event)
+		ret = otg->send_event(otg, event);
+
+	if (otg)
+		otg_put_transceiver(otg);
+
+	return ret;
+}
+EXPORT_SYMBOL(otg_send_event);

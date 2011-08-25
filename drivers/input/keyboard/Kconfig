@@ -324,6 +324,13 @@ config KEYBOARD_OPENCORES
 	  To compile this driver as a module, choose M here; the
 	  module will be called opencores-kbd.
 
+config KEYBOARD_PM8058
+	bool "Qualcomm PM8058 Matrix Keypad support"
+	depends on PM8058
+	help
+	  Say Y here to enable the driver for the keypad matrix interface
+	  on the Qualcomm PM8058 power management I/C device.
+
 config KEYBOARD_PXA27x
 	tristate "PXA27x/PXA3xx keypad support"
 	depends on PXA27x || PXA3xx
@@ -416,6 +423,30 @@ config KEYBOARD_XTKBD
 	  To compile this driver as a module, choose M here: the
 	  module will be called xtkbd.
 
+config KEYBOARD_QCIKBD
+   tristate "Quanta Computer Inc. keyboard"
+   depends on I2C
+   default n
+   help
+     Say Y here if you want to use the Quanta keyboard driver for ST 1.5
+     platform.
+
+config KEYBOARD_QCIKBD_REPEAT
+	bool "Enable Quanta Computer Inc. keyboard key repeat feature"
+	depends on KEYBOARD_QCIKBD
+	default n
+	help
+	  Say Y here if you want to enable Quanta keyboard driver's key repeat
+	  feature.
+
+config KEYBOARD_QCIKBD_LID
+	bool "Enable lid event for Quanta Computer Inc. keyboard"
+	depends on KEYBOARD_QCIKBD
+	default n
+	help
+	  Say Y here if you want to register lid event in Quanta keyboard
+	  driver.
+
 config KEYBOARD_W90P910
 	tristate "W90P910 Matrix Keypad support"
 	depends on ARCH_W90X900
@@ -425,5 +456,80 @@ config KEYBOARD_W90P910
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called w90p910_keypad.
+
+config KEYBOARD_PMIC8058
+	tristate "Qualcomm PMIC8058 keypad"
+	depends on PMIC8058
+	default y
+	help
+	  Say Y here if you want to enable the driver for the PMIC8058
+	  keypad provided as a reference design from Qualcomm. This is intended
+	  to support upto 18x8 matrix based keypad design.
+
+	  To compile this driver as a module, choose M here: the module will
+	  be called pmic8058-keypad.
+
+config KEYBOARD_GPIO_PE
+	tristate "GPIO Buttons (Palm edition)"
+	depends on GENERIC_GPIO
+	help
+	  This driver implements support for buttons connected
+	  to GPIO pins of various CPUs (and some other chips).
+
+	  Say Y here if your device has buttons connected
+	  directly to such GPIO pins.  Your board-specific
+	  setup logic must also provide a platform device,
+	  with configuration data saying which GPIOs are used.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called gpio-keys.
+
+menuconfig GPIO_KEYS_TRIGGER
+	bool "GPIO Buttons trigger"
+	depends on KEYBOARD_GPIO_PE
+	default y
+	help
+		Enable support for triggering various actions using combination
+		of gpio buttons.
+
+if GPIO_KEYS_TRIGGER
+
+config GPIO_KEYS_REBOOT_TRIGGER
+    bool "GPIO Buttons reboot trigger"
+	default y
+	help
+	   Enable support for triggering reboot event using combination of
+	   gpio buttons.
+
+config GPIO_KEYS_CONSOLE_TRIGGER
+    bool "GPIO Buttons console trigger"
+	depends on MACH_SIRLOIN
+	default y
+	help
+	   Enable support for triggering kernel console on usb port using
+	   combination of gpio buttons.
+
+endif # GPIO_KEYS_TRIGGER
+
+config KEYBOARD_GPIO_DEBOUNCE_PE
+	bool "GPIO Buttons debounce"
+	depends on GENERIC_GPIO && KEYBOARD_GPIO_PE
+	default n
+	help
+	  Enable GPIO Buttons debounce.At this point it is
+	  limited for platforms with hardware debounce support.
+
+	  Say Y here if your want you keys debounced.
+
+config KEYBOARD_MA87712
+	tristate "MosArt MA87712 keypad"
+	depends on PMIC8058
+	default n
+	help
+	  Say Y here if you want to enable the driver for the MA87712
+	  keypad.
+
+	  To compile this driver as a module, choose M here: the module will
+	  be called ma87712-keypad.
 
 endif

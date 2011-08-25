@@ -253,6 +253,13 @@ int expand_files(struct files_struct *files, int nr)
 
 	fdt = files_fdtable(files);
 
+#if defined(CONFIG_WARN_ABOUT_MAX_FILES)
+	if (nr >= rlimit(RLIMIT_NOFILE) - 24) {
+		printk(KERN_WARNING "VFS: approaching process file limit (%d)/(%ld) by %s(%d)\n",
+					nr, rlimit(RLIMIT_NOFILE), current->comm, task_pid_nr(current));
+		dump_stack();
+	}
+#endif
 	/*
 	 * N.B. For clone tasks sharing a files structure, this test
 	 * will limit the total number of files that can be opened.

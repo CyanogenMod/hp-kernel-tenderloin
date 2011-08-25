@@ -20,7 +20,7 @@
 #include <mach/msm_iomap.h>
 
 #ifdef CONFIG_MSM_DEBUG_UART
-	.macro	addruart, rx, tmp
+	.macro	addruart,rx,tmp
 	@ see if the MMU is enabled and select appropriate base address
 	mrc	p15, 0, \rx, c1, c0
 	tst	\rx, #1
@@ -29,18 +29,45 @@
 	.endm
 
 	.macro	senduart,rd,rx
-	teq	\rx, #0
-	strne	\rd, [\rx, #0x0C]
+#ifdef CONFIG_SERIAL_MSM_HSL
+	@ Clear TX_READY by writing to the UARTDM_CR register
+	mov	r12, #0x300
+	str	r12, [\rx, #0x10]
+	@ Write 0x1 to NCF register
+	mov 	r12, #0x1
+	str	r12, [\rx, #0x40]
+	@ UARTDM reg. Read to induce delay
+	ldr	r12, [\rx, #0x08]
+	@ Write the 1 character to UARTDM_TF
+	str	\rd, [\rx, #0x70]
+#else
+	teq     \rx, #0
+	strne   \rd, [\rx, #0x0C]
+#endif
 	.endm
 
 	.macro	waituart,rd,rx
-	@ wait for TX_READY
-1001:	ldr	\rd, [\rx, #0x08]
-	tst	\rd, #0x04
-	beq	1001b
-	.endm
+#ifdef CONFIG_SERIAL_MSM_HSL
+	@ check for TX_EMT in UARTDM_SR
+	ldr	\rd, [\rx, #0x08]
+	tst	\rd, #0x08
+	bne	1002f
+	@ wait for TXREADY in UARTDM_ISR
+1001:	ldreq	\rd, [\rx, #0x14]
+	tst	\rd, #0x80
+	dsb
+	beq 	1001b
 #else
-	.macro	addruart, rx, tmp
+	@ wait for TX_READY
+1001:   ldr \rd, [\rx, #0x08]
+	tst     \rd, #0x04
+	beq     1001b
+#endif
+1002:
+	.endm
+
+#else
+	.macro	addruart,rx,tmp
 	.endm
 
 	.macro	senduart,rd,rx

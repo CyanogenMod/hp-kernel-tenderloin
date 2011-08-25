@@ -49,6 +49,7 @@ struct shm_file_data {
 	struct ipc_namespace *ns;
 	struct file *file;
 	const struct vm_operations_struct *vm_ops;
+	int cache_writethrough;
 };
 
 #define shm_file_data(file) (*((struct shm_file_data **)&(file)->private_data))
@@ -258,6 +259,9 @@ static int shm_mmap(struct file * file, struct vm_area_struct * vma)
 	BUG_ON(!sfd->vm_ops->fault);
 #endif
 	vma->vm_ops = &shm_vm_ops;
+	if (sfd->cache_writethrough) {
+		vma->vm_page_prot = pgprot_writethroughcache(vma->vm_page_prot);
+	}
 	shm_open(vma);
 
 	return ret;
@@ -901,7 +905,8 @@ long do_shmat(int shmid, char __user *shmaddr, int shmflg, ulong *raddr)
 	sfd->ns = get_ipc_ns(ns);
 	sfd->file = shp->shm_file;
 	sfd->vm_ops = NULL;
-
+	sfd->cache_writethrough = (shmflg & SHM_CACHE_WRITETHROUGH) ? 1 : 0;
+    
 	down_write(&current->mm->mmap_sem);
 	if (addr && !(shmflg & SHM_REMAP)) {
 		err = -EINVAL;

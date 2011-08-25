@@ -749,6 +749,7 @@ struct proto {
 	/* Keeping track of sk's, looking them up, and port selection methods. */
 	void			(*hash)(struct sock *sk);
 	void			(*unhash)(struct sock *sk);
+	void			(*rehash)(struct sock *sk);
 	int			(*get_port)(struct sock *sk, unsigned short snum);
 
 	/* Keeping track of sockets in use */
@@ -1640,8 +1641,10 @@ sock_recv_timestamp(struct msghdr *msg, struct sock *sk, struct sk_buff *skb)
 	    (hwtstamps->syststamp.tv64 &&
 	     sock_flag(sk, SOCK_TIMESTAMPING_SYS_HARDWARE)))
 		__sock_recv_timestamp(msg, sk, skb);
+#ifndef CONFIG_INTSOCK_NETFILTER
 	else
 		sk->sk_stamp = kt;
+#endif
 }
 
 extern void __sock_recv_ts_and_drops(struct msghdr *msg, struct sock *sk,

@@ -62,6 +62,9 @@
 #define TPS65023_REG_CTRL_LDO2_EN	BIT(2)
 #define TPS65023_REG_CTRL_LDO1_EN	BIT(1)
 
+/* CON_CTRL2 bitfields */
+#define TPS65023_CON_CTRL2_GO		BIT(7)
+
 /* LDO_CTRL bitfields */
 #define TPS65023_LDO_CTRL_LDOx_SHIFT(ldo_id)	((ldo_id)*4)
 #define TPS65023_LDO_CTRL_LDOx_MASK(ldo_id)	(0xF0 >> ((ldo_id)*4))
@@ -126,11 +129,38 @@ struct tps_pmic {
 	struct regulator_dev *rdev[TPS65023_NUM_REGULATOR];
 	const struct tps_info *info[TPS65023_NUM_REGULATOR];
 	struct mutex io_lock;
+	unsigned dcdc1_last_uV;
 };
+
+static int tps_65023_read_3bytes(struct tps_pmic *tps, u8 reg)
+{
+	int rv;
+	u8 txbuf[1];
+	u8 rxbuf[3];
+	struct i2c_msg msgs[] = {
+		{
+			.addr = tps->client->addr,
+			.flags = 0,
+			.len = sizeof(txbuf),
+			.buf = txbuf,
+		},
+		{
+			.addr = tps->client->addr,
+			.flags = I2C_M_RD,
+			.len = sizeof(rxbuf),
+			.buf = rxbuf,
+		},
+	};
+	txbuf[0] = reg;
+	rv = i2c_transfer(tps->client->adapter, msgs, 2);
+	if (rv < 0)
+		return rv;
+	return rxbuf[0];
+}
 
 static inline int tps_65023_read(struct tps_pmic *tps, u8 reg)
 {
-	return i2c_smbus_read_byte_data(tps->client, reg);
+	return tps_65023_read_3bytes(tps, reg);
 }
 
 static inline int tps_65023_write(struct tps_pmic *tps, u8 reg, u8 val)
@@ -326,6 +356,9 @@ static int tps65023_dcdc_set_voltage(struct regulator_dev *dev,
 	struct tps_pmic *tps = rdev_get_drvdata(dev);
 	int dcdc = rdev_get_id(dev);
 	int vsel;
+	int rv;
+	int uV = 0;
+	int delay;
 
 	if (dcdc != TPS65023_DCDC_1)
 		return -EINVAL;
@@ -339,7 +372,7 @@ static int tps65023_dcdc_set_voltage(struct regulator_dev *dev,
 
 	for (vsel = 0; vsel < tps->info[dcdc]->table_len; vsel++) {
 		int mV = tps->info[dcdc]->table[vsel];
-		int uV = mV * 1000;
+		uV = mV * 1000;
 
 		/* Break at the first in-range value */
 		if (min_uV <= uV && uV <= max_uV)
@@ -349,8 +382,22 @@ static int tps65023_dcdc_set_voltage(struct regulator_dev *dev,
 	/* write to the register in case we found a match */
 	if (vsel == tps->info[dcdc]->table_len)
 		return -EINVAL;
+
+	rv = tps_65023_reg_write(tps, TPS65023_REG_DEF_CORE, vsel);
+	if (!rv)
+		rv = tps_65023_reg_write(tps, TPS65023_REG_CON_CTRL2,
+						TPS65023_CON_CTRL2_GO);
+
+	/* Add delay to reach relected voltage (14.4 mV/us default slew rate) */
+	if (tps->dcdc1_last_uV)
+		delay = abs(tps->dcdc1_last_uV - uV);
 	else
-		return tps_65023_reg_write(tps, TPS65023_REG_DEF_CORE, vsel);
+		delay = max(uV - 800000, 1600000 - uV);
+	delay = DIV_ROUND_UP(delay, 14400);
+	udelay(delay);
+	tps->dcdc1_last_uV = rv ? 0 /* Unknown voltage */ : uV;
+
+	return rv;
 }
 
 static int tps65023_ldo_get_voltage(struct regulator_dev *dev)

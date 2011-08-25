@@ -214,6 +214,12 @@ static struct mem_type mem_types[] = {
 		.prot_sect	= PROT_SECT_DEVICE | PMD_SECT_WB,
 		.domain		= DOMAIN_IO,
 	},	
+	[MT_DEVICE_STRONGLY_ORDERED] = {  /* Guaranteed strongly ordered */
+		.prot_pte       = PROT_PTE_DEVICE,
+		.prot_l1        = PMD_TYPE_TABLE,
+		.prot_sect      = PROT_SECT_DEVICE | PMD_SECT_UNCACHED,
+		.domain         = DOMAIN_IO,
+	},
 	[MT_DEVICE_WC] = {	/* ioremap_wc */
 		.prot_pte	= PROT_PTE_DEVICE | L_PTE_MT_DEV_WC,
 		.prot_l1	= PMD_TYPE_TABLE,
@@ -339,6 +345,8 @@ static void __init build_mem_type_table(void)
 			mem_types[MT_DEVICE_NONSHARED].prot_sect |= PMD_SECT_XN;
 			mem_types[MT_DEVICE_CACHED].prot_sect |= PMD_SECT_XN;
 			mem_types[MT_DEVICE_WC].prot_sect |= PMD_SECT_XN;
+			mem_types[MT_DEVICE_STRONGLY_ORDERED].prot_sect |=
+								PMD_SECT_XN;
 		}
 		if (cpu_arch >= CPU_ARCH_ARMv7 && (cr & CR_TRE)) {
 			/*
@@ -604,7 +612,7 @@ static void __init create_36bit_mapping(struct map_desc *md,
  * offsets, and we take full advantage of sections and
  * supersections.
  */
-static void __init create_mapping(struct map_desc *md)
+void __init create_mapping(struct map_desc *md)
 {
 	unsigned long phys, addr, length, end;
 	const struct mem_type *type;
@@ -668,7 +676,7 @@ void __init iotable_init(struct map_desc *io_desc, int nr)
 		create_mapping(io_desc + i);
 }
 
-static unsigned long __initdata vmalloc_reserve = SZ_128M;
+static unsigned long __initdata vmalloc_reserve = CONFIG_VMALLOC_RESERVE;
 
 /*
  * vmalloc=size forces the vmalloc area to be exactly 'size'
@@ -919,6 +927,12 @@ void __init reserve_node_zero(pg_data_t *pgdat)
 	 */
 	res_size = __pa(swapper_pg_dir) - PHYS_OFFSET;
 #endif
+
+#ifdef CONFIG_RESERVE_FIRST_PAGE
+	if (res_size < PAGE_SIZE)
+		res_size = PAGE_SIZE;
+#endif
+
 	if (res_size)
 		reserve_bootmem_node(pgdat, PHYS_OFFSET, res_size,
 				BOOTMEM_DEFAULT);
@@ -1079,6 +1093,18 @@ void __init paging_init(struct machine_desc *mdesc)
 	zero_page = alloc_bootmem_low_pages(PAGE_SIZE);
 	empty_zero_page = virt_to_page(zero_page);
 	__flush_dcache_page(NULL, empty_zero_page);
+
+#if defined(CONFIG_ARCH_MSM7X27)
+	/*
+	 * ensure that the strongly ordered page is mapped before the
+	 * first call to write_to_strongly_ordered_memory. This page
+	 * is necessary for the msm 7x27 due to hardware quirks. The
+	 * map call is made here to ensure the bootmem call is made
+	 * in the right window (after initialization, before full
+	 * allocators are initialized)
+	 */
+	map_page_strongly_ordered();
+#endif
 }
 
 /*

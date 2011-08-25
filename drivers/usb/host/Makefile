@@ -14,7 +14,11 @@ fhci-objs += fhci-dbg.o
 endif
 xhci-hcd-objs := xhci.o xhci-mem.o xhci-pci.o xhci-ring.o xhci-hub.o xhci-dbg.o
 
+CFLAGS_REMOVE_ehci-hcd.o = -Werror
+CFLAGS_REMOVE_ehci-hub.o = -Werror
+
 obj-$(CONFIG_USB_WHCI_HCD)	+= whci/
+obj-$(CONFIG_USB_PEHCI_HCD)	+= pehci/
 
 obj-$(CONFIG_PCI)		+= pci-quirks.o
 

@@ -3184,6 +3184,23 @@ config PPPOL2TP
 	  used by ISPs and enterprises to tunnel PPP traffic over UDP
 	  tunnels. L2TP is replacing PPTP for VPN uses.
 
+config PPPOLAC
+	tristate "PPP on L2TP Access Concentrator"
+	depends on PPP && INET
+	help
+	  L2TP (RFC 2661) is a tunneling protocol widely used in virtual private
+	  networks. This driver handles L2TP data packets between a UDP socket
+	  and a PPP channel, but only permits one session per socket. Thus it is
+	  fairly simple and suited for clients.
+
+config PPPOPNS
+	tristate "PPP on PPTP Network Server"
+	depends on PPP && INET
+	help
+	  PPTP (RFC 2637) is a tunneling protocol widely used in virtual private
+	  networks. This driver handles PPTP data packets between a RAW socket
+	  and a PPP channel. It is fairly simple and easy to use.
+
 config SLIP
 	tristate "SLIP (serial line) support"
 	---help---
@@ -3274,6 +3291,28 @@ config NETCONSOLE
 	---help---
 	If you want to log kernel messages over the network, enable this.
 	See <file:Documentation/networking/netconsole.txt> for details.
+
+config MSM_RMNET
+	tristate "MSM RMNET Virtual Network Device"
+	depends on ARCH_MSM
+	default y
+	help
+	  Virtual ethernet interface for MSM RMNET transport.
+
+config MSM_RMNET_SDIO
+	bool "RMNET SDIO Driver"
+	depends on MSM_SDIO_DMUX
+	default n
+	help
+	  Implements RMNET over SDIO interface.
+
+config MSM_RMNET_DEBUG
+	bool "MSM RMNET debug interface"
+	depends on MSM_RMNET
+	default n
+	help
+	  Debug stats on wakeup counts.
+
 
 config NETCONSOLE_DYNAMIC
 	bool "Dynamic reconfiguration of logging targets"

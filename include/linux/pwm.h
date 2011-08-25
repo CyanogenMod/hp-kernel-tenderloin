@@ -16,7 +16,9 @@ void pwm_free(struct pwm_device *pwm);
 /*
  * pwm_config - change a PWM device configuration
  */
-int pwm_config(struct pwm_device *pwm, int duty_ns, int period_ns);
+int pwm_config(struct pwm_device *pwm, unsigned duty_us, unsigned period_us);
+
+int pwm_config2(struct pwm_device *pwm, unsigned duty_numerator, unsigned duty_denominator, unsigned period_us);
 
 /*
  * pwm_enable - start a PWM output toggling

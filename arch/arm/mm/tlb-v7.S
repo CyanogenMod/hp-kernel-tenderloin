@@ -37,12 +37,20 @@ ENTRY(v7wbi_flush_user_tlb_range)
 	dsb
 	mov	r0, r0, lsr #PAGE_SHIFT		@ align address
 	mov	r1, r1, lsr #PAGE_SHIFT
+#ifdef CONFIG_ARCH_MSM8X60
+	mov	r0, r0, lsl #PAGE_SHIFT
+#else
 	asid	r3, r3				@ mask ASID
 	orr	r0, r3, r0, lsl #PAGE_SHIFT	@ Create initial MVA
+#endif
 	mov	r1, r1, lsl #PAGE_SHIFT
 1:
 #ifdef CONFIG_SMP
-	mcr	p15, 0, r0, c8, c3, 1		@ TLB invalidate U MVA (shareable) 
+#ifdef CONFIG_ARCH_MSM8X60
+	mcr	p15, 0, r0, c8, c3, 3		@ TLB invalidate U MVA (shareable)
+#else
+	mcr	p15, 0, r0, c8, c3, 1		@ TLB invalidate U MVA (shareable)
+#endif
 #else
 	mcr	p15, 0, r0, c8, c7, 1		@ TLB invalidate U MVA
 #endif
@@ -75,7 +83,11 @@ ENTRY(v7wbi_flush_kern_tlb_range)
 	mov	r1, r1, lsl #PAGE_SHIFT
 1:
 #ifdef CONFIG_SMP
+#ifdef CONFIG_ARCH_MSM8X60
+	mcr	p15, 0, r0, c8, c3, 3		@ TLB invalidate U MVA (shareable)
+#else
 	mcr	p15, 0, r0, c8, c3, 1		@ TLB invalidate U MVA (shareable)
+#endif
 #else
 	mcr	p15, 0, r0, c8, c7, 1		@ TLB invalidate U MVA
 #endif

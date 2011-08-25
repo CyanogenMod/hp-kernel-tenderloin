@@ -409,6 +409,7 @@ int mmc_switch(struct mmc_card *card, u8 set, u8 index, u8 value)
 	if (err)
 		return err;
 
+	mmc_delay(1);
 	/* Must check status to be sure of no errors */
 	do {
 		err = mmc_send_status(card, &status);
@@ -462,3 +463,133 @@ int mmc_send_status(struct mmc_card *card, u32 *status)
 	return 0;
 }
 
+static int mmc_bustest_write(struct mmc_host *host,
+				 struct mmc_card *card, int buswidth)
+{
+	struct mmc_request mrq;
+	struct mmc_command cmd;
+	struct mmc_data data;
+	struct scatterlist sg;
+	int bustest_send_pat[4] = { 0x80, 0x0, 0x5A, 0x55AA };
+	u32 *test_pat;
+	int err = 0;
+
+	test_pat = kmalloc(512, GFP_KERNEL);
+	if (test_pat == NULL)
+		return -ENOMEM;
+
+	memset(&mrq, 0, sizeof(struct mmc_request));
+	memset(&cmd, 0, sizeof(struct mmc_command));
+	memset(&data, 0, sizeof(struct mmc_data));
+
+	mrq.cmd = &cmd;
+	mrq.data = &data;
+
+	cmd.opcode = MMC_BUSTEST_W;
+	cmd.arg = 0;
+	cmd.flags = MMC_RSP_R1 | MMC_CMD_ADTC;
+
+	data.blksz = 4; /* Generic blksz that works for 8 / 4 / 1 bit modes */
+	data.blocks = 1;
+	data.flags = MMC_DATA_WRITE;
+	data.sg = &sg;
+	data.sg_len = 1;
+	data.timeout_ns = card->csd.tacc_ns * 10;
+	data.timeout_clks = card->csd.tacc_clks * 10;
+
+	test_pat[0] = bustest_send_pat[buswidth];
+	mmc_set_bus_width(card->host, buswidth);
+	sg_init_one(&sg, test_pat, 4);
+
+	mmc_wait_for_req(host, &mrq);
+
+	pr_debug("%s: Test Pattern sent: 0x%x\n", __func__, test_pat[0]);
+	if (cmd.error || data.error) {
+		pr_err("%s: cmd.error : %d data.error: %d\n",
+			__func__, cmd.error, data.error);
+		err = -1;
+	}
+	kfree(test_pat);
+	return err;
+}
+
+static int mmc_bustest_read(struct mmc_host *host,
+				 struct mmc_card *card, int buswidth)
+{
+	struct mmc_request mrq;
+	struct mmc_command cmd;
+	struct mmc_data data;
+	struct scatterlist sg;
+	int bustest_recv_pat[4] = { 0x40, 0x0, 0xA5, 0xAA55 };
+	u32 *test_pat;
+	int err = 0;
+
+	test_pat = kmalloc(512, GFP_KERNEL);
+	if (test_pat == NULL)
+		return -ENOMEM;
+
+	memset(test_pat, 0, 512);
+	memset(&mrq, 0, sizeof(struct mmc_request));
+	memset(&cmd, 0, sizeof(struct mmc_command));
+	memset(&data, 0, sizeof(struct mmc_data));
+
+	mrq.cmd = &cmd;
+	mrq.data = &data;
+
+	cmd.opcode = MMC_BUSTEST_R;
+	cmd.arg = 0;
+	cmd.flags = MMC_RSP_R1 | MMC_CMD_ADTC;
+
+	data.blocks = 1;
+	data.flags = MMC_DATA_READ;
+	data.sg = &sg;
+	data.sg_len = 1;
+
+	if (buswidth == MMC_BUS_WIDTH_8) {
+		data.blksz = 8;
+		sg_init_one(&sg, test_pat, 8);
+	} else if (buswidth == MMC_BUS_WIDTH_4) {
+		data.blksz = 4;
+		sg_init_one(&sg, test_pat, 4);
+	} else {
+		data.blksz = 1;
+		sg_init_one(&sg, test_pat, 1);
+	}
+
+	mmc_set_data_timeout(&data, card);
+	mmc_wait_for_req(host, &mrq);
+
+	pr_debug("%s: Test pattern received: 0x%x\n", __func__, test_pat[0]);
+	if (cmd.error || data.error) {
+		pr_err("%s: cmd.error: %d  data.error: %d\n",
+			__func__, cmd.error, data.error);
+		err = -1;
+		goto cmderr;
+	}
+
+	if (test_pat[0] == bustest_recv_pat[buswidth])
+		pr_debug("%s: Bus test pass for buswidth:%d\n",
+						 __func__, buswidth);
+	else
+		err = -1;
+cmderr:
+	kfree(test_pat);
+	return err;
+}
+
+int mmc_bustest(struct mmc_host *host, struct mmc_card *card, int buswidth)
+{
+	int rc = 0;
+
+	rc = mmc_bustest_write(host, card, buswidth);
+	if (rc) {
+		pr_err("%s Bus test write Failed for buswidth: %d\n",
+							 __func__, buswidth);
+		return rc;
+	}
+	rc = mmc_bustest_read(host, card, buswidth);
+	if (rc)
+		pr_err("%s Bus test Read failed for buswidth: %d\n",
+							 __func__, buswidth);
+	return rc;
+}

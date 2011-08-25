@@ -28,6 +28,8 @@
 #define STACK_TOP_MAX	TASK_SIZE
 #endif
 
+extern unsigned int boot_reason;
+
 union debug_insn {
 	u32	arm;
 	u16	thumb;

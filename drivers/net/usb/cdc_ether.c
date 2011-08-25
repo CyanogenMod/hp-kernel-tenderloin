@@ -562,6 +562,24 @@ static const struct usb_device_id	products [] = {
 	.driver_info		= 0,
 },
 
+/* Make Novatel E362 ether interface name as wwan*.
+ */
+{
+	.match_flags    =   USB_DEVICE_ID_MATCH_INT_INFO
+		 | USB_DEVICE_ID_MATCH_DEVICE,
+	.idVendor               = 0x1410,
+	.idProduct              = 0x9010,	/* E362 */
+	ZAURUS_MASTER_INTERFACE,
+	.driver_info = (unsigned long)&mbm_info,
+}, {
+	.match_flags    =   USB_DEVICE_ID_MATCH_INT_INFO
+		 | USB_DEVICE_ID_MATCH_DEVICE,
+	.idVendor               = 0x03F0,
+	.idProduct              = 0x3B1D,	/* E362 */
+	ZAURUS_MASTER_INTERFACE,
+	.driver_info = (unsigned long)&mbm_info,
+},
+
 /*
  * WHITELIST!!!
  *

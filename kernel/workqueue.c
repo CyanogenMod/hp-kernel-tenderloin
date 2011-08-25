@@ -439,6 +439,8 @@ static int worker_thread(void *__cwq)
 	if (cwq->wq->freezeable)
 		set_freezable();
 
+	set_user_nice(current, -5);
+
 	for (;;) {
 		prepare_to_wait(&cwq->more_work, &wait, TASK_INTERRUPTIBLE);
 		if (!freezing(current) &&
@@ -931,6 +933,60 @@ int current_is_keventd(void)
 	return ret;
 
 }
+
+/*
+ * dump workqueue contents
+ */
+void dump_workqueue(struct workqueue_struct *wq)
+{
+	const struct cpumask *cpu_map = wq_cpu_map(wq);
+	struct cpu_workqueue_struct *cwq;
+	unsigned long flags;
+	int cpu;
+
+	if (!wq)
+		return;
+
+	for_each_cpu(cpu, cpu_map) {
+		cwq = per_cpu_ptr(wq->cpu_wq, cpu);
+
+		printk(KERN_INFO "Workqueue dump for CPU %d\n", cpu);
+
+		spin_lock_irqsave(&cwq->lock, flags);
+
+		if (!list_empty(&cwq->worklist)) {
+			struct work_struct *work = cwq->current_work;
+			int i = 0;
+
+			printk(KERN_INFO " Current work: ");
+			print_symbol("%s/", (unsigned long)work->func);
+			printk(KERN_INFO "%lx, pending(%d)",
+				(unsigned long)work->func,
+				work_pending(work));
+
+			list_for_each_entry(work, &cwq->worklist, entry) {
+				printk(KERN_INFO "  CWQ(%d/%d) ", cpu, i++);
+				print_symbol("%s/", (unsigned long)work->func);
+				printk(KERN_INFO "%lx, pending(%d)",
+					(unsigned long)work->func,
+					work_pending(work));
+			}
+		} else {
+			printk(KERN_INFO "  workqueue is empty\n");
+		}
+		spin_unlock_irqrestore(&cwq->lock, flags);
+	}
+}
+EXPORT_SYMBOL(dump_workqueue);
+
+/*
+ * dump_keventd_workqueue
+ */
+void dump_keventd_workqueue(void)
+{
+	dump_workqueue(keventd_wq);
+}
+EXPORT_SYMBOL(dump_keventd_workqueue);
 
 static struct cpu_workqueue_struct *
 init_cpu_workqueue(struct workqueue_struct *wq, int cpu)

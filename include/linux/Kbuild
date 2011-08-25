@@ -15,6 +15,7 @@ header-y += netfilter_bridge/
 header-y += netfilter_ipv4/
 header-y += netfilter_ipv6/
 header-y += usb/
+header-y += mfd/
 
 header-y += affs_hardblocks.h
 header-y += aio_abi.h
@@ -52,6 +53,7 @@ header-y += comstats.h
 header-y += const.h
 header-y += cgroupstats.h
 header-y += cramfs_fs.h
+header-y += csdio.h
 header-y += cycx_cfm.h
 header-y += dcbnl.h
 header-y += dlmconstants.h
@@ -276,6 +278,7 @@ ifneq ($(wildcard $(srctree)/arch/$(SRCARCH)/include/asm/kvm_para.h \
 		  $(srctree)/include/asm-$(SRCARCH)/kvm_para.h),)
 unifdef-y += kvm_para.h
 endif
+unifdef-y += l2tp.h
 unifdef-y += llc.h
 unifdef-y += loop.h
 unifdef-y += lp.h
@@ -389,3 +392,17 @@ unifdef-y += xfrm.h
 objhdr-y += version.h
 header-y += wimax.h
 header-y += wimax/
+header-y += msm_adsp.h
+header-y += msm_mdp.h
+header-y += msm_kgsl.h
+header-y += msm_q6venc.h
+header-y += msm_q6vdec.h
+header-y += msm_rotator.h
+header-y += msm_vidc_dec.h
+header-y += msm_vidc_enc.h
+header-y += msm_audio.h
+header-y += msm_audio_aac.h
+header-y += msm_audio_acdb.h
+header-y += android_pmem.h
+header-y += msm_audio_wma.h
+header-y += msm_audio_wmapro.h

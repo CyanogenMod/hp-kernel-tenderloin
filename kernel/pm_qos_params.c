@@ -103,12 +103,24 @@ static struct pm_qos_object network_throughput_pm_qos = {
 	.comparitor = max_compare
 };
 
+static BLOCKING_NOTIFIER_HEAD(system_bus_freq_notifier);
+static struct pm_qos_object system_bus_freq_pm_qos = {
+	.requests =
+		{LIST_HEAD_INIT(system_bus_freq_pm_qos.requests.list)},
+	.notifiers = &system_bus_freq_notifier,
+	.name = "system_bus_freq",
+	.default_value = 0,
+	.target_value = ATOMIC_INIT(0),
+	.comparitor = max_compare
+};
+
 
 static struct pm_qos_object *pm_qos_array[] = {
 	&null_pm_qos,
 	&cpu_dma_pm_qos,
 	&network_lat_pm_qos,
-	&network_throughput_pm_qos
+	&network_throughput_pm_qos,
+	&system_bus_freq_pm_qos
 };
 
 static DEFINE_SPINLOCK(pm_qos_lock);
@@ -403,9 +415,16 @@ static int __init pm_qos_power_init(void)
 		return ret;
 	}
 	ret = register_pm_qos_misc(&network_throughput_pm_qos);
-	if (ret < 0)
+	if (ret < 0) {
 		printk(KERN_ERR
 			"pm_qos_param: network_throughput setup failed\n");
+		return 0;
+	}
+
+	ret = register_pm_qos_misc(&system_bus_freq_pm_qos);
+	if (ret < 0)
+		printk(KERN_ERR
+			"pm_qos_param: system_bus_freq setup failed\n");
 
 	return ret;
 }

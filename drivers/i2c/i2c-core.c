@@ -189,9 +189,6 @@ static int i2c_device_pm_suspend(struct device *dev)
 {
 	const struct dev_pm_ops *pm = dev->driver ? dev->driver->pm : NULL;
 
-	if (pm_runtime_suspended(dev))
-		return 0;
-
 	if (pm)
 		return pm->suspend ? pm->suspend(dev) : 0;
 
@@ -208,21 +205,12 @@ static int i2c_device_pm_resume(struct device *dev)
 	else
 		ret = i2c_legacy_resume(dev);
 
-	if (!ret) {
-		pm_runtime_disable(dev);
-		pm_runtime_set_active(dev);
-		pm_runtime_enable(dev);
-	}
-
 	return ret;
 }
 
 static int i2c_device_pm_freeze(struct device *dev)
 {
 	const struct dev_pm_ops *pm = dev->driver ? dev->driver->pm : NULL;
-
-	if (pm_runtime_suspended(dev))
-		return 0;
 
 	if (pm)
 		return pm->freeze ? pm->freeze(dev) : 0;
@@ -234,9 +222,6 @@ static int i2c_device_pm_thaw(struct device *dev)
 {
 	const struct dev_pm_ops *pm = dev->driver ? dev->driver->pm : NULL;
 
-	if (pm_runtime_suspended(dev))
-		return 0;
-
 	if (pm)
 		return pm->thaw ? pm->thaw(dev) : 0;
 
@@ -246,9 +231,6 @@ static int i2c_device_pm_thaw(struct device *dev)
 static int i2c_device_pm_poweroff(struct device *dev)
 {
 	const struct dev_pm_ops *pm = dev->driver ? dev->driver->pm : NULL;
-
-	if (pm_runtime_suspended(dev))
-		return 0;
 
 	if (pm)
 		return pm->poweroff ? pm->poweroff(dev) : 0;
@@ -265,12 +247,6 @@ static int i2c_device_pm_restore(struct device *dev)
 		ret = pm->restore ? pm->restore(dev) : 0;
 	else
 		ret = i2c_legacy_resume(dev);
-
-	if (!ret) {
-		pm_runtime_disable(dev);
-		pm_runtime_set_active(dev);
-		pm_runtime_enable(dev);
-	}
 
 	return ret;
 }

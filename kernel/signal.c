@@ -31,6 +31,10 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/signal.h>
 
+#ifdef CONFIG_MINI_CORE
+#include <linux/minicore2.h>
+#endif
+
 #include <asm/param.h>
 #include <asm/uaccess.h>
 #include <asm/unistd.h>
@@ -637,7 +641,7 @@ static inline bool si_fromuser(const struct siginfo *info)
 
 /*
  * Bad permissions for sending the signal
- * - the caller must hold at least the RCU read lock
+ * - the caller must hold the RCU read lock
  */
 static int check_kill_permission(int sig, struct siginfo *info,
 				 struct task_struct *t)
@@ -1127,11 +1131,14 @@ struct sighand_struct *lock_task_sighand(struct task_struct *tsk, unsigned long 
 
 /*
  * send signal info to all the members of a group
- * - the caller must hold the RCU read lock at least
  */
 int group_send_sig_info(int sig, struct siginfo *info, struct task_struct *p)
 {
-	int ret = check_kill_permission(sig, info, p);
+	int ret;
+
+	rcu_read_lock();
+	ret = check_kill_permission(sig, info, p);
+	rcu_read_unlock();
 
 	if (!ret && sig)
 		ret = do_send_sig_info(sig, info, p, true);
@@ -1613,7 +1620,7 @@ static int sigkill_pending(struct task_struct *tsk)
  * If we actually decide not to stop at all because the tracer
  * is gone, we keep current->exit_code unless clear_code.
  */
-static void ptrace_stop(int exit_code, int clear_code, siginfo_t *info)
+void ptrace_stop(int exit_code, int clear_code, siginfo_t *info)
 {
 	if (arch_ptrace_stop_needed(exit_code, info)) {
 		/*
@@ -1965,6 +1972,29 @@ relock:
 		}
 
 		spin_unlock_irq(&sighand->siglock);
+
+#ifdef CONFIG_MINI_CORE
+        /**
+         * Dump a minicore for dangerous signals like SIGSEGV, etc
+         * _even_ if the program has registered a signal handler for it.
+         *
+         * We be sure to avoid this path if the program is already being
+         * ptraced.
+         */
+        if (sig_kernel_coredump(signr) && !(current->ptrace & PT_PTRACED)
+            && signr != SIGQUIT && signr != SIGKILL)
+        {
+            int ret;
+
+            ret = minicore_launch(signr, info);
+
+            /**
+             * FIXME there is a race of threads coming out of minicore detach.
+             * To see this race, move this ahead of userspace sighandlers
+             * above, and run threads_abort_sighandler.
+             */
+        }
+#endif
 
 		/*
 		 * Anything else is fatal, maybe with a core dump.

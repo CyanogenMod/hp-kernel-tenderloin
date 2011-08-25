@@ -1443,10 +1443,10 @@ EXPORT_SYMBOL(set_binfmt);
  * name into corename, which must have space for at least
  * CORENAME_MAX_SIZE bytes plus one byte for the zero terminator.
  */
-static int format_corename(char *corename, long signr)
+int format_corename(char *corename, const char *pattern, long signr, siginfo_t *info)
 {
 	const struct cred *cred = current_cred();
-	const char *pat_ptr = core_pattern;
+	const char *pat_ptr = pattern;
 	int ispipe = (*pat_ptr == '|');
 	char *out_ptr = corename;
 	char *const out_end = corename + CORENAME_MAX_SIZE;
@@ -1475,6 +1475,14 @@ static int format_corename(char *corename, long signr)
 				pid_in_pattern = 1;
 				rc = snprintf(out_ptr, out_end - out_ptr,
 					      "%d", task_tgid_vnr(current));
+				if (rc > out_end - out_ptr)
+					goto out;
+				out_ptr += rc;
+				break;
+			/* "thread id" pid */
+			case 'q':
+				rc =  snprintf(out_ptr, out_end - out_ptr,
+					      "%d", current->pid);
 				if (rc > out_end - out_ptr)
 					goto out;
 				out_ptr += rc;
@@ -1540,6 +1548,26 @@ static int format_corename(char *corename, long signr)
 					goto out;
 				out_ptr += rc;
 				break;
+#ifdef CONFIG_MINI_CORE
+			/* asynchronous signal */
+			case 'a':
+				if (!info) break;
+				rc = snprintf(out_ptr, out_end - out_ptr,
+					      "%d", SI_FROMUSER(info));
+				if (rc > out_end - out_ptr)
+					goto out;
+				out_ptr += rc;
+				break;
+			/* fault address -- only real if from kernel */
+			case 'f':
+				if (!info) break;
+				rc = snprintf(out_ptr, out_end - out_ptr,
+					      "%p", SI_FROMKERNEL(info) ? info->si_addr: 0);
+				if (rc > out_end - out_ptr)
+					goto out;
+				out_ptr += rc;
+				break;
+#endif
 			default:
 				break;
 			}
@@ -1896,7 +1924,7 @@ void do_coredump(long signr, int exit_code, struct pt_regs *regs)
 	 * uses lock_kernel()
 	 */
  	lock_kernel();
-	ispipe = format_corename(corename, signr);
+	ispipe = format_corename(corename, core_pattern, signr, NULL);
 	unlock_kernel();
 
  	if (ispipe) {

@@ -63,6 +63,7 @@ void snd_soc_jack_report(struct snd_soc_jack *jack, int status, int mask)
 	struct snd_soc_jack_pin *pin;
 	int enable;
 	int oldstatus;
+	int oldjacktype;
 
 	if (!jack)
 		return;
@@ -93,12 +94,16 @@ void snd_soc_jack_report(struct snd_soc_jack *jack, int status, int mask)
 			snd_soc_dapm_disable_pin(codec, pin->pin);
 	}
 
+	oldjacktype = jack->jack->type;
+	jack->jack->type = mask;
+	jack->jack->type = oldjacktype;
+
 	/* Report before the DAPM sync to help users updating micbias status */
-	blocking_notifier_call_chain(&jack->notifier, status, NULL);
+	blocking_notifier_call_chain(&jack->notifier, status, jack);
 
 	snd_soc_dapm_sync(codec);
 
-	snd_jack_report(jack->jack, status);
+
 
 out:
 	mutex_unlock(&codec->mutex);
@@ -141,7 +146,6 @@ int snd_soc_jack_add_pins(struct snd_soc_jack *jack, int count,
 	 * card has an opportunity to associate pins.
 	 */
 	snd_soc_jack_report(jack, 0, 0);
-
 	return 0;
 }
 EXPORT_SYMBOL_GPL(snd_soc_jack_add_pins);
@@ -187,7 +191,6 @@ static void snd_soc_jack_gpio_detect(struct snd_soc_jack_gpio *gpio)
 	struct snd_soc_jack *jack = gpio->jack;
 	int enable;
 	int report;
-
 	if (gpio->debounce_time > 0)
 		mdelay(gpio->debounce_time);
 
@@ -220,7 +223,6 @@ static irqreturn_t gpio_handler(int irq, void *data)
 static void gpio_work(struct work_struct *work)
 {
 	struct snd_soc_jack_gpio *gpio;
-
 	gpio = container_of(work, struct snd_soc_jack_gpio, work);
 	snd_soc_jack_gpio_detect(gpio);
 }
@@ -239,7 +241,6 @@ int snd_soc_jack_add_gpios(struct snd_soc_jack *jack, int count,
 			struct snd_soc_jack_gpio *gpios)
 {
 	int i, ret;
-
 	for (i = 0; i < count; i++) {
 		if (!gpio_is_valid(gpios[i].gpio)) {
 			printk(KERN_ERR "Invalid gpio %d\n",
@@ -273,6 +274,13 @@ int snd_soc_jack_add_gpios(struct snd_soc_jack *jack, int count,
 		if (ret)
 			goto err;
 
+		if (gpios[i].wake) {
+			ret = set_irq_wake(gpio_to_irq(gpios[i].gpio), 1);
+			if (ret != 0)
+				pr_err("Failed to set GPIO %d as wake source: %d\n",
+					   gpios[i].gpio, ret);
+		}
+
 #ifdef CONFIG_GPIO_SYSFS
 		/* Expose GPIO value over sysfs for diagnostic purposes */
 		gpio_export(gpios[i].gpio, false);
@@ -281,7 +289,6 @@ int snd_soc_jack_add_gpios(struct snd_soc_jack *jack, int count,
 		/* Update initial jack status */
 		snd_soc_jack_gpio_detect(&gpios[i]);
 	}
-
 	return 0;
 
 err:

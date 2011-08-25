@@ -70,6 +70,7 @@ obj-$(CONFIG_PRINTER)		+= lp.o
 
 obj-$(CONFIG_APM_EMULATION)	+= apm-emulation.o
 
+
 obj-$(CONFIG_DTLK)		+= dtlk.o
 obj-$(CONFIG_R3964)		+= n_r3964.o
 obj-$(CONFIG_APPLICOM)		+= applicom.o
@@ -107,11 +108,15 @@ obj-$(CONFIG_IPMI_HANDLER)	+= ipmi/
 obj-$(CONFIG_HANGCHECK_TIMER)	+= hangcheck-timer.o
 obj-$(CONFIG_TCG_TPM)		+= tpm/
 
+obj-$(CONFIG_DCC_TTY)		+= dcc_tty.o
 obj-$(CONFIG_PS3_FLASH)		+= ps3flash.o
 obj-$(CONFIG_RAMOOPS)		+= ramoops.o
 
 obj-$(CONFIG_JS_RTC)		+= js-rtc.o
 js-rtc-y = rtc.o
+
+obj-$(CONFIG_MSM_ROTATOR)	+= msm_rotator.o
+obj-$(CONFIG_MMC_GENERIC_CSDIO)	+= csdio.o
 
 # Files generated that shall be removed upon make clean
 clean-files := consolemap_deftbl.c defkeymap.c
@@ -124,6 +129,13 @@ $(obj)/consolemap_deftbl.c: $(src)/$(FONTMAPFILE)
 
 $(obj)/defkeymap.o:  $(obj)/defkeymap.c
 
+
+ifeq ($(CONFIG_WEBOS_KEYMAP),y)
+KEYMAP := defkeymap_webos
+GENERATE_KEYMAP := 1
+endif
+
+
 # Uncomment if you're changing the keymap and have an appropriate
 # loadkeys version for the map. By default, we'll use the shipped
 # versions.
@@ -131,7 +143,8 @@ $(obj)/defkeymap.o:  $(obj)/defkeymap.c
 
 ifdef GENERATE_KEYMAP
 
-$(obj)/defkeymap.c: $(obj)/%.c: $(src)/%.map
+# $(obj)/defkeymap.c: $(obj)/%.c: $(src)/%.map
+$(obj)/defkeymap.c : $(src)/$(KEYMAP).map
 	loadkeys --mktable $< > $@.tmp
 	sed -e 's/^static *//' $@.tmp > $@
 	rm $@.tmp

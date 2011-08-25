@@ -1829,6 +1829,10 @@ static void sock_def_wakeup(struct sock *sk)
 	struct socket_wq *wq;
 
 	rcu_read_lock();
+#ifdef CONFIG_INTSOCK_NETFILTER
+	if (sk->sk_family == AF_INET && sk->sk_state == TCP_ESTABLISHED)
+		sk->sk_stamp = ktime_get();
+#endif
 	wq = rcu_dereference(sk->sk_wq);
 	if (wq_has_sleeper(wq))
 		wake_up_interruptible_all(&wq->wait);
@@ -1852,6 +1856,13 @@ static void sock_def_readable(struct sock *sk, int len)
 	struct socket_wq *wq;
 
 	rcu_read_lock();
+#ifdef CONFIG_INTSOCK_NETFILTER
+	/* sk_stamp for every socket updated to current time to reflect
+	 * correct idle time settings
+	 */
+	if (sk->sk_family == AF_INET)
+		sk->sk_stamp = ktime_get();
+#endif
 	wq = rcu_dereference(sk->sk_wq);
 	if (wq_has_sleeper(wq))
 		wake_up_interruptible_sync_poll(&wq->wait, POLLIN |
@@ -1962,7 +1973,13 @@ void sock_init_data(struct socket *sock, struct sock *sk)
 	sk->sk_rcvtimeo		=	MAX_SCHEDULE_TIMEOUT;
 	sk->sk_sndtimeo		=	MAX_SCHEDULE_TIMEOUT;
 
+#ifdef CONFIG_INTSOCK_NETFILTER
+	if (sk->sk_family == AF_INET)
+		sk->sk_stamp = ktime_get();
+	else
+#else
 	sk->sk_stamp = ktime_set(-1L, 0);
+#endif
 
 	/*
 	 * Before updating sk_refcnt, we must commit prior changes to memory
@@ -2048,7 +2065,11 @@ int sock_get_timestamp(struct sock *sk, struct timeval __user *userstamp)
 	tv = ktime_to_timeval(sk->sk_stamp);
 	if (tv.tv_sec == -1)
 		return -ENOENT;
+#ifdef CONFIG_INTSOCK_NETFILTER
+	if (sk->sk_family == AF_PACKET || tv.tv_sec == 0) {
+#else
 	if (tv.tv_sec == 0) {
+#endif
 		sk->sk_stamp = ktime_get_real();
 		tv = ktime_to_timeval(sk->sk_stamp);
 	}

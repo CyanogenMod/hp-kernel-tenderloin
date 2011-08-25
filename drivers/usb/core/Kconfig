@@ -107,10 +107,18 @@ config USB_SUSPEND
 	  If you are unsure about this, say N here.
 
 config USB_OTG
-	bool
+	boolean "OTG Support"
 	depends on USB && EXPERIMENTAL
 	depends on USB_SUSPEND
 	default n
+	help
+	   The most notable feature of USB OTG is support for a
+	   "Dual-Role" device, which can act as either a device
+	   or a host.  The initial role choice can be changed
+	   later, when two dual-role devices talk to each other.
+
+	   Select this only if your board has a Mini-AB or Micro-AB
+	   connector.
 
 
 config USB_OTG_WHITELIST

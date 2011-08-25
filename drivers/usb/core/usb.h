@@ -95,6 +95,10 @@ static inline int usb_remote_wakeup(struct usb_device *udev)
 
 #endif
 
+#ifdef CONFIG_USB_OTG
+extern void usb_hnp_polling_work(struct work_struct *work);
+#endif
+
 extern struct bus_type usb_bus_type;
 extern struct device_type usb_device_type;
 extern struct device_type usb_if_device_type;

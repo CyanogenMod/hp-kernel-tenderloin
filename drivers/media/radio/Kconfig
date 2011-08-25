@@ -452,4 +452,14 @@ config RADIO_TIMBERDALE
 	  found behind the Timberdale FPGA on the Russellville board.
 	  Enabling this driver will automatically select the DSP and tuner.
 
+config RADIO_TAVARUA
+	tristate "Qualcomm Tavaraua I2C FM support"
+	depends on I2C && VIDEO_V4L2 && MARIMBA_CORE
+	default n
+	---help---
+	  Say Y here if you want to use the Qualcomm FM chip (Tavarua).
+	  This FM chip uses I2C interface.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called radio-tavarua.
 endif # RADIO_ADAPTERS

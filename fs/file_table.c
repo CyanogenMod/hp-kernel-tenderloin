@@ -106,6 +106,14 @@ struct file *get_empty_filp(void)
 	static int old_max;
 	struct file * f;
 
+#if defined(CONFIG_WARN_ABOUT_MAX_FILES)
+	if (get_nr_files() >= (files_stat.max_files - 2000)) {
+		printk(KERN_WARNING "VFS: approaching file-max limit (%d) by %s(%d)\n",
+					get_max_files(), current->comm, task_pid_nr(current));
+		dump_stack();
+	}
+#endif
+
 	/*
 	 * Privileged users can go above max_files
 	 */

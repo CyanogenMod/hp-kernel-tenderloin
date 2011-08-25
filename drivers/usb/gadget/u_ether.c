@@ -278,6 +278,15 @@ static void rx_complete(struct usb_ep *ep, struct usb_request *req)
 	struct eth_dev	*dev = ep->driver_data;
 	int		status = req->status;
 
+	/* REVISIT */
+	if (dev == NULL) {
+		printk("u_ether: rx_complete: dev=NULL skb=%p status=%d\n",
+		       skb, status);
+		if (skb)
+			dev_kfree_skb_any(skb);
+		return;
+	}
+
 	switch (status) {
 
 	/* normal completion */
@@ -947,7 +956,6 @@ void gether_disconnect(struct gether *link)
 	struct eth_dev		*dev = link->ioport;
 	struct usb_request	*req;
 
-	WARN_ON(!dev);
 	if (!dev)
 		return;
 

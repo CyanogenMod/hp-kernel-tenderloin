@@ -58,8 +58,7 @@ static int snd_jack_dev_register(struct snd_device *device)
 	struct snd_card *card = device->card;
 	int err, i;
 
-	snprintf(jack->name, sizeof(jack->name), "%s %s",
-		 card->shortname, jack->id);
+	snprintf(jack->name, sizeof(jack->name), "%s", jack->id);
 	jack->input_dev->name = jack->name;
 
 	/* Default to the sound card device. */
@@ -230,7 +229,6 @@ void snd_jack_report(struct snd_jack *jack, int status)
 					    status & testbit);
 	}
 
-	input_sync(jack->input_dev);
 }
 EXPORT_SYMBOL(snd_jack_report);
 

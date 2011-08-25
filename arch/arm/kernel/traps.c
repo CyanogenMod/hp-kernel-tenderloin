@@ -436,15 +436,34 @@ static int bad_syscall(int n, struct pt_regs *regs)
 	return regs->ARM_r0;
 }
 
+#define  MAGIC_CACHE_INVALIDATE   0x50414C4D
+
+#ifdef CONFIG_MSM_KGSL_MMU
+void kgsl_palm_cache_inv_range(unsigned long addr, int size);
+#endif
+
 static inline void
 do_cache_op(unsigned long start, unsigned long end, int flags)
 {
 	struct mm_struct *mm = current->active_mm;
 	struct vm_area_struct *vma;
 
-	if (end < start || flags)
+	if (end < start)
 		return;
 
+	if (flags == MAGIC_CACHE_INVALIDATE) {
+#ifdef CONFIG_MSM_KGSL_MMU
+		start &= PAGE_MASK;
+		kgsl_palm_cache_inv_range(start, PAGE_ALIGN(end - start));
+#else
+		printk(KERN_WARNING "do_cache_op: MAGIC_CACHE_INVALIDATE not implemented\n");
+#endif
+		return;
+	}
+    
+	if (flags)
+		return;
+    
 	down_read(&mm->mmap_sem);
 	vma = find_vma(mm, start);
 	if (vma && vma->vm_start < end) {
@@ -453,7 +472,14 @@ do_cache_op(unsigned long start, unsigned long end, int flags)
 		if (end > vma->vm_end)
 			end = vma->vm_end;
 
-		flush_cache_user_range(vma, start, end);
+		up_read(&mm->mmap_sem);
+		flush_cache_user_range(start, end);
+
+#ifdef CONFIG_ARCH_MSM7X27
+		dmb();
+#endif
+		return;
+
 	}
 	up_read(&mm->mmap_sem);
 }
@@ -520,7 +546,8 @@ asmlinkage int arm_syscall(int no, struct pt_regs *regs)
 		thread->tp_value = regs->ARM_r0;
 #if defined(CONFIG_HAS_TLS_REG)
 		asm ("mcr p15, 0, %0, c13, c0, 3" : : "r" (regs->ARM_r0) );
-#elif !defined(CONFIG_TLS_REG_EMUL)
+//#elif !defined(CONFIG_TLS_REG_EMUL)
+#endif
 		/*
 		 * User space must never try to access this directly.
 		 * Expect your app to break eventually if you do so.
@@ -528,7 +555,7 @@ asmlinkage int arm_syscall(int no, struct pt_regs *regs)
 		 * (see entry-armv.S for details)
 		 */
 		*((unsigned int *)0xffff0ff0) = regs->ARM_r0;
-#endif
+//#endif
 		return 0;
 
 #ifdef CONFIG_NEEDS_SYSCALL_FOR_CMPXCHG

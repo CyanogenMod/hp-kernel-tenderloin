@@ -2,6 +2,7 @@
  * arch/arm/mm/cache-l2x0.c - L210/L220 cache controller support
  *
  * Copyright (C) 2007 ARM Limited
+ * Copyright (c) 2009, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -26,6 +27,7 @@
 #define CACHE_LINE_SIZE		32
 
 static void __iomem *l2x0_base;
+static uint32_t aux_ctrl_save;
 static DEFINE_SPINLOCK(l2x0_lock);
 static uint32_t l2x0_way_mask;	/* Bitmask of active ways */
 
@@ -94,13 +96,9 @@ static inline void l2x0_flush_line(unsigned long addr)
 }
 #endif
 
-static void l2x0_cache_sync(void)
+void l2x0_cache_sync(void)
 {
-	unsigned long flags;
-
-	spin_lock_irqsave(&l2x0_lock, flags);
 	cache_sync();
-	spin_unlock_irqrestore(&l2x0_lock, flags);
 }
 
 static inline void l2x0_inv_all(void)
@@ -113,6 +111,26 @@ static inline void l2x0_inv_all(void)
 	cache_wait(l2x0_base + L2X0_INV_WAY, l2x0_way_mask);
 	cache_sync();
 	spin_unlock_irqrestore(&l2x0_lock, flags);
+}
+
+static inline void sync_writel(unsigned long val, unsigned  long reg,
+				unsigned long complete_mask)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&l2x0_lock, flags);
+	writel_relaxed(val, l2x0_base + reg);
+	/* wait for the operation to complete */
+	while (readl_relaxed(l2x0_base + reg) & complete_mask)
+		;
+	spin_unlock_irqrestore(&l2x0_lock, flags);
+}
+
+static inline void l2x0_flush_all(void)
+{
+	/* clean and invalidate all ways */
+	sync_writel(0xff, L2X0_CLEAN_INV_WAY, 0xff);
+	cache_sync();
 }
 
 static void l2x0_inv_range(unsigned long start, unsigned long end)
@@ -154,6 +172,27 @@ static void l2x0_inv_range(unsigned long start, unsigned long end)
 	spin_unlock_irqrestore(&l2x0_lock, flags);
 }
 
+static void l2x0_inv_range_atomic(unsigned long start, unsigned long end)
+{
+	unsigned long addr;
+
+	if (start & (CACHE_LINE_SIZE - 1)) {
+		start &= ~(CACHE_LINE_SIZE - 1);
+		writel_relaxed(start, l2x0_base + L2X0_CLEAN_INV_LINE_PA);
+		start += CACHE_LINE_SIZE;
+	}
+
+	if (end & (CACHE_LINE_SIZE - 1)) {
+		end &= ~(CACHE_LINE_SIZE - 1);
+		writel_relaxed(end, l2x0_base + L2X0_CLEAN_INV_LINE_PA);
+	}
+
+	for (addr = start; addr < end; addr += CACHE_LINE_SIZE)
+		writel_relaxed(addr, l2x0_base + L2X0_INV_LINE_PA);
+
+	mb();
+}
+
 static void l2x0_clean_range(unsigned long start, unsigned long end)
 {
 	void __iomem *base = l2x0_base;
@@ -177,6 +216,17 @@ static void l2x0_clean_range(unsigned long start, unsigned long end)
 	cache_wait(base + L2X0_CLEAN_LINE_PA, 1);
 	cache_sync();
 	spin_unlock_irqrestore(&l2x0_lock, flags);
+}
+
+static void l2x0_clean_range_atomic(unsigned long start, unsigned long end)
+{
+	unsigned long addr;
+
+	start &= ~(CACHE_LINE_SIZE - 1);
+	for (addr = start; addr < end; addr += CACHE_LINE_SIZE)
+		writel_relaxed(addr, l2x0_base + L2X0_CLEAN_LINE_PA);
+
+	mb();
 }
 
 static void l2x0_flush_range(unsigned long start, unsigned long end)
@@ -206,16 +256,31 @@ static void l2x0_flush_range(unsigned long start, unsigned long end)
 	spin_unlock_irqrestore(&l2x0_lock, flags);
 }
 
+void l2x0_flush_range_atomic(unsigned long start, unsigned long end)
+{
+	unsigned long addr;
+
+	start &= ~(CACHE_LINE_SIZE - 1);
+	for (addr = start; addr < end; addr += CACHE_LINE_SIZE)
+		writel_relaxed(addr, l2x0_base + L2X0_CLEAN_INV_LINE_PA);
+
+	mb();
+}
+
 void __init l2x0_init(void __iomem *base, __u32 aux_val, __u32 aux_mask)
 {
-	__u32 aux;
+	__u32 aux, bits;
 	__u32 cache_id;
 	int ways;
 	const char *type;
 
 	l2x0_base = base;
-
 	cache_id = readl_relaxed(l2x0_base + L2X0_CACHE_ID);
+
+	bits = readl_relaxed(l2x0_base + L2X0_CTRL);
+	bits &= ~0x01; /* clear bit 0 */
+	writel_relaxed(bits, l2x0_base + L2X0_CTRL);
+
 	aux = readl_relaxed(l2x0_base + L2X0_AUX_CTRL);
 
 	aux &= aux_mask;
@@ -240,31 +305,64 @@ void __init l2x0_init(void __iomem *base, __u32 aux_val, __u32 aux_mask)
 		type = "L2x0 series";
 		break;
 	}
-
+	writel_relaxed(aux, l2x0_base + L2X0_AUX_CTRL);
 	l2x0_way_mask = (1 << ways) - 1;
+	l2x0_inv_all();
 
-	/*
-	 * Check if l2x0 controller is already enabled.
-	 * If you are booting from non-secure mode
-	 * accessing the below registers will fault.
-	 */
-	if (!(readl_relaxed(l2x0_base + L2X0_CTRL) & 1)) {
+	/* enable L2X0 */
+	bits = readl_relaxed(l2x0_base + L2X0_CTRL);
+	bits |= 0x01;	/* set bit 0 */
+	writel_relaxed(bits, l2x0_base + L2X0_CTRL);
 
-		/* l2x0 controller is disabled */
-		writel_relaxed(aux, l2x0_base + L2X0_AUX_CTRL);
+	bits = readl_relaxed(l2x0_base + L2X0_CACHE_ID);
+	bits >>= 6;	/* part no, bit 6 to 9 */
+	bits &= 0x0f;	/* 4 bits */
 
-		l2x0_inv_all();
-
-		/* enable L2X0 */
-		writel_relaxed(1, l2x0_base + L2X0_CTRL);
+	if (bits == 2) {	/* L220 */
+		outer_cache.inv_range = l2x0_inv_range;
+		outer_cache.clean_range = l2x0_clean_range;
+		outer_cache.flush_range = l2x0_flush_range;
+		printk(KERN_INFO "L220 cache controller enabled\n");
+	} else {		/* L210 */
+		outer_cache.inv_range = l2x0_inv_range_atomic;
+		outer_cache.clean_range = l2x0_clean_range_atomic;
+		outer_cache.flush_range = l2x0_flush_range_atomic;
+		printk(KERN_INFO "L210 cache controller enabled\n");
 	}
 
-	outer_cache.inv_range = l2x0_inv_range;
-	outer_cache.clean_range = l2x0_clean_range;
-	outer_cache.flush_range = l2x0_flush_range;
 	outer_cache.sync = l2x0_cache_sync;
 
-	printk(KERN_INFO "%s cache controller enabled\n", type);
-	printk(KERN_INFO "l2x0: %d ways, CACHE_ID 0x%08x, AUX_CTRL 0x%08x\n",
-			 ways, cache_id, aux);
+	mb();
+}
+
+void l2x0_suspend(void)
+{
+	/* Save aux control register value */
+	aux_ctrl_save = readl_relaxed(l2x0_base + L2X0_AUX_CTRL);
+	/* Flush all cache */
+	l2x0_flush_all();
+	/* Disable the cache */
+	writel_relaxed(0, l2x0_base + L2X0_CTRL);
+
+	/* Memory barrier */
+	dmb();
+}
+
+void l2x0_resume(int collapsed)
+{
+	if (collapsed) {
+		/* Disable the cache */
+		writel_relaxed(0, l2x0_base + L2X0_CTRL);
+
+		/* Restore aux control register value */
+		writel_relaxed(aux_ctrl_save, l2x0_base + L2X0_AUX_CTRL);
+
+		/* Invalidate the cache */
+		l2x0_inv_all();
+	}
+
+	/* Enable the cache */
+	writel_relaxed(1, l2x0_base + L2X0_CTRL);
+
+	mb();
 }

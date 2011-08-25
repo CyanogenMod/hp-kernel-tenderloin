@@ -243,4 +243,32 @@ config CRYPTO_DEV_OMAP_SHAM
 	  OMAP processors have SHA1/MD5 hw accelerator. Select this if you
 	  want to use the OMAP module for SHA1/MD5 algorithms.
 
+config CRYPTO_DEV_QCRYPTO
+	tristate "Qualcomm Crypto accelerator"
+	select CRYPTO_DES
+	select CRYPTO_ALGAPI
+	select CRYPTO_AUTHENC
+	select CRYPTO_BLKCIPHER
+	default n
+	help
+          This driver supports Qualcomm crypto acceleration.
+          To compile this driver as a module, choose M here: the
+          module will be called qcrypto.
+
+config CRYPTO_DEV_QCE
+	tristate "Qualcomm Crypto Engine (QCE) module"
+	default n
+	help
+          This driver supports Qualcomm Crypto Engine in MSM7x30 MSM8660.
+	  To compile this driver as a module, choose M here: the
+	  module will be called qce.
+
+config CRYPTO_DEV_QCEDEV
+	tristate "QCEDEV Interface to CE module"
+	default n
+	help
+          This driver supports Qualcomm QCEDEV Crypto in MSM7x30 MSM8660.
+          This exposes the interface to the QCE hardware accelerator via IOCTLs
+	  To compile this driver as a module, choose M here: the
+	  module will be called qcedev.
 endif # CRYPTO_HW

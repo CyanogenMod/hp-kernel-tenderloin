@@ -569,6 +569,8 @@ static int soc_codec_close(struct snd_pcm_substream *substream)
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
 		snd_soc_dai_digital_mute(codec_dai, 1);
 
+	substream->prepared = 0;
+
 	if (cpu_dai->ops->shutdown)
 		cpu_dai->ops->shutdown(substream, cpu_dai);
 
@@ -581,11 +583,19 @@ static int soc_codec_close(struct snd_pcm_substream *substream)
 	if (platform->pcm_ops->close)
 		platform->pcm_ops->close(substream);
 
+	/*
+	 * We don't actually need the pop_wait stuff since PulseAudio
+	 * has it's own pop_wait. Further, the changes to make DAPM
+	 * reference count stream start/stop that we've done to work
+	 * around QC modem path integration mean that we can't just
+	 * cancel the delayed work later and not do the power down
+	 * or we loose a reference count on the enable. Just always
+	 * shut down immediately to close the race condition.
+	 */
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
-		/* start delayed pop wq here for playback streams */
-		codec_dai->pop_wait = 1;
-		schedule_delayed_work(&card->delayed_work,
-			msecs_to_jiffies(card->pmdown_time));
+		snd_soc_dapm_stream_event(codec,
+			codec_dai->playback.stream_name,
+			SND_SOC_DAPM_STREAM_STOP);
 	} else {
 		/* capture streams can be powered down now */
 		snd_soc_dapm_stream_event(codec,
@@ -655,14 +665,18 @@ static int soc_pcm_prepare(struct snd_pcm_substream *substream)
 		cancel_delayed_work(&card->delayed_work);
 	}
 
-	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
-		snd_soc_dapm_stream_event(codec,
-					  codec_dai->playback.stream_name,
-					  SND_SOC_DAPM_STREAM_START);
-	else
-		snd_soc_dapm_stream_event(codec,
-					  codec_dai->capture.stream_name,
-					  SND_SOC_DAPM_STREAM_START);
+	if (!substream->prepared) {
+		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
+			snd_soc_dapm_stream_event(codec,
+						codec_dai->playback.stream_name,
+						SND_SOC_DAPM_STREAM_START);
+		else
+			snd_soc_dapm_stream_event(codec,
+						codec_dai->capture.stream_name,
+						SND_SOC_DAPM_STREAM_START);
+
+		substream->prepared = 1;
+	}
 
 	snd_soc_dai_digital_mute(codec_dai, 0);
 
@@ -698,6 +712,13 @@ static int soc_pcm_hw_params(struct snd_pcm_substream *substream,
 		}
 	}
 
+/*
+ * QC MSM alsa layer is not written properly,
+ * by default the codec driver will get hw configured
+ * by stream opens, instead we are going to do this in
+ * when enabling rx and tx i2s devices
+ */
+#ifndef CONFIG_MFD_WM8994
 	if (codec_dai->ops->hw_params) {
 		ret = codec_dai->ops->hw_params(substream, params, codec_dai);
 		if (ret < 0) {
@@ -706,6 +727,7 @@ static int soc_pcm_hw_params(struct snd_pcm_substream *substream,
 			goto codec_err;
 		}
 	}
+#endif
 
 	if (cpu_dai->ops->hw_params) {
 		ret = cpu_dai->ops->hw_params(substream, params, cpu_dai);
@@ -874,6 +896,13 @@ static int soc_suspend(struct device *dev)
 	struct snd_soc_codec_device *codec_dev = socdev->codec_dev;
 	struct snd_soc_codec *codec = card->codec;
 	int i;
+
+	// BODGE: Brute force ignore_suspend to ease integration with
+	// jack detection stuff.
+	if (codec_dev && pdev)
+		codec_dev->suspend(pdev, PMSG_SUSPEND);
+
+	return 0;
 
 	/* If the initialization of this soc device failed, there is no codec
 	 * associated with it. Just bail out in this case.
@@ -1081,6 +1110,9 @@ static int soc_resume(struct device *dev)
 	struct snd_soc_device *socdev = platform_get_drvdata(pdev);
 	struct snd_soc_card *card = socdev->card;
 	struct snd_soc_dai *cpu_dai = card->dai_link[0].cpu_dai;
+
+	// BODGE: We didn't suspend
+	return 0;
 
 	/* If the initialization of this soc device failed, there is no codec
 	 * associated with it. Just bail out in this case.

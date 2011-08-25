@@ -37,6 +37,9 @@ void gic_dist_init(unsigned int gic_nr, void __iomem *base, unsigned int irq_sta
 void gic_cpu_init(unsigned int gic_nr, void __iomem *base);
 void gic_cascade_irq(unsigned int gic_nr, unsigned int irq);
 void gic_raise_softirq(const struct cpumask *mask, unsigned int irq);
+void gic_show_resume_irq(unsigned int gic_nr);
+bool gic_is_spi_pending(unsigned int irq);
+void gic_clear_spi_pending(unsigned int irq);
 #endif
 
 #endif

@@ -195,6 +195,17 @@ config GPIO_PCF857X
 	  This driver provides an in-kernel interface to those GPIOs using
 	  platform-neutral GPIO calls.
 
+config GPIO_SX150X
+	bool "Semtech SX150x I2C GPIO expander"
+	depends on I2C=y
+	default n
+	help
+	  Say yes here to provide support for Semtech SX150-series I2C
+	  GPIO expanders. Compatible models include:
+
+	  8 bits:  sx1508q
+	  16 bits: sx1509q
+
 config GPIO_TC35892
 	bool "TC35892 GPIOs"
 	depends on MFD_TC35892
@@ -342,5 +353,15 @@ config GPIO_JANZ_TTL
 	  This enables support for the Janz VMOD-TTL Digital IO module.
 	  This driver provides support for driving the pins in output
 	  mode only. Input mode is not supported.
+
+config MPP_PMIC8901
+        tristate "Qualcomm PMIC8901 MPP"
+        depends on GPIOLIB && PMIC8901
+        default y
+        help
+          Say yes here to support GPIO functionality on Qualcomm's
+          PM8901 chip for MPP(Multi-Purpose Pin) pins. These pins
+          work like GPIO pins when configured as digital input and/or
+          output signals.
 
 endif

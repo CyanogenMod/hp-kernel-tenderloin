@@ -3,7 +3,7 @@
 
 #ifdef __KERNEL__
 
-#ifdef CONFIG_SMP
+#if 0 //#ifdef CONFIG_SMP
 
 #include <asm-generic/futex.h>
 

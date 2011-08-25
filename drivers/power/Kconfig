@@ -142,4 +142,85 @@ config CHARGER_PCF50633
 	help
 	 Say Y to include support for NXP PCF50633 Main Battery Charger.
 
+config BATTERY_MSM
+	tristate "MSM battery"
+	depends on ARCH_MSM
+	default m
+	help
+	  Say Y to enable support for the battery in Qualcomm MSM.
+
+config BATTERY_MSM8X60
+	tristate "MSM8X60 battery"
+	depends on (MACH_MSM8X60_SURF|| MACH_MSM8X60_FFA || MACH_MSM8X60_CHARM_SURF || MACH_MSM8X60_CHARM_FFA)
+	help
+	  MSM8660 SURF has dual charging paths to charge the battery.
+	  Say Y to enable support for the battery charging in
+	  Qualcomm MSM8X60 surf.
+
+config PM8058_CHARGER
+	tristate "pmic8058 charger"
+	depends on BATTERY_MSM8X60
+	depends on PMIC8058
+	help
+	  Say Y to enable support for battery charging from the pmic8058.
+	  pmic8058 provides a linear charging circuit connected to the usb
+	  cable on Qualcomm's msm8x60 surf board.
+
+config ISL9519_CHARGER
+	tristate "isl9519 charger"
+	depends on BATTERY_MSM8X60
+	default n
+	help
+	  The isl9519q charger chip from intersil is connected to an external
+	  charger cable and is preferred way of charging the battery because
+	  of its high current rating.
+	  Choose Y if you are compiling for Qualcomm's msm8x60 surf/ffa board.
+
+config MAX8903B_CHARGER
+	tristate "MAXIM 8903B charger"
+	default n
+	help
+	  Say Y to enable support for the MAX8903B charger.
+
+config SMB137B_CHARGER
+	tristate "smb137b charger"
+	default n
+	depends on I2C
+	help
+         The smb137b charger chip from summit is a switching mode based
+	 charging solution.
+
+         Choose Y if you are compiling for Qualcomm's msm8x60 fluid board.
+	 To compile this driver as a module, choose M here: the module will
+	 be called smb137b.
+
+config BATTERY_MSM_FAKE
+	tristate "Fake MSM battery"
+	depends on ARCH_MSM && BATTERY_MSM
+	default n
+	help
+	  Say Y to bypass actual battery queries.
+
+config PM8058_FIX_USB
+	tristate "pmic8058 software workaround for usb removal"
+	depends on PMIC8058
+	depends on !PM8058_CHARGER
+	help
+	  Say Y to enable the software workaround to USB Vbus line
+	  staying high even when USB cable is removed. This option
+	  is in lieu of a complete pm8058 charging driver.
+
+config PM8058_USB_VBUS_CONTROL
+	tristate "PMIC8058 USB VBUS Control"
+	help
+	  Say Y to enable the fix for USB VBUS Control.
+
+config BATTERY_QCIBAT
+	tristate "Quanta Computer Inc. Battery"
+	depends on SENSORS_WPCE775X
+	default n
+	help
+	 Say Y here if you want to use the Quanta battery driver for ST15
+	 platform.
+
 endif # POWER_SUPPLY

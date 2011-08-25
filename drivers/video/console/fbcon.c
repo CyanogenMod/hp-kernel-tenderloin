@@ -3519,9 +3519,30 @@ static void fbcon_exit(void)
 	fbcon_has_exited = 1;
 }
 
+/* 
+ *  * PALM hack
+ *   * Hack to allow the bootloader to disable the framebuffer console.
+ *    */
+static int enable_fbcon = 1;
+
+static int __init
+fbcon_args(char *str)
+{
+        if (!strcmp(str, "disable"))
+                enable_fbcon = 0;
+
+        return 0;
+}
+
+__setup("fbcon=", fbcon_args);
+
 static int __init fb_console_init(void)
 {
 	int i;
+
+ 	if (!enable_fbcon)
+                return 0;
+
 
 	acquire_console_sem();
 	fb_register_client(&fbcon_event_notifier);

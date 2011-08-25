@@ -1,0 +1,35 @@
+menu "Palm general setup"
+
+config PANIC_ON_OOPS
+	int "Panic when encountering OOPS"
+	default 0
+	help
+	  If 1, sets behavior on OOPS to panic.
+
+config WARN_ABOUT_MAX_FILES
+	bool "Warn when file-max limit is close"
+	default n
+	help
+	  If enabled, a log will start showing warnings
+
+config LINEAR_MIN_FREE_KBYTES
+	bool "Use different math for min_free_kbytes"
+	default n
+	help
+	  Grow the reserved memory linearly as a function of the available memory
+
+config PALM_BUILD_GM
+	bool "Production release branch"
+	default n
+	help
+	  Usually set automatically within the build environment on production branches.
+	  When set, may disable some debug features.
+
+config DEBUG_TZ_COUNTERS
+	bool "Instrument power collapse through TZ counters"
+	depends on !PALM_BUILD_GM
+	default n
+	help
+	  If enabled, log will show extra debug information from TZ about CPU power collapses
+
+endmenu		# General setup

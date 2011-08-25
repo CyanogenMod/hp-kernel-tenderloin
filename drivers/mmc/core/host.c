@@ -19,6 +19,7 @@
 #include <linux/slab.h>
 
 #include <linux/mmc/host.h>
+#include <linux/suspend.h>
 
 #include "core.h"
 #include "host.h"
@@ -85,6 +86,9 @@ struct mmc_host *mmc_alloc_host(int extra, struct device *dev)
 	init_waitqueue_head(&host->wq);
 	INIT_DELAYED_WORK(&host->detect, mmc_rescan);
 	INIT_DELAYED_WORK_DEFERRABLE(&host->disable, mmc_host_deeper_disable);
+#ifdef CONFIG_PM
+	host->pm_notify.notifier_call = mmc_pm_notify;
+#endif
 
 	/*
 	 * By default, hosts do not support SGIO or large requests.
@@ -106,6 +110,70 @@ free:
 }
 
 EXPORT_SYMBOL(mmc_alloc_host);
+#ifdef CONFIG_MMC_PERF_PROFILING
+static ssize_t
+show_perf(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct mmc_host *host = dev_get_drvdata(dev);
+	int64_t rtime_mmcq, wtime_mmcq, rtime_drv, wtime_drv;
+	unsigned long rbytes_mmcq, wbytes_mmcq, rbytes_drv, wbytes_drv;
+
+	spin_lock(&host->lock);
+
+	rbytes_mmcq = host->perf.rbytes_mmcq;
+	wbytes_mmcq = host->perf.wbytes_mmcq;
+	rbytes_drv = host->perf.rbytes_drv;
+	wbytes_drv = host->perf.wbytes_drv;
+
+	rtime_mmcq = ktime_to_us(host->perf.rtime_mmcq);
+	wtime_mmcq = ktime_to_us(host->perf.wtime_mmcq);
+	rtime_drv = ktime_to_us(host->perf.rtime_drv);
+	wtime_drv = ktime_to_us(host->perf.wtime_drv);
+
+	spin_unlock(&host->lock);
+
+	return snprintf(buf, PAGE_SIZE, "Write performance at MMCQ Level:"
+					"%lu bytes in %lld microseconds\n"
+					"Read performance at MMCQ Level:"
+					"%lu bytes in %lld microseconds\n"
+					"Write performance at driver Level:"
+					"%lu bytes in %lld microseconds\n"
+					"Read performance at driver Level:"
+					"%lu bytes in %lld microseconds\n",
+					wbytes_mmcq, wtime_mmcq, rbytes_mmcq,
+					rtime_mmcq, wbytes_drv, wtime_drv,
+					rbytes_drv, rtime_drv);
+}
+
+static ssize_t
+set_perf(struct device *dev, struct device_attribute *attr,
+		const char *buf, size_t count)
+{
+	int64_t value;
+	struct mmc_host *host = dev_get_drvdata(dev);
+	sscanf(buf, "%lld", &value);
+	if (!value) {
+		spin_lock(&host->lock);
+		memset(&host->perf, 0, sizeof(host->perf));
+		spin_unlock(&host->lock);
+	}
+
+	return count;
+}
+
+static DEVICE_ATTR(perf, S_IRUGO | S_IWUSR,
+		show_perf, set_perf);
+#endif
+
+static struct attribute *dev_attrs[] = {
+#ifdef CONFIG_MMC_PERF_PROFILING
+	&dev_attr_perf.attr,
+#endif
+	NULL,
+};
+static struct attribute_group dev_attr_grp = {
+	.attrs = dev_attrs,
+};
 
 /**
  *	mmc_add_host - initialise host hardware
@@ -131,8 +199,14 @@ int mmc_add_host(struct mmc_host *host)
 #ifdef CONFIG_DEBUG_FS
 	mmc_add_host_debugfs(host);
 #endif
+	err = sysfs_create_group(&host->parent->kobj, &dev_attr_grp);
+	if (err)
+		pr_err("%s: failed to create sysfs group with err %d\n",
+							 __func__, err);
 
 	mmc_start_host(host);
+	if (!(host->pm_flags & MMC_PM_IGNORE_PM_NOTIFY))
+		register_pm_notifier(&host->pm_notify);
 
 	return 0;
 }
@@ -149,15 +223,21 @@ EXPORT_SYMBOL(mmc_add_host);
  */
 void mmc_remove_host(struct mmc_host *host)
 {
+	if (!(host->pm_flags & MMC_PM_IGNORE_PM_NOTIFY))
+		unregister_pm_notifier(&host->pm_notify);
+
 	mmc_stop_host(host);
 
 #ifdef CONFIG_DEBUG_FS
 	mmc_remove_host_debugfs(host);
 #endif
+	sysfs_remove_group(&host->parent->kobj, &dev_attr_grp);
+
 
 	device_del(&host->class_dev);
 
 	led_trigger_unregister_simple(host->led);
+
 }
 
 EXPORT_SYMBOL(mmc_remove_host);

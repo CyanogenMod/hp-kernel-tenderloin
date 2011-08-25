@@ -53,6 +53,10 @@ config AD525X_DPOT_SPI
 	  To compile this driver as a module, choose M here: the
 	  module will be called ad525x_dpot-spi.
 
+config ANDROID_PMEM
+	bool "Android pmem allocator"
+	default y
+
 config ATMEL_PWM
 	tristate "Atmel AT32/AT91 PWM support"
 	depends on AVR32 || ARCH_AT91SAM9263 || ARCH_AT91SAM9RL || ARCH_AT91CAP9
@@ -190,6 +194,12 @@ config ATMEL_SSC
 
 	  If unsure, say N.
 
+config HSUART
+	bool "High Speed UART engine"
+	default n
+	---help---
+	  Generic HSUART engine, which calls platform specific code to facilitate High speed UART driver".
+
 config ENCLOSURE_SERVICES
 	tristate "Enclosure Services"
 	default n
@@ -198,6 +208,13 @@ config ENCLOSURE_SERVICES
 	  contain storage devices).  You also need either a host
 	  driver (SCSI/ATA) which supports enclosures
 	  or a SCSI enclosure device (SES) to use these services.
+
+config KERNEL_DEBUGGER_CORE
+	bool "Kernel Debugger Core"
+	default n
+	---help---
+	  Generic kernel debugging command processor used by low level
+	  (interrupt context) platform-specific debuggers.
 
 config SGI_XP
 	tristate "Support communication between SGI SSIs"
@@ -304,6 +321,32 @@ config SENSORS_TSL2550
 	  This driver can also be built as a module.  If so, the module
 	  will be called tsl2550.
 
+config SENSORS_AK8975
+	tristate "AK8975 compass support"
+	default n
+	depends on I2C
+	help
+	  If you say yes here you get support for Asahi Kasei's
+	  orientation sensor AK8975.
+
+config SENSORS_AKM8973
+	tristate "AKM8973 Compass Driver"
+	depends on I2C
+	help
+	 AKM8973 Compass Driver implemented by HTC.
+
+config SENSORS_AKM8976
+	tristate "AKM8976 Compass Driver"
+	depends on I2C
+	help
+	  AKM8976 Compass Driver implemented by HTC.
+
+config VP_A1026
+	tristate "A1026 Voice Processor Driver"
+	depends on I2C
+	help
+	  A1026 Voice Processor Driver implemented by HTC.
+
 config EP93XX_PWM
 	tristate "EP93xx PWM support"
 	depends on ARCH_EP93XX
@@ -337,6 +380,30 @@ config TI_DAC7512
 	  This driver can also be built as a module. If so, the module
 	  will be calles ti_dac7512.
 
+config BRCM4751
+	tristate "Broadcom GPS module 4751"
+	depends on SYSFS
+	help
+	  If you say yes here you get support for the Broadcom GPS module
+	  4751.
+
+	  This driver can also be built as a module, choose M here: the
+	  module will be called brcm4751.
+
+config MDMGPIO
+	tristate "modem gpio control"
+	depends on SYSFS
+	default n
+	help
+	  If you say yes here you get support for modem gpio control.
+
+	  This driver can also be built as a module, choose M here: the
+	  module will be called mdmgpio.
+
+config UID_STAT
+	bool "UID based statistics tracking exported to /proc/uid_stat"
+	default n
+
 config VMWARE_BALLOON
 	tristate "VMware Balloon Driver"
 	depends on X86
@@ -353,9 +420,173 @@ config VMWARE_BALLOON
 	  To compile this driver as a module, choose M here: the
 	  module will be called vmware_balloon.
 
+config WL127X_RFKILL
+	tristate "Bluetooth power control driver for TI wl127x"
+	depends on RFKILL
+	default n
+	---help---
+	 Creates an rfkill entry in sysfs for power control of Bluetooth
+	 TI wl127x chips.
+
+config APANIC
+	bool "Android kernel panic diagnostics driver"
+	default n
+	---help---
+	 Driver which handles kernel panics and attempts to write
+	 critical debugging data to flash.
+
+config APANIC_PLABEL
+	string "Android panic dump flash partition label"
+	depends on APANIC
+	default "kpanic"
+	---help---
+	 If your platform uses a different flash partition label for storing
+ 	 crashdumps, enter it here.
+
+config TSIF
+	depends on ARCH_MSM
+	tristate "TSIF (Transport Stream InterFace) support"
+	default n
+	---help---
+	  This driver supports low level TSIF interface. It provides API
+	  for upper layer drivers. If you have a TSIF hardware, say
+	  Y here and read <file:Documentation/arm/msm/tsif.txt>.
+
+	  To compile this driver as module, choose M here: the
+	  module will be called msm_tsif.
+
+config TSIF_CHRDEV
+	tristate "TSIF character device"
+	depends on TSIF
+	default n
+	---help---
+	  This driver uses low level TSIF interface. It provides character
+	  device useable from user space programs: one can read TSIF stream
+	  from this device.
+
+	  This driver may be used as example for TSIF API usage.
+
+	  To compile this driver as module, choose M here: the
+	  module will be called tsif_chrdev.
+
+config TSIF_DEBUG
+	bool "Turn on debugging information for tsif driver"
+	depends on TSIF
+	default n
+	---help---
+	  This turns on debugging information for the tsif driver
+
+config HAPTIC_ISA1200
+	tristate "ISA1200 haptic support"
+	depends on I2C
+	default n
+	help
+	  The ISA1200 is a high performance enhanced haptic driver.
+
+config PMIC8058_PWM
+	tristate "Qualcomm PM8058 PWM support"
+	depends on PMIC8058
+	default y
+	help
+	  This option enables device driver support for the PWM channels
+	  on Qualcomm PM8058 chip. Pulse Width Modulation is used for
+	  purposes including software controlled brightness of backlight,
+	  motor control, and waveform generation.
+
+config PMIC8058_VIBRATOR
+	tristate "Qualcomm PM8058 vibrator support"
+	depends on PMIC8058 && ANDROID_TIMED_OUTPUT
+	default n
+	help
+	  This option enables device driver support for the vibrator
+	  on Qualcomm PM8058 chip.
+
+config PMIC8058_NFC
+	tristate "Qualcomm PM8058 support for Near Field Communication"
+	depends on PMIC8058
+	default y
+	help
+	  Qualcomm PM8058 chip has a module to support NFC (Near Field
+	  Communication). This option enables the driver to support it.
+
+config PMIC8058_UPL
+	tristate "Qualcomm PM8058 support for User Programmable Logic"
+	depends on PMIC8058
+	default n
+	help
+	  This option enables device driver support for User Programmable Logic
+	  on Qualcomm PM8058 chip.  The UPL module provides a means to implement
+	  simple truth table based logic via a set of control registers. I/O may
+	  be routed in and out of the UPL module via GPIO or DTEST pins.
+
+config PMIC8058_XOADC
+	tristate "Qualcomm PM8058 XOADC driver"
+	depends on PMIC8058
+	default n
+	help
+	  Enables User processor ADC reads over the XOADC module of Qualcomm's
+	  PMIC8058. Driver interface to program registers of the ADC over
+	  AMUX channels, devices on programmable MPP's and xotherm.
+
+config PMIC8058_MISC
+	tristate "Qualcomm PM8058 Misc Device driver"
+	depends on PMIC8058
+	default n
+	help
+	  Provides functionality for various small drivers utilizing the
+	  Qualcomm PM8058 chip.  Examples include: signalling when the 32kHz
+	  oscillator malfunctions.
+
+config HRES_COUNTER
+	tristate "High resolution counter"
+	---help---
+	  Select Y if you want to enable High resolution counter.
+
+config NDUID
+	bool "Nova Device ID"
+	default n
+	---help---
+	This option exports the Nova Device ID to /proc/nduid.
+
+config USER_PINS
+	tristate "Sysfs GPIO pins control"
+	---help---
+		Select Y if you want to expose some gpio pins through sysfs.
+
+config PINMUX
+	tristate "Pinmux APIs"
+	---help---
+		Select Y if you want to enable simple pinmux API usage
+
+config KERNEL_LOG
+	bool "Kernel ram log"
+	---help---
+		Select Y for support for keeping kernel logs in physical memory
+
+config BLUETOOTH_POWER_STATE
+	bool "Bluetooth power state"
+    default y
+	---help---
+		Select Y for the user space to indicate the current bluetooth power state to the kernel
+
+config LOW_MEMORY_NOTIFY
+	bool "Low Memory Notify"
+	---help---
+		Provide interface to register for low memory notifications.
+
+config PMIC8058_BATTALARM
+	tristate "Qualcomm PM8058 Battery Alarm Device driver"
+	depends on PMIC8058
+	help
+	  This option enables support for the battery alarm module on the
+	  Qualcomm PM8058 PMIC chip.  This support allows for configuration of
+	  the alarm module as well as interrupt handling.
+
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
 source "drivers/misc/iwmc3200top/Kconfig"
+source "drivers/misc/video_core/720p/Kconfig"
+source "drivers/misc/a6/Kconfig"
 
 endif # MISC_DEVICES

@@ -198,6 +198,97 @@ ENDPROC(lookup_processor_type)
 	.long	__arch_info_end
 
 /*
+ * XXX
+ * Convert unofficial machine type numbers for various MSM platforms
+ * to the official ones before __lookup_machine_type is executed.
+ * There has been no attempt to optimise this code.
+ *
+ *  r1 is changed
+ *  r3, r4 corrupted
+ * This code is temporary while the bootloaders are being converted.
+ *
+ */
+__fixup_machine_type:
+	ldr	r3, =1007000			@ msm7201a_surf
+	ldr	r4, =2701
+	cmp	r1, r3
+	moveq	r1, r4
+	ldr	r3, =1007001			@ msm7201a_ffa
+	ldr	r4, =2702
+	cmp	r1, r3
+	moveq	r1, r4
+	ldr	r3, =1007002			@ msm7x25_surf
+	ldr	r4, =2703
+	cmp	r1, r3
+	moveq	r1, r4
+	ldr	r3, =1007003			@ msm7x25_ffa
+	ldr	r4, =2704
+	cmp	r1, r3
+	moveq	r1, r4
+	ldr	r3, =1007014			@ msm7x27_surf
+	ldr	r4, =2705
+	cmp	r1, r3
+	moveq	r1, r4
+	ldr	r3, =1007015			@ msm7x27_ffa
+	ldr	r4, =2706
+	cmp	r1, r3
+	moveq	r1, r4
+	ldr	r3, =1007016			@ msm7x30_surf
+	ldr	r4, =2679
+	cmp	r1, r3
+	moveq	r1, r4
+	ldr	r3, =1007017			@ msm7x30_ffa
+	ldr	r4, =2707
+	cmp	r1, r3
+	moveq	r1, r4
+	ldr	r3, =1007018			@ msm7x30_fluid
+	ldr	r4, =2741
+	cmp	r1, r3
+	moveq	r1, r4
+	ldr	r3, =1008000			@ qsd8x50_surf
+	ldr	r4, =2708
+	cmp	r1, r3
+	moveq	r1, r4
+	ldr	r3, =1008001			@ qsd8x50_comet
+	ldr	r4, =2709
+	cmp	r1, r3
+	moveq	r1, r4
+	ldr	r3, =1008002			@ qsd8x50_ffa
+	ldr	r4, =2710
+	cmp	r1, r3
+	moveq	r1, r4
+	ldr	r3, =1008003			@ qsd8x50a_surf
+	ldr	r4, =2711
+	cmp	r1, r3
+	moveq	r1, r4
+	ldr	r3, =1008004			@ qsd8x50a_ffa
+	ldr	r4, =2712
+	cmp	r1, r3
+	moveq	r1, r4
+	ldr	r3, =1009000			@ msm8x60_rumi3
+	ldr	r4, =3016
+	cmp	r1, r3
+	moveq	r1, r4
+	ldr	r3, =1009001			@ msm8x60_sim
+	ldr	r4, =2756
+	cmp	r1, r3
+	moveq	r1, r4
+	ldr	r3, =1009002			@ msm8x60_surf
+	ldr	r4, =2755
+	cmp	r1, r3
+	moveq	r1, r4
+	ldr	r3, =1009003			@ msm8x60_ffa
+	ldr	r4, =3017
+	cmp	r1, r3
+	moveq	r1, r4
+	ldr	r3, =1009004			@ msm8x60_fluid
+	ldr	r4, =3124
+	cmp	r1, r3
+	moveq	r1, r4
+	mov	pc, lr
+ENDPROC(__fixup_machine_type)
+
+/*
  * Lookup machine architecture in the linker-build list of architectures.
  * Note that we can't use the absolute addresses for the __arch_info
  * lists since we aren't running with the MMU on (and therefore, we are

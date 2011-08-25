@@ -64,6 +64,8 @@
 
 #define __exception	__attribute__((section(".exception.text")))
 
+void cpu_idle_wait(void);
+
 struct thread_info;
 struct task_struct;
 
@@ -124,8 +126,9 @@ extern unsigned int user_debug;
 				    : : "r" (0) : "memory")
 #define dsb() __asm__ __volatile__ ("mcr p15, 0, %0, c7, c10, 4" \
 				    : : "r" (0) : "memory")
-#define dmb() __asm__ __volatile__ ("mcr p15, 0, %0, c7, c10, 5" \
-				    : : "r" (0) : "memory")
+#define dmb() do { __asm__ __volatile__ ("mcr p15, 0, %0, c7, c10, 5" \
+				: : "r" (0) : "memory"); \
+				arch_barrier_extra(); } while (0)
 #elif defined(CONFIG_CPU_FA526)
 #define isb() __asm__ __volatile__ ("mcr p15, 0, %0, c7, c5, 4" \
 				    : : "r" (0) : "memory")

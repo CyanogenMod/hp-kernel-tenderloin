@@ -20,6 +20,7 @@
 #include <linux/input.h>
 #include <linux/major.h>
 #include <linux/device.h>
+#include <linux/wakelock.h>
 #include "input-compat.h"
 
 struct evdev {
@@ -43,10 +44,21 @@ struct evdev_client {
 	struct fasync_struct *fasync;
 	struct evdev *evdev;
 	struct list_head node;
+	struct wake_lock wake_lock;
+	char name[28];
+	int monotonic_time;
 };
 
 static struct evdev *evdev_table[EVDEV_MINORS];
 static DEFINE_MUTEX(evdev_table_mutex);
+
+static inline void evdev_monotonic_time(struct timeval* time)
+{
+	struct timespec time_ns;
+	do_posix_clock_monotonic_gettime(&time_ns);
+	time->tv_sec = time_ns.tv_sec;
+	time->tv_usec = time_ns.tv_nsec / 1000;
+}
 
 static void evdev_pass_event(struct evdev_client *client,
 			     struct input_event *event)
@@ -55,6 +67,7 @@ static void evdev_pass_event(struct evdev_client *client,
 	 * Interrupts are disabled, just acquire the lock
 	 */
 	spin_lock(&client->buffer_lock);
+	wake_lock_timeout(&client->wake_lock, 5 * HZ);
 	client->buffer[client->head++] = *event;
 	client->head &= EVDEV_BUFFER_SIZE - 1;
 	spin_unlock(&client->buffer_lock);
@@ -72,8 +85,11 @@ static void evdev_event(struct input_handle *handle,
 	struct evdev *evdev = handle->private;
 	struct evdev_client *client;
 	struct input_event event;
+	struct timespec ts;
 
-	do_gettimeofday(&event.time);
+	ktime_get_ts(&ts);
+	event.time.tv_sec = ts.tv_sec;
+	event.time.tv_usec = ts.tv_nsec / NSEC_PER_USEC;
 	event.type = type;
 	event.code = code;
 	event.value = value;
@@ -81,11 +97,24 @@ static void evdev_event(struct input_handle *handle,
 	rcu_read_lock();
 
 	client = rcu_dereference(evdev->grab);
-	if (client)
+	if (client) {
+		if (client->monotonic_time)
+			evdev_monotonic_time(&event.time);
+		else
+			do_gettimeofday(&event.time);
+
 		evdev_pass_event(client, &event);
-	else
-		list_for_each_entry_rcu(client, &evdev->client_list, node)
+	} else {
+		list_for_each_entry_rcu(client, &evdev->client_list, node) {
+			if (client->monotonic_time)
+				evdev_monotonic_time(&event.time);
+			else
+				do_gettimeofday(&event.time);
+
 			evdev_pass_event(client, &event);
+
+		}
+	}
 
 	rcu_read_unlock();
 
@@ -234,6 +263,7 @@ static int evdev_release(struct inode *inode, struct file *file)
 	mutex_unlock(&evdev->mutex);
 
 	evdev_detach_client(evdev, client);
+	wake_lock_destroy(&client->wake_lock);
 	kfree(client);
 
 	evdev_close_device(evdev);
@@ -270,6 +300,9 @@ static int evdev_open(struct inode *inode, struct file *file)
 	}
 
 	spin_lock_init(&client->buffer_lock);
+	snprintf(client->name, sizeof(client->name), "%s-%d",
+			dev_name(&evdev->dev), task_tgid_vnr(current));
+	wake_lock_init(&client->wake_lock, WAKE_LOCK_SUSPEND, client->name);
 	client->evdev = evdev;
 	evdev_attach_client(evdev, client);
 
@@ -283,6 +316,7 @@ static int evdev_open(struct inode *inode, struct file *file)
 	return 0;
 
  err_free_client:
+	wake_lock_destroy(&client->wake_lock);
 	evdev_detach_client(evdev, client);
 	kfree(client);
  err_put_evdev:
@@ -335,6 +369,8 @@ static int evdev_fetch_next_event(struct evdev_client *client,
 	if (have_event) {
 		*event = client->buffer[client->tail++];
 		client->tail &= EVDEV_BUFFER_SIZE - 1;
+		if (client->head == client->tail)
+			wake_unlock(&client->wake_lock);
 	}
 
 	spin_unlock_irq(&client->buffer_lock);
@@ -515,7 +551,8 @@ static long evdev_do_ioctl(struct file *file, unsigned int cmd,
 	struct input_absinfo abs;
 	struct ff_effect effect;
 	int __user *ip = (int __user *)p;
-	unsigned int i, t, u, v;
+	unsigned int i, t, u, v, m;
+	unsigned int __user *uip = (unsigned int __user *)p;
 	int error;
 
 	switch (cmd) {
@@ -566,8 +603,40 @@ static long evdev_do_ioctl(struct file *file, unsigned int cmd,
 	case EVIOCSKEYCODE:
 		if (get_user(t, ip) || get_user(v, ip + 1))
 			return -EFAULT;
-
 		return input_set_keycode(dev, t, v);
+
+	case EVIOCGCOUNTRY:
+		if (put_user(dev->country, uip))
+			return -EFAULT;
+		return 0;
+
+	case EVIOCSCOUNTRY:
+		dev->country = (unsigned int)p;
+		return 0;
+
+	case EVIOCGMONO:
+		if (copy_to_user(p, &client->monotonic_time, sizeof(int)))
+			return -EFAULT;
+		return 0;
+
+	case EVIOCSMONO:
+		if (copy_from_user(&m, p, sizeof(int)))
+			return -EFAULT;
+
+		client->monotonic_time = ((m == 0) ? 0 : 1);
+
+		return 0;
+
+	case EVIOCSFF:
+		if (copy_from_user(&effect, p, sizeof(effect)))
+			return -EFAULT;
+
+		error = input_ff_upload(dev, &effect, file);
+
+		if (put_user(effect.id, &(((struct ff_effect __user *)p)->id)))
+			return -EFAULT;
+
+		return error;
 
 	case EVIOCRMFF:
 		return input_ff_erase(dev, (int)(unsigned long) p, file);
