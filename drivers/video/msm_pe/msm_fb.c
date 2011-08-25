@@ -759,7 +759,7 @@ static void msmfb_early_suspend(struct early_suspend *h)
 	* to show black screen on HDMI.
 	*/
 	struct fb_info *fbi = mfd->fbi;
-	switch (mfd->fbi->var.bits_per_pixel) {
+	switch (fbi->var.bits_per_pixel) {
 	case 32:
 		memset32_io((void *)fbi->screen_base, 0xFF000000,
 							fbi->fix.smem_len);
