@@ -39,7 +39,7 @@ struct a6_sbw_interface {
 
 
 // per-host system: (operating system specific)
-#ifdef __linux__
+#ifdef __KERNEL__
 #define a6_disable_interrupts(flags) {flags=flags;local_irq_save(flags);}
 #define a6_enable_interrupts(flags)  {local_irq_restore(flags);}
 #else
