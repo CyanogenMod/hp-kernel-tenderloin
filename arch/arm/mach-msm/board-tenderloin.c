@@ -6724,6 +6724,7 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
 #ifdef CONFIG_USB_ANDROID
     android_usb_pdata.products[0].product_id =
 		android_usb_pdata.product_id;
+    platform_device_register(&usb_mass_storage_device);
     platform_device_register(&android_usb_device);
 #endif
 
