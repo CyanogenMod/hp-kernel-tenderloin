@@ -2252,6 +2252,9 @@ static struct platform_device msm_batt_device = {
 #define MSM_FB1_SIZE 0xAC2000
 #endif /* CONFIG_FB_MSM_HDMI_MSM_PANEL */
 
+#define MSM_PMEM_SF_SIZE 0x4000000 /* 64 Mbytes */
+#define MSM_OVERLAY_BLT_SIZE roundup(0x500000, 4096)
+
 #define MSM_PMEM_KERNEL_EBI1_SIZE  0x600000
 #define MSM_PMEM_ADSP_SIZE         0x2000000
 #define MSM_PMEM_AUDIO_SIZE        0x239000
@@ -2297,6 +2300,14 @@ early_param("pmem_kernel_ebi1_size", pmem_kernel_ebi1_size_setup);
 #endif
 
 #ifdef CONFIG_ANDROID_PMEM
+static unsigned pmem_sf_size = MSM_PMEM_SF_SIZE;
+static int __init pmem_sf_size_setup(char *p)
+{
+	pmem_sf_size = memparse(p, NULL);
+	return 0;
+}
+early_param("pmem_sf_size", pmem_sf_size_setup);
+
 static unsigned pmem_adsp_size = MSM_PMEM_ADSP_SIZE;
 
 static int __init pmem_adsp_size_setup(char *p)
@@ -2517,6 +2528,14 @@ static void __init msm8x60_allocate_memory_regions(void)
 		android_pmem_audio_pdata.size = size;
 		pr_info("allocating %lu bytes at %p (%lx physical) for audio "
 			"pmem arena\n", size, addr, __pa(addr));
+	}
+	size = pmem_sf_size;
+	if (size) {
+		addr = alloc_bootmem(size);
+		android_pmem_pdata.start = __pa(addr);
+		android_pmem_pdata.size = size;
+		pr_info("allocating %lu bytes at %p (%lx physical) for sf "
+		        "pmem arena\n", size, addr, __pa(addr));
 	}
 #endif
 }
@@ -3737,13 +3756,13 @@ static struct platform_device *tenderloin_devices[] __initdata = {
 	&max8903b_charger_device,
 #endif
 #ifdef CONFIG_KERNEL_PMEM_EBI_REGION
-	//&android_pmem_kernel_ebi1_device,
+	&android_pmem_kernel_ebi1_device,
 #endif
 #ifdef CONFIG_KERNEL_PMEM_SMI_REGION
 	&android_pmem_kernel_smi_device,
 #endif
 #ifdef CONFIG_ANDROID_PMEM
-	//&android_pmem_device,
+	&android_pmem_device,
 	&android_pmem_adsp_device,
 	&android_pmem_audio_device,
 	&android_pmem_smipool_device,
