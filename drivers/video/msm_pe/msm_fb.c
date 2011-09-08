@@ -2180,6 +2180,8 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 		fix = &fbi->fix;
 		var = &fbi->var;
 
+		snprintf(fix->id, sizeof(fix->id), "msmfb40_%x", (__u32) i);
+
 		fix->type_aux = 0;	/* if type == FB_TYPE_INTERLEAVED_PLANES */
 		fix->visual = FB_VISUAL_TRUECOLOR;	/* True Color */
 		fix->ywrapstep = 0;	/* No support */
