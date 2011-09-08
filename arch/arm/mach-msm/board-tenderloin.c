@@ -811,6 +811,21 @@ static irqreturn_t pmic_id_on_irq(int irq, void *data)
 }
 
 #ifdef CONFIG_USB_ANDROID
+
+static struct usb_ether_platform_data rndis_pdata = {
+	/* ethaddr is filled by board_serialno_setup */
+        .vendorID       = 0x05C6,
+        .vendorDescr    = "Qualcomm Incorporated",
+};
+
+static struct platform_device rndis_device = {
+	.name	= "rndis",
+	.id	= -1,
+	.dev	= {
+		.platform_data = &rndis_pdata,
+	},
+};
+
 static struct usb_mass_storage_platform_data mass_storage_pdata = {
 	.nluns		= 1,
 	.vendor		= "HP",
@@ -827,7 +842,7 @@ static struct platform_device usb_mass_storage_device = {
 
 static struct android_usb_platform_data android_usb_pdata = {
 	.vendor_id	= 0x0BB4,
-	.product_id	= 0x0c86,
+	.product_id	= 0x0ffc,
 	.version	= 0x0100,
 	.product_name		= "Android Tablet",
 	.manufacturer_name	= "HP",
@@ -846,6 +861,19 @@ static struct platform_device android_usb_device = {
 
 static int __init board_serialno_setup(char *serialno)
 {
+        int i;
+        char *src = serialno;
+
+        /* create a fake MAC address from our serial number.
+         * first byte is 0x02 to signify locally administered.
+         */
+
+	rndis_pdata.ethaddr[0] = 0x02;
+	for (i = 0; *src; i++) {
+		/* XOR the USB serial across the remaining bytes */
+		rndis_pdata.ethaddr[i % (ETH_ALEN - 1) + 1] ^= *src++;
+	}
+
 	android_usb_pdata.serial_number = serialno;
 	return 1;
 }
@@ -6745,6 +6773,7 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
     android_usb_pdata.products[0].product_id =
 		android_usb_pdata.product_id;
     platform_device_register(&usb_mass_storage_device);
+    platform_device_register(&rndis_device);
     platform_device_register(&android_usb_device);
 #endif
 

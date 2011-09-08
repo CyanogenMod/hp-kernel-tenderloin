@@ -40,22 +40,22 @@ static char *usb_functions_ecm[] = {
 #endif
 #ifdef CONFIG_USB_ANDROID_RNDIS
 static char *usb_functions_rndis[] = {
-	"ether",
+	"rndis",
 };
 static char *usb_functions_rndis_adb[] = {
-	"ether",
+	"rndis",
 	"adb",
 };
 #if defined(CONFIG_USB_ANDROID_DIAG) || defined(CONFIG_USB_ANDROID_QCT_DIAG)
 static char *usb_functions_rndis_diag[] = {
-	"ether",
+	"rndis",
 	"diag",
 #if defined(CONFIG_USB_ANDROID_LTE_DIAG)
 	"diag_mdm",
 #endif
 };
 static char *usb_functions_rndis_adb_diag[] = {
-	"ether",
+	"rndis",
 	"adb",
 	"diag",
 #if defined(CONFIG_USB_ANDROID_LTE_DIAG)
@@ -281,7 +281,7 @@ static char *usb_functions_rment[] = {
 
 static char *usb_functions_all[] = {
 #ifdef CONFIG_USB_ANDROID_RNDIS
-	"ether",
+	"rndis",
 #endif
 #if defined(CONFIG_USB_ANDROID_MTP36) || defined(CONFIG_USB_ANDROID_MTP)
 	"mtp",
