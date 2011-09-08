@@ -476,6 +476,9 @@ static int msm_fb_probe(struct platform_device *pdev)
 	if(0 != rc)
 		printk(KERN_ERR "msmfb: state sysfs cannot be created!\n");
 
+	/* Update dma config on HP Touchpad to correct color reverting */
+	mdp4_overlay_dmap_cfg(mfd, 1);
+
 	return 0;
 }
 

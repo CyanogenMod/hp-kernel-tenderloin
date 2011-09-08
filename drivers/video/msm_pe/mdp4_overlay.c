@@ -205,7 +205,7 @@ void mdp4_overlay_dmap_cfg(struct msm_fb_data_type *mfd, int lcdc)
 	if (mfd->fb_imgType == MDP_BGR_565)
 		dma2_cfg_reg |= DMA_PACK_PATTERN_BGR;
 	else
-		dma2_cfg_reg |= DMA_PACK_PATTERN_RGB;
+		dma2_cfg_reg |= DMA_PACK_PATTERN_BGR;
 
 
 	if (mfd->panel_info.bpp == 18) {
