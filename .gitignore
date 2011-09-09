@@ -65,6 +65,9 @@ arch/arm/boot/compressed/piggy.gzip
 arch/arm/boot/compressed/vmlinux
 arch/arm/mach-msm/smd_rpc_sym.c
 
+# Atheros firmware
+/ath6k
+
 # stgit generated dirs
 patches-*
 
