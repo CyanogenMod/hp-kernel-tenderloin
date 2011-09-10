@@ -2603,6 +2603,17 @@ static long pmem_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 			return pmem_cache_maint(file, cmd, &pmem_addr);
 		}
+	case PMEM_CACHE_FLUSH:
+	{
+		struct pmem_region region;
+
+		if (copy_from_user(&region, (void __user *)arg,
+		    sizeof(struct pmem_region)))
+			return -EFAULT;
+
+		flush_pmem_file(file, region.offset, region.len);
+		break;
+	}
 	default:
 		if (pmem[id].ioctl)
 			return pmem[id].ioctl(file, cmd, arg);
