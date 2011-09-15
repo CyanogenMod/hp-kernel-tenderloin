@@ -5025,17 +5025,24 @@ static int tenderloin_wifi_power(int on)
 
 static struct mmc_host *wifi_mmc;
 int board_sdio_wifi_enable(unsigned int param);
+int board_sdio_wifi_disable(unsigned int param);
 
 static void tenderloin_probe_wifi(int id, struct mmc_host *mmc)
 {
 	printk("%s: id %d mmc %p\n", __PRETTY_FUNCTION__, id, mmc);
 	wifi_mmc = mmc;
+
+       //TODO: hook up to PM later
+       board_sdio_wifi_enable(0);
 }
 
 static void tenderloin_remove_wifi(int id, struct mmc_host *mmc)
 {
 	printk("%s: id %d mmc %p\n", __PRETTY_FUNCTION__, id, mmc);
 	wifi_mmc = NULL;
+
+       //TODO: hook up to PM later
+       board_sdio_wifi_disable(0);
 }
 
 /*
