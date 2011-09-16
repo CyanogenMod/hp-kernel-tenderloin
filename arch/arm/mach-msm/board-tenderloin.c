@@ -3291,7 +3291,7 @@ static int btuart_deassert_rts(int deassert)
  * BT High speed UART interface
  */
 static struct hsuart_platform_data btuart_data = {
-	.dev_name   = "bt_uart",
+	.dev_name   = "ttyHS0",
 	.uart_mode  = HSUART_MODE_FLOW_CTRL_NONE | HSUART_MODE_PARITY_NONE,
 	.uart_speed = HSUART_SPEED_115K,
 	.options    = HSUART_OPTION_DEFERRED_LOAD | HSUART_OPTION_TX_PIO | HSUART_OPTION_RX_DM ,
@@ -3757,6 +3757,12 @@ static struct platform_device board_cy8ctma395_device = {
          },
 };
 
+static struct platform_device msm_wlan_pm_device = {
+	.name = "wlan_ar6000_pm",
+	.id = -1,
+};
+
+
 static int tenderloin_tp_init(int on)
 {
 	int ret;
@@ -3936,6 +3942,11 @@ static struct platform_device *tenderloin_devices[] __initdata = {
  	&msm_device_uart_dm2,
  	&ctp_uart_device,
 #endif /* CONFIG_TOUCHSCREEN_CY8CTMA395[_MODULE] */
+
+//#if defined (CONFIG_ATH6K_LEGACY)	\
+//	|| defined (CONFIG_ATH6K_LEGACY_MODULE)
+	&msm_wlan_pm_device,
+//#endif
 
 };
 
@@ -5033,7 +5044,7 @@ static void tenderloin_probe_wifi(int id, struct mmc_host *mmc)
 	wifi_mmc = mmc;
 
        //TODO: hook up to PM later
-       board_sdio_wifi_enable(0);
+//       board_sdio_wifi_enable(0);
 }
 
 static void tenderloin_remove_wifi(int id, struct mmc_host *mmc)
@@ -5042,7 +5053,7 @@ static void tenderloin_remove_wifi(int id, struct mmc_host *mmc)
 	wifi_mmc = NULL;
 
        //TODO: hook up to PM later
-       board_sdio_wifi_disable(0);
+//       board_sdio_wifi_disable(0);
 }
 
 /*
