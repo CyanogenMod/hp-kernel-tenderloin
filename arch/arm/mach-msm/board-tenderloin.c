@@ -38,6 +38,7 @@
 #include <linux/i2c.h>
 #include <linux/spi/spi.h>
 #include <linux/cy8ctma395.h>
+#include <linux/i2c/lsm303dlh.h>
 
 #ifdef CONFIG_ANDROID_PMEM
 #include <linux/android_pmem.h>
@@ -1571,6 +1572,47 @@ static struct i2c_board_info a6_1_i2c_board_info = {
 	I2C_BOARD_INFO( A6_DEVICE_1, (0x64>>1)),
 	.platform_data = NULL,
 };
+
+static struct lsm303dlh_acc_platform_data lsm303dlh_acc_pdata = {
+	.poll_interval = 200,
+	.min_interval = 10,
+	.g_range = LSM303DLH_ACC_G_2G,
+	.axis_map_x = 0,
+	.axis_map_y = 1,
+	.axis_map_z = 2,
+	.negate_x = 0,
+	.negate_y = 0,
+	.negate_z = 0,
+	.gpio_int1 = -1,
+	.gpio_int2 = -1,
+};
+
+static struct lsm303dlh_mag_platform_data lsm303dlh_mag_pdata = {
+	.poll_interval = 200,
+	.min_interval = 10,
+	.h_range = LSM303DLH_MAG_H_4_0G,
+	.axis_map_x = 0,
+	.axis_map_y = 1,
+	.axis_map_z = 2,
+	.negate_x = 0,
+	.negate_y = 0,
+	.negate_z = 0,
+};
+
+static struct i2c_board_info lsm303dlh_acc_i2c_board_info[] = {
+    {
+        I2C_BOARD_INFO ( "lsm303dlh_acc_sysfs", 0x18),
+        .platform_data = &lsm303dlh_acc_pdata,
+    },
+};
+
+static struct i2c_board_info lsm303dlh_mag_i2c_board_info[] = {
+    {
+        I2C_BOARD_INFO ( "lsm303dlh_mag_sysfs", 0x1e),
+        .platform_data = &lsm303dlh_mag_pdata,
+    },
+};
+
 
 #ifdef A6_INTERNAL_WAKE
 struct a6_internal_wake_interface_data {
@@ -3249,7 +3291,7 @@ static int btuart_deassert_rts(int deassert)
  * BT High speed UART interface
  */
 static struct hsuart_platform_data btuart_data = {
-	.dev_name   = "bt_uart",
+	.dev_name   = "ttyHS0",
 	.uart_mode  = HSUART_MODE_FLOW_CTRL_NONE | HSUART_MODE_PARITY_NONE,
 	.uart_speed = HSUART_SPEED_115K,
 	.options    = HSUART_OPTION_DEFERRED_LOAD | HSUART_OPTION_TX_PIO | HSUART_OPTION_RX_DM ,
@@ -3715,6 +3757,12 @@ static struct platform_device board_cy8ctma395_device = {
          },
 };
 
+static struct platform_device msm_wlan_pm_device = {
+	.name = "wlan_ar6000_pm",
+	.id = -1,
+};
+
+
 static int tenderloin_tp_init(int on)
 {
 	int ret;
@@ -3894,6 +3942,11 @@ static struct platform_device *tenderloin_devices[] __initdata = {
  	&msm_device_uart_dm2,
  	&ctp_uart_device,
 #endif /* CONFIG_TOUCHSCREEN_CY8CTMA395[_MODULE] */
+
+//#if defined (CONFIG_ATH6K_LEGACY)	\
+//	|| defined (CONFIG_ATH6K_LEGACY_MODULE)
+	&msm_wlan_pm_device,
+//#endif
 
 };
 
@@ -4559,6 +4612,20 @@ struct i2c_registry {
 };
 
 static struct i2c_registry msm8x60_i2c_devices[] __initdata = {
+
+    {
+        I2C_TENDERLOIN,
+        MSM_GSBI3_QUP_I2C_BUS_ID,
+        &lsm303dlh_acc_i2c_board_info,
+        ARRAY_SIZE(lsm303dlh_acc_i2c_board_info),
+    },
+    {
+        I2C_TENDERLOIN,
+        MSM_GSBI3_QUP_I2C_BUS_ID,
+        &lsm303dlh_mag_i2c_board_info,
+        ARRAY_SIZE(lsm303dlh_mag_i2c_board_info),
+    },
+
 #ifdef CONFIG_PMIC8058
 	{
 		I2C_TENDERLOIN,
@@ -4969,17 +5036,24 @@ static int tenderloin_wifi_power(int on)
 
 static struct mmc_host *wifi_mmc;
 int board_sdio_wifi_enable(unsigned int param);
+int board_sdio_wifi_disable(unsigned int param);
 
 static void tenderloin_probe_wifi(int id, struct mmc_host *mmc)
 {
 	printk("%s: id %d mmc %p\n", __PRETTY_FUNCTION__, id, mmc);
 	wifi_mmc = mmc;
+
+       //TODO: hook up to PM later
+//       board_sdio_wifi_enable(0);
 }
 
 static void tenderloin_remove_wifi(int id, struct mmc_host *mmc)
 {
 	printk("%s: id %d mmc %p\n", __PRETTY_FUNCTION__, id, mmc);
 	wifi_mmc = NULL;
+
+       //TODO: hook up to PM later
+//       board_sdio_wifi_disable(0);
 }
 
 /*
