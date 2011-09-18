@@ -57,7 +57,7 @@ int mdp_dma3_on(struct platform_device *pdev)
 	if (mfd->key != MFD_KEY)
 		return -EINVAL;
 
-	fbi = mfd->fbi[0];
+	fbi = mfd->fbi;
 	/* MDP cmd block enable */
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
 
@@ -113,7 +113,7 @@ int mdp_dma3_off(struct platform_device *pdev)
 
 void mdp_dma3_update(struct msm_fb_data_type *mfd)
 {
-	struct fb_info *fbi = mfd->fbi[0];
+	struct fb_info *fbi = mfd->fbi;
 	uint8 *buf;
 	int bpp;
 	unsigned long flag;

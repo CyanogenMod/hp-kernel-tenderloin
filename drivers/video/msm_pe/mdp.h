@@ -654,7 +654,6 @@ void mdp_dma2_update(struct msm_fb_data_type *mfd);
 void mdp_config_vsync(struct msm_fb_data_type *);
 uint32 mdp_get_lcd_line_counter(struct msm_fb_data_type *mfd);
 enum hrtimer_restart mdp_dma2_vsync_hrtimer_handler(struct hrtimer *ht);
-enum hrtimer_restart mdp4_overlay_vsync_hrtimer_handler(struct hrtimer *ht);
 void mdp_set_scale(MDPIBUF *iBuf,
 		   uint32 dst_roi_width,
 		   uint32 dst_roi_height,

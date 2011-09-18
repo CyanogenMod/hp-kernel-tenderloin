@@ -231,14 +231,6 @@ static u32 ddl_header_done_callback(struct ddl_context *ddl_context)
 	ddl_calculate_stride(&decoder->frame_size,
 			!decoder->progressive_only,
 			decoder->codec.codec);
-	if (decoder->buf_format.buffer_format == VCD_BUFFER_FORMAT_TILE_4x2) {
-		decoder->frame_size.stride =
-		DDL_TILE_ALIGN(decoder->frame_size.width,
-					DDL_TILE_ALIGN_WIDTH);
-		decoder->frame_size.scan_lines =
-			DDL_TILE_ALIGN(decoder->frame_size.height,
-						 DDL_TILE_ALIGN_HEIGHT);
-	}
 	if (seq_hdr_info.crop_exists)	{
 		decoder->frame_size.width -=
 		(seq_hdr_info.crop_right_offset

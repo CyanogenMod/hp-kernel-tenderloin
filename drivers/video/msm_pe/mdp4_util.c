@@ -338,9 +338,6 @@ void mdp4_clear_lcdc(void)
 
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
 
-	//Power on LCDC block
-	mdp_pipe_ctrl(MDP_OVERLAY0_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
-
 	bits = inpdw(MDP_BASE + 0xc0000);
 	if (bits & 0x01) { /* enabled already */
 		mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);

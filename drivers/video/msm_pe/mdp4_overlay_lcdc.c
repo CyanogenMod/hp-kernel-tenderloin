@@ -49,8 +49,6 @@ int first_pixel_start_y;
 
 static struct mdp4_overlay_pipe *lcdc_pipe;
 static struct completion lcdc_comp;
-static bool lcdc_comp_init = false;
-extern bool video0_has_data, video1_has_data;
 
 int mdp_lcdc_on(struct platform_device *pdev)
 {
@@ -100,7 +98,7 @@ int mdp_lcdc_on(struct platform_device *pdev)
 	if (mfd->key != MFD_KEY)
 		return -EINVAL;
 
-	fbi = mfd->fbi[0];
+	fbi = mfd->fbi;
 	var = &fbi->var;
 
 	/* MDP cmd block enable */
@@ -110,24 +108,12 @@ int mdp_lcdc_on(struct platform_device *pdev)
 		outpdw(MDP_BASE + 0x0038, mdp4_display_intf);
 	}
 
-
-	/*
- 	 * mdp4_lcdc_overlay_update_base_layer can alter the base layer
-	 * dynamically. And the following initialization is not needed
-	 */
-
-	mdp4_lcdc_overlay_update_base_layer(mfd);
-
-#if 0
 	bpp = fbi->var.bits_per_pixel / 8;
 	buf = (uint8 *) fbi->fix.smem_start;
 	buf += fbi->var.xoffset * bpp +
 		fbi->var.yoffset * fbi->fix.line_length;
 
 	if (lcdc_pipe == NULL) {
-		pipe = mdp4_overlay_ndx2pipe(mfd->overlay_g1_pipe_index);
-		lcdc_pipe = pipe; /* keep it */
-
 		ptype = mdp4_overlay_format2type(mfd->fb_imgType);
 		if (ptype < 0)
 			printk(KERN_INFO "%s: format2type failed\n", __func__);
@@ -143,6 +129,7 @@ int mdp_lcdc_on(struct platform_device *pdev)
 		if (ret < 0)
 			printk(KERN_INFO "%s: format2pipe failed\n", __func__);
 		lcdc_pipe = pipe; /* keep it */
+		init_completion(&lcdc_comp);
 	} else {
 		pipe = lcdc_pipe;
 	}
@@ -244,19 +231,11 @@ int mdp_lcdc_on(struct platform_device *pdev)
 	MDP_OUTP(MDP_BASE + LCDC_BASE + 0x20, active_v_start);
 	MDP_OUTP(MDP_BASE + LCDC_BASE + 0x24, active_v_end);
 
-#ifdef CONFIG_ARCH_MSM8X60
-	mdp4_vg_qseed_init(0);
-	mdp4_vg_qseed_init(1);
-#endif
-
 	mdp4_overlay_reg_flush(pipe, 1);
-#endif
-
-	mdp_histogram_ctrl(TRUE);
-
 #ifdef CONFIG_MSM_BUS_SCALING
-	mdp_bus_scale_update_request(6);
+	mdp_bus_scale_update_request(2);
 #endif
+	mdp_histogram_ctrl(TRUE);
 
 	ret = panel_next_on(pdev);
 	if (ret == 0) {
@@ -280,6 +259,8 @@ int mdp_lcdc_off(struct platform_device *pdev)
 	/* MDP cmd block disable */
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
 	mdp_pipe_ctrl(MDP_OVERLAY0_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
+
+	mdp_disable_irq(MDP_DMA2_TERM);	/* disable intr */
 
 	mdp_histogram_ctrl(FALSE);
 	ret = panel_next_off(pdev);
@@ -328,39 +309,32 @@ void mdp4_lcdc_overlay_blt(ulong addr)
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
 }
 
+void mdp4_overlay_lcdc_wait4vsync(struct msm_fb_data_type *mfd)
+{
+	unsigned long flag;
+
+	 /* enable irq */
+	spin_lock_irqsave(&mdp_spin_lock, flag);
+	mdp_enable_irq(MDP_DMA2_TERM);	/* enable intr */
+	INIT_COMPLETION(lcdc_comp);
+	mfd->dma->waiting = TRUE;
+	outp32(MDP_INTR_CLEAR, INTR_PRIMARY_VSYNC);
+	mdp_intr_mask |= INTR_PRIMARY_VSYNC;
+	outp32(MDP_INTR_ENABLE, mdp_intr_mask);
+	spin_unlock_irqrestore(&mdp_spin_lock, flag);
+	wait_for_completion_killable(&lcdc_comp);
+	mdp_disable_irq(MDP_DMA2_TERM);
+}
+
 void mdp4_overlay_vsync_push(struct msm_fb_data_type *mfd,
 			struct mdp4_overlay_pipe *pipe)
 {
-	/*
-	 * Moved interrupt enable to be ondemand
-	 * per frame update.
-	 */
-	unsigned long flag;
 
 	mdp4_overlay_reg_flush(pipe, 1);
 	if (pipe->flags & MDP_OV_PLAY_NOWAIT)
 		return;
 
-	spin_lock_irqsave(&mdp_spin_lock, flag);
-	outp32(MDP_INTR_CLEAR, INTR_PRIMARY_VSYNC);
-	mdp_intr_mask |= INTR_PRIMARY_VSYNC;
-	outp32(MDP_INTR_ENABLE, mdp_intr_mask);
-	mdp_enable_irq(MDP_DMA2_TERM);
-
-	if(!lcdc_comp_init) {
-		init_completion(&lcdc_comp);
-		lcdc_comp_init = true;
-	}
-
-	INIT_COMPLETION(lcdc_comp);
-	mfd->dma->waiting = TRUE;
-	spin_unlock_irqrestore(&mdp_spin_lock, flag);
-	/*
-	 * This is currently waiting for INTR_OVERLAY0_DONE
-	 */
-	wait_for_completion_killable(&lcdc_comp);
-
-	mdp_disable_irq(MDP_DMA2_TERM);
+	mdp4_overlay_lcdc_wait4vsync(mfd);
 }
 
 /*
@@ -379,96 +353,9 @@ void mdp4_overlay0_done_lcdc(void)
 	complete_all(&lcdc_comp);
 }
 
-void mdp4_lcdc_overlay_update_base_layer(struct msm_fb_data_type *mfd)
-{
-	MDPIBUF *iBuf = &mfd->ibuf;
-	struct fb_info *fbi=0;
-	uint8 *buf = (uint8 *) iBuf->buf;
-	struct mdp4_overlay_pipe *pipe = 0;
-
-	mutex_lock(&mfd->dma->ov_mutex);
-
-	if(mfd->enabled_fbs == LAYER_FB0) {
-		fbi = mfd->fbi[0]; //fb0 as base
-		pipe =
-			mdp4_overlay_ndx2pipe(mfd->overlay_g1_pipe_index);
-	}
-	else if(mfd->enabled_fbs == (LAYER_FB0|LAYER_FB1)) {
-		fbi = mfd->fbi[1]; //fb1 as base
-		pipe =
-			mdp4_overlay_ndx2pipe(mfd->overlay_g2_pipe_index);
-	}
-	else if(mfd->enabled_fbs & (LAYER_VIDEO_0 | LAYER_VIDEO_1)) {
-		fbi = mfd->fbi[0]; //fb0 as base
-		pipe =
-			mdp4_overlay_ndx2pipe(mfd->overlay_v1_pipe_index);
-	}
-
-	pipe->dst_h = mfd->panel_info.yres;
-	pipe->dst_w = mfd->panel_info.xres;
-	pipe->dst_y = 0;
-	pipe->dst_x = 0;
-
-	pipe->mixer_stage  = MDP4_MIXER_STAGE_BASE;
-	pipe->mixer_num  = MDP4_MIXER0;
-	mdp4_overlay_panel_mode(pipe->mixer_num, MDP4_PANEL_LCDC);
-
-
-	mdp4_overlay_dmap_xy(pipe);
-
-        mdp4_overlay_dmap_cfg(mfd, 1);
-
-	if (pipe->pipe_type == OVERLAY_TYPE_VIDEO) {
-                //Base layer for video is filled with black when not having content
-		if (video0_has_data && video1_has_data) {
-			pipe->solid_fill = 0;
-		}
-		else {
-			pipe->solid_fill = 1;
-			pipe->src_height = fbi->var.yres;
-			pipe->src_width = fbi->var.xres;
-			pipe->src_h = fbi->var.yres;
-			pipe->src_w = fbi->var.xres;
-			pipe->src_y = 0;
-			pipe->src_x = 0;
-		}
-		mdp4_overlay_vg_setup(pipe);       /* video/graphic pipe */
-
-	}
-	else {
-		pipe->src_height = mfd->panel_info.yres;
-		pipe->src_width = mfd->panel_info.xres;
-		pipe->src_h = fbi->var.yres;
-		pipe->src_w = fbi->var.xres;
-		pipe->src_y = 0;
-		pipe->src_x = 0;
-		pipe->srcp0_addr = (uint32) buf;
-		pipe->srcp0_ystride = fbi->fix.line_length;
-		mdp4_overlay_rgb_setup(pipe);
-	}
-
-	if(!lcdc_pipe) {
-		lcdc_pipe = mdp4_overlay_ndx2pipe(mfd->overlay_g1_pipe_index);
-		mdp4_mixer_stage_up(lcdc_pipe);
-	}
-
-	if(!lcdc_comp_init) {
-		init_completion(&lcdc_comp);
-		lcdc_comp_init = true;
-	}
-
-	mdp4_overlayproc_cfg(pipe);
-
-	mdp4_overlay_reg_flush(pipe, 1);
-
-	mutex_unlock(&mfd->dma->ov_mutex);
-}
-
-static DEFINE_SPINLOCK(mdp_lcdc_spin_lock);
-
 void mdp4_lcdc_overlay(struct msm_fb_data_type *mfd)
 {
-	struct fb_info *fbi = mfd->fbi[0];
+	struct fb_info *fbi = mfd->fbi;
 	uint8 *buf;
 	int bpp;
 	struct mdp4_overlay_pipe *pipe;
@@ -485,13 +372,10 @@ void mdp4_lcdc_overlay(struct msm_fb_data_type *mfd)
 	mutex_lock(&mfd->dma->ov_mutex);
 
 	pipe = lcdc_pipe;
-
 	pipe->srcp0_addr = (uint32) buf;
 	mdp4_overlay_rgb_setup(pipe);
-	if (mfd->panel_power_on) {
-		mdp4_overlay_vsync_push(mfd, pipe);
-		mdp4_stat.kickoff_lcdc++;
-	}
+	mdp4_overlay_vsync_push(mfd, pipe);
+	mdp4_stat.kickoff_lcdc++;
 	mdp4_overlay_resource_release();
 	mutex_unlock(&mfd->dma->ov_mutex);
 }

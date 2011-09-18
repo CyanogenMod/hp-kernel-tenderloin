@@ -44,11 +44,6 @@
 #include "mdp4.h"
 #endif
 
-#define MDP_CLK_FIXED_UP 1 // Set to 1 if fixed up in board file
-#if MDP_CLK_FIXED_UP
-static boolean enable_mdp_clk = FALSE;
-#endif
-
 uint32 mdp4_extn_disp;
 static struct clk *mdp_clk;
 static struct clk *mdp_pclk;
@@ -103,10 +98,7 @@ static struct mdp_dma_data dma_e_data;
 static struct mdp_dma_data dma3_data;
 
 extern ktime_t mdp_dma2_last_update_time;
-extern ktime_t mdp4_overlay0_last_update_time;
-extern uint32 mdp4_overlay0_update_time_in_usec;
 
-extern ktime_t mdp_dma2_last_update_time;
 extern uint32 mdp_dma2_update_time_in_usec;
 extern int mdp_lcd_rd_cnt_offset_slow;
 extern int mdp_lcd_rd_cnt_offset_fast;
@@ -193,7 +185,6 @@ static int mdp_lut_update_nonlcdc(struct fb_info *info, struct fb_cmap *cmap)
 static int mdp_lut_update_lcdc(struct fb_info *info, struct fb_cmap *cmap)
 {
 	int ret;
-	uint32_t reg;
 
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
 	ret = mdp_lut_hw_update(cmap);
@@ -203,53 +194,11 @@ static int mdp_lut_update_lcdc(struct fb_info *info, struct fb_cmap *cmap)
 		return ret;
 	}
 
-	reg = inp32(MDP_BASE + 0x90070);
-	MDP_OUTP(MDP_BASE + 0x90070, (mdp_lut_i << 10) | 0x17 | reg);
+	MDP_OUTP(MDP_BASE + 0x90070, (mdp_lut_i << 10) | 0x17);
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
 	mdp_lut_i = (mdp_lut_i + 1)%2;
 
 	return 0;
-}
-
-/*
- * mdp_set_initial_lut
- * Sets up the default dma_p gamma LUT
- *
- */
-static void mdp_set_initial_lut(void)
-{
-	struct fb_cmap gamma_cmap;
-	uint16_t lut[] = { /* LUT 1.04 */
-		0, 1, 2, 3, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 12, 13, 14, 15,
-		16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 28, 29,
-		30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44,
-		45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59,
-		60, 61, 62, 63, 64, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73,
-		74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88,
-		89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103,
-		104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 
-		116, 117, 118, 119, 120, 121, 122, 124, 125, 126, 127, 128,
-		129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140,
-		141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152,
-		153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164,
-		165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176,
-		178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189,
-		190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201,
-		202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 213, 214,
-		215, 216, 217, 218, 219, 220, 221, 222, 223, 224, 225, 226,
-		227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238,
-		239, 240, 241, 243, 244, 245, 246, 247, 248, 249, 250, 251,
-		252, 253, 254, 255,
-	};
-	gamma_cmap.red = lut;
-	gamma_cmap.blue = lut;
-	gamma_cmap.green = lut;
-
-
-	gamma_cmap.start = 0;
-	gamma_cmap.len = 256;
-	gamma_cmap.transp = NULL;
-	mdp_lut_update_lcdc(NULL, &gamma_cmap);
 }
 
 static void mdp_lut_enable(void)
@@ -261,74 +210,6 @@ static void mdp_lut_enable(void)
 				(mdp_lut_push_i << 10) | 0x17);
 		mutex_unlock(&mdp_lut_push_sem);
 	}
-}
-
-/*
- * mdp_set_dma_p_csc
- * Used to set the color conversion matrix in the dma_p pipeline
- *
- * Currently bias vectors are hardcoded to 0 and
- * limit vectors are 0, 255, i.e. no clamping
- */
-static int mdp_set_dma_p_csc(struct fb_info *info, struct mdp_ccs *p)
-{
-	int i;
-	__u8 limit_v[] = {0x00, 0xff, 0x00, 0xff, 0x00, 0xff};
-	__u8 bias_v[] = {0x00, 0x00, 0x00};
-	uint32_t reg;
-
-	/* MDP cmd block enable */
-	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
-
-	for (i = 0; i < MDP_CCS_SIZE; i++) {
-		MDP_OUTP(MDP_BASE + 0x93400 + 4 * i, p->ccs[i]);
-	}
-
-	/* hard code the limit vectors */
-	for (i=0; i<6; i++) {
-		MDP_OUTP(MDP_BASE + 0x93600 + 4 * i, limit_v[i]);
-		MDP_OUTP(MDP_BASE + 0x93680 + 4 * i, limit_v[i]);
-	}
-
-	/* hard code the bias vectors */
-	for (i=0; i<3; i++) {
-		MDP_OUTP(MDP_BASE + 0x93500 + 4 * i, bias_v[i]);
-		MDP_OUTP(MDP_BASE + 0x93580 + 4 * i, bias_v[i]);
-	}
-
-	reg = inp32(MDP_BASE + 0x90070);
-	if (p->direction)
-		/* Turn on the color conversion */
-		MDP_OUTP(MDP_BASE + 0x90070, 0x18 | reg);
-	else
-		MDP_OUTP(MDP_BASE + 0x90070, 0x0 | reg);
-
-	/* MDP cmd block disable */
-	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
-
-	return 0;
-}
-
-/*
- * mdp_set_initial_csc
- * Sets up the default color conversion matrix
- */
-static void mdp_set_initial_csc(void)
-{
-	struct mdp_ccs ccs = { /* D65_D68 (values are 13 bit fixed point 4.9) */
-		.ccs = {0x01f6,
-			0xfffc,
-			0xffff,
-			0x0000,
-			0x01fa,
-			0x0000,
-			0x0000,
-			0x0002,
-			0x020c,},
-		.direction = 1,
-	};
-
-	mdp_set_dma_p_csc(NULL, &ccs);
 }
 
 #define MDP_HIST_MAX_BIN 32
@@ -619,10 +500,6 @@ void mdp_pipe_kickoff(uint32 term, struct msm_fb_data_type *mfd)
 		mdp_pipe_ctrl(MDP_DMA_E_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
 		outpdw(MDP_BASE + 0x0014, 0x0);	/* start DMA */
 	} else if (term == MDP_OVERLAY0_TERM) {
-
-		/* Overlay update timestamp */
-		mdp4_overlay0_last_update_time = ktime_get_real();
-
 		mdp_pipe_ctrl(MDP_OVERLAY0_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
 		mdp_lut_enable();
 		outpdw(MDP_BASE + 0x0004, 0);
@@ -772,12 +649,7 @@ void mdp_pipe_ctrl(MDP_BLOCK_TYPE block, MDP_BLOCK_POWER_STATE state,
 					pdata->clk_func(1);
 			}
 			if (mdp_clk != NULL) {
-#if MDP_CLK_FIXED_UP
-				if (!enable_mdp_clk)
-					enable_mdp_clk = TRUE;
-				else
-#endif
-					clk_enable(mdp_clk);
+				clk_enable(mdp_clk);
 				MSM_FB_DEBUG("MDP CLK ON\n");
 			}
 			if (mdp_pclk != NULL) {
@@ -1165,15 +1037,8 @@ static void configure_mdp_core_clk_table(uint32 min_clk_rate)
 
 #ifdef CONFIG_MSM_BUS_SCALING
 static uint32_t mdp_bus_scale_handle;
-static mdp_curr_bus_index = 0;
 int mdp_bus_scale_update_request(uint32_t index)
 {
-	if (index == mdp_curr_bus_index)
-		return 0;
-	else
-		mdp_curr_bus_index = index;
-
-	pr_info("%s: Setting bus scaling index %d\n", __func__, index);
 	if (!mdp_pdata && (!mdp_pdata->mdp_bus_scale_table
 	     || index > (mdp_pdata->mdp_bus_scale_table->num_usecases - 1))) {
 		printk(KERN_ERR "%s invalid table or index\n", __func__);
@@ -1294,8 +1159,6 @@ static int mdp_irq_clk_setup(void)
 	return 0;
 }
 
-void mdp4_overlay_workqueue_handler(struct work_struct *work);
-
 static int mdp_probe(struct platform_device *pdev)
 {
 	struct platform_device *msm_fb_dev = NULL;
@@ -1338,8 +1201,7 @@ static int mdp_probe(struct platform_device *pdev)
 #else
 		mdp_hw_init();
 #endif
-		mdp_set_initial_lut();
-		mdp_set_initial_csc();
+
 #ifdef CONFIG_FB_MSM_OVERLAY
 		mdp_hw_cursor_init();
 #endif
@@ -1391,11 +1253,6 @@ static int mdp_probe(struct platform_device *pdev)
 			  mdp_lcd_update_workqueue_handler);
 		INIT_WORK(&mfd->vsync_resync_worker,
 			  mdp_vsync_resync_workqueue_handler);
-
-		INIT_WORK(&mfd->overlay_vsync_worker,
-				mdp4_overlay_workqueue_handler);
-
-		init_waitqueue_head(&mfd->vsync_wq);
 		mfd->hw_refresh = FALSE;
 
 		if (mfd->panel.type == EXT_MDDI_PANEL) {
@@ -1419,7 +1276,6 @@ static int mdp_probe(struct platform_device *pdev)
 			mfd->dma = &dma2_data;
 			mfd->lut_update = mdp_lut_update_nonlcdc;
 			mfd->do_histogram = mdp_do_histogram;
-			mfd->set_dma_p_csc = mdp_set_dma_p_csc;
 		} else {
 			mfd->dma_fnc = mdp_dma_s_update;
 			mfd->dma = &dma_s_data;
@@ -1509,7 +1365,6 @@ static int mdp_probe(struct platform_device *pdev)
 #ifndef CONFIG_FB_MSM_MDP22
 		mfd->lut_update = mdp_lut_update_lcdc;
 		mfd->do_histogram = mdp_do_histogram;
-		mfd->set_dma_p_csc = mdp_set_dma_p_csc;
 #endif
 #ifdef CONFIG_FB_MSM_OVERLAY
 		mfd->dma_fnc = mdp4_lcdc_overlay;

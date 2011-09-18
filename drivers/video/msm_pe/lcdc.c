@@ -104,9 +104,9 @@ static int lcdc_on(struct platform_device *pdev)
 		panel_pixclock_freq = lcdc_pdata->lcdc_get_clk();
 
 	if (!panel_pixclock_freq)
-		panel_pixclock_freq = mfd->fbi[0]->var.pixclock;
+		panel_pixclock_freq = mfd->fbi->var.pixclock;
 #ifdef CONFIG_MSM_BUS_SCALING
-	mdp_bus_scale_update_request(6);
+	mdp_bus_scale_update_request(2);
 #else
 #ifdef CONFIG_MSM_NPA_SYSTEM_BUS
 	pm_qos_rate = MSM_AXI_FLOW_MDP_LCDC_WVGA_2BPP;
@@ -125,13 +125,12 @@ static int lcdc_on(struct platform_device *pdev)
 #endif
 	mfd = platform_get_drvdata(pdev);
 
-	mfd->fbi[0]->var.pixclock = clk_round_rate(pixel_mdp_clk,
-					mfd->fbi[0]->var.pixclock);
-
-	ret = clk_set_rate(pixel_mdp_clk, mfd->fbi[0]->var.pixclock);
+	mfd->fbi->var.pixclock = clk_round_rate(pixel_mdp_clk,
+					mfd->fbi->var.pixclock);
+	ret = clk_set_rate(pixel_mdp_clk, mfd->fbi->var.pixclock);
 	if (ret) {
 		pr_err("%s: Can't set MDP LCDC pixel clock to rate %u\n",
-			__func__, mfd->fbi[0]->var.pixclock);
+			__func__, mfd->fbi->var.pixclock);
 		goto out;
 	}
 
@@ -211,7 +210,7 @@ static int lcdc_probe(struct platform_device *pdev)
 	else
 		mfd->fb_imgType = MDP_RGB_565;
 
-	fbi = mfd->fbi[0];
+	fbi = mfd->fbi;
 	fbi->var.pixclock = clk_round_rate(pixel_mdp_clk,
 					mfd->panel_info.clk_rate);
 	fbi->var.left_margin = mfd->panel_info.lcdc.h_back_porch;
@@ -238,8 +237,6 @@ static int lcdc_probe(struct platform_device *pdev)
 		goto lcdc_probe_err;
 
 	pdev_list[pdev_list_cnt++] = pdev;
-
-	mdp_bus_scale_update_request(6);
 
 	return 0;
 

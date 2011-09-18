@@ -38,8 +38,8 @@ static int msm_fb_bl_update_status(struct backlight_device *pbd)
 	__u32 bl_lvl;
 
 	bl_lvl = pbd->props.brightness;
-	bl_lvl = mfd->fbi[0]->bl_curve[bl_lvl];
-	msm_fb_set_backlight(mfd, bl_lvl, 1);
+	bl_lvl = mfd->fbi->bl_curve[bl_lvl];
+	msm_fb_set_backlight(mfd, bl_lvl);
 	return 0;
 }
 
@@ -56,7 +56,7 @@ void msm_fb_config_backlight(struct msm_fb_data_type *mfd)
 	char name[16];
 	struct backlight_properties props;
 
-	fbi = mfd->fbi[0];
+	fbi = mfd->fbi;
 	pdata = (struct msm_fb_panel_data *)mfd->pdev->dev.platform_data;
 
 	if ((pdata) && (pdata->set_backlight)) {

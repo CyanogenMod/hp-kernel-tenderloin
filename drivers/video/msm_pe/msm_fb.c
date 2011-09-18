@@ -40,10 +40,7 @@
 #include <linux/android_pmem.h>
 #include <linux/leds.h>
 #include <linux/pm_runtime.h>
-#include <linux/videodev2.h>
-//#include <linux/msm_v4l2_video.h>
 
-//#define MSM_FB_DEBUG_FILL
 #define MSM_FB_C
 #include "msm_fb.h"
 #include "mddihosti.h"
@@ -59,9 +56,6 @@ extern int load_565rle_image(char *filename);
 static unsigned char *fbram;
 static unsigned char *fbram_phys;
 static int fbram_size;
-static unsigned char *fb1ram;
-static unsigned char *fb1ram_phys;
-static int fb1ram_size;
 
 static struct platform_device *pdev_list[MSM_FB_MAX_DEV_LIST];
 static int pdev_list_cnt;
@@ -72,7 +66,7 @@ int vsync_mode = 1;
 
 #define MAX_FBI_LIST 32
 static struct fb_info *fbi_list[MAX_FBI_LIST];
-static int fbi_list_index = 0;
+static int fbi_list_index;
 
 static struct msm_fb_data_type *mfd_list[MAX_FBI_LIST];
 static int mfd_list_index;
@@ -84,39 +78,15 @@ static u32 msm_fb_pseudo_palette[16] = {
 	0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff
 };
 
-static char* fb_mode_strs[9] = {
-	[LAYER_FB0] = "fb0",
-	[LAYER_FB1] = "fb1",
-	[LAYER_VIDEO_0] = "v0",
-	[LAYER_VIDEO_1] = "v1",
-};
-
-static char* fb_strs[16] ={
-	[LAYER_FB0] = "fb0",
-	[LAYER_FB1|LAYER_FB0] = "fb0 + fb1",
-	[LAYER_VIDEO_0|LAYER_FB0] = "fb0 + v0",
-	[LAYER_VIDEO_1|LAYER_FB0] = "fb0 + v1",
-	[LAYER_VIDEO_1|LAYER_VIDEO_0|LAYER_FB0] = "fb0 + v0 + v1",
-	[LAYER_VIDEO_0|LAYER_FB1|LAYER_FB0] = "fb0 + fb1 + v0",
-	[LAYER_VIDEO_1|LAYER_FB1|LAYER_FB0] = "fb0 + fb1 + v1",
-	[LAYER_VIDEO_1|LAYER_VIDEO_0|LAYER_FB1|LAYER_FB0] = "fb0 + fb1 + v0 + v1",
-};
-
 u32 msm_fb_debug_enabled;
 /* Setting msm_fb_msg_level to 8 prints out ALL messages */
-u32 msm_fb_msg_level = 6;
+u32 msm_fb_msg_level = 7;
 
 /* Setting mddi_msg_level to 8 prints out ALL messages */
 u32 mddi_msg_level = 5;
 
 extern int32 mdp_block_power_cnt[MDP_MAX_BLOCK];
 extern unsigned long mdp_timer_duration;
-
-static struct mdp_blit_int_req video0_last_req;
-static struct mdp_blit_int_req video1_last_req;
-bool video0_has_data = false;
-bool video1_has_data = false;
-static bool video_layers_on = false;
 
 static int msm_fb_register(struct msm_fb_data_type *mfd);
 static int msm_fb_open(struct fb_info *info, int user);
@@ -130,25 +100,15 @@ static int msm_fb_check_var(struct fb_var_screeninfo *var,
 static int msm_fb_set_par(struct fb_info *info);
 static int msm_fb_blank_sub(int blank_mode, struct fb_info *info,
 			    boolean op_enable);
-static int msm_fb_resume_sub(struct msm_fb_data_type *mfd);
 static int msm_fb_suspend_sub(struct msm_fb_data_type *mfd);
-static int msm_fb_resume_sub(struct msm_fb_data_type *mfd);
 static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 			unsigned long arg);
 static int msm_fb_mmap(struct fb_info *info, struct vm_area_struct * vma);
-static int msm_fb_allocate_overlay_pipes(
-	struct msm_fb_data_type *mfd);
-
-static int __msm_fb_v4l2_update(
-	struct mdp_blit_int_req *req, int layer);
 
 #ifdef MSM_FB_ENABLE_DBGFS
 
 #define MSM_FB_MAX_DBGFS 1024
-#define MAX_BACKLIGHT_BRIGHTNESS 256
-
-#define MSMV4L2_LAYER0 0
-#define MSMV4L2_LAYER1 1
+#define MAX_BACKLIGHT_BRIGHTNESS 255
 
 int msm_fb_debugfs_file_index;
 struct dentry *msm_fb_debugfs_root;
@@ -211,7 +171,6 @@ static void msm_fb_set_bl_brightness(struct led_classdev *led_cdev,
 static struct led_classdev backlight_led = {
 	.name		= "lcd-backlight",
 	.brightness	= MAX_BACKLIGHT_BRIGHTNESS,
-	.max_brightness = MAX_BACKLIGHT_BRIGHTNESS,
 	.brightness_set	= msm_fb_set_bl_brightness,
 };
 #endif
@@ -306,7 +265,7 @@ static int msm_fb_create_sysfs(struct platform_device *pdev)
 	int rc;
 	struct msm_fb_data_type *mfd = platform_get_drvdata(pdev);
 
-	rc = sysfs_create_group(&mfd->fbi[0]->dev->kobj, &msm_fb_attr_group);
+	rc = sysfs_create_group(&mfd->fbi->dev->kobj, &msm_fb_attr_group);
 	if (rc)
 		MSM_FB_ERR("%s: sysfs group creation failed, rc=%d\n", __func__,
 			rc);
@@ -315,75 +274,8 @@ static int msm_fb_create_sysfs(struct platform_device *pdev)
 static void msm_fb_remove_sysfs(struct platform_device *pdev)
 {
 	struct msm_fb_data_type *mfd = platform_get_drvdata(pdev);
-	sysfs_remove_group(&mfd->fbi[0]->dev->kobj, &msm_fb_attr_group);
+	sysfs_remove_group(&mfd->fbi->dev->kobj, &msm_fb_attr_group);
 }
-DECLARE_MUTEX(msm_fb_pan_sem);
-
-static ssize_t msm_fb_state_show(struct device *dev,
-      struct device_attribute *attr, char *buf)
-{
-	struct msm_fb_data_type *mfd= (struct msm_fb_data_type *)dev_get_drvdata(dev);
-	return snprintf(buf, PAGE_SIZE, "%d\n", mfd->suspended? 0 : 1);
-}
-
-static ssize_t msm_fb_store_state(struct device *dev,
-               struct device_attribute *dev_attr,
-               const char *buf,
-               size_t count)
-{
-	struct msm_fb_data_type *mfd= (struct msm_fb_data_type *)dev_get_drvdata(dev);
-	int ret = 0;
-	unsigned long state;
-
-	sscanf(buf, "%lu", &state);
-
-	if ((!mfd) || (mfd->key != MFD_KEY))
-		return count;
-
-	if(state) {//Resume
-
-		if(!mfd->suspended) {
-			printk(KERN_ERR "msmfb: Already resumed msmfb\n");
-		}
-		else {
-			printk(KERN_INFO "msmfb: Resuming msmfb\n");
-			acquire_console_sem();
-			ret = msm_fb_resume_sub(mfd);
-			release_console_sem();
-			mfd->pdev->dev.power.power_state = PMSG_ON;
-			//fb_set_suspend(mfd->fbi[0], FBINFO_STATE_RUNNING);
-
-			mfd->suspended = false;
-		}
-
-	}
-	else { //Suspend
-
-		if(mfd->suspended) {
-			printk(KERN_ERR "msmfb: Already suspended msmfb\n");
-		}
-		else {
-			printk(KERN_INFO "msmfb: Suspending msmfb\n");
-			acquire_console_sem();
-			ret = msm_fb_suspend_sub(mfd);
-			release_console_sem();
-
-			if (ret != 0) {
-				printk(KERN_ERR "msm_fb: failed to suspend! %d\n", ret);
-			} else {
-				//fb_set_suspend(mfd->fbi[0], FBINFO_STATE_SUSPENDED);
-				mfd->pdev->dev.power.power_state = PMSG_SUSPEND;
-				mfd->suspended = true;
-			}
-		}
-
-	}
-
-	return count;
-
-}
-
-static DEVICE_ATTR(state, S_IRUGO | S_IWUSR, msm_fb_state_show, msm_fb_store_state);
 
 static int msm_fb_probe(struct platform_device *pdev)
 {
@@ -400,12 +292,7 @@ static int msm_fb_probe(struct platform_device *pdev)
 		fbram_phys = (char *)pdev->resource[0].start;
 		fbram = ioremap((unsigned long)fbram_phys, fbram_size);
 
-		fb1ram_size =
-			pdev->resource[1].end - pdev->resource[1].start + 1;
-		fb1ram_phys = (char *)pdev->resource[1].start;
-		fb1ram = ioremap((unsigned long)fb1ram_phys, fb1ram_size);
-
-		if (!fbram ||!fb1ram) {
+		if (!fbram) {
 			printk(KERN_ERR "fbram ioremap failed!\n");
 			return -ENOMEM;
 		}
@@ -421,6 +308,10 @@ static int msm_fb_probe(struct platform_device *pdev)
 
 	mfd = (struct msm_fb_data_type *)platform_get_drvdata(pdev);
 
+	err = pm_runtime_set_active(&pdev->dev);
+	if (err < 0)
+		printk(KERN_ERR "pm_runtime: fail to set active.\n");
+
 	if (!mfd)
 		return -ENODEV;
 
@@ -433,27 +324,10 @@ static int msm_fb_probe(struct platform_device *pdev)
 	mfd->panel_info.frame_count = 0;
 	mfd->bl_level = 0;
 #ifdef CONFIG_FB_MSM_OVERLAY
-	mfd->overlay_play_enable = 0;
+	mfd->overlay_play_enable = 1;
 #endif
 
-	mfd->suspended = false;
-
-
 	rc = msm_fb_register(mfd);
-	if (rc)
-		return rc;
-
-	err = pm_runtime_set_active(mfd->fbi[0]->dev);
-	if (err < 0)
-		printk(KERN_ERR "pm_runtime: failed to set fb0 active.\n");
-	err = pm_runtime_set_active(mfd->fbi[1]->dev);
-	if (err < 0)
-		printk(KERN_ERR "pm_runtime: failed to set fb1 active.\n");
-
-	pm_runtime_enable(&pdev->dev);
-
-	rc = msm_fb_allocate_overlay_pipes(mfd);
-
 	if (rc)
 		return rc;
 
@@ -469,16 +343,10 @@ static int msm_fb_probe(struct platform_device *pdev)
 	}
 #endif
 
+	pm_runtime_enable(&pdev->dev);
+
 	pdev_list[pdev_list_cnt++] = pdev;
 	msm_fb_create_sysfs(pdev);
-	rc = device_create_file(&pdev->dev, &dev_attr_state);
-
-	if(0 != rc)
-		printk(KERN_ERR "msmfb: state sysfs cannot be created!\n");
-
-	/* Update dma config on HP Touchpad to correct color reverting */
-	mdp4_overlay_dmap_cfg(mfd, 1);
-
 	return 0;
 }
 
@@ -519,13 +387,11 @@ static int msm_fb_remove(struct platform_device *pdev)
 		hrtimer_cancel(&mfd->dma_hrtimer);
 
 	/* remove /dev/fb* */
-	unregister_framebuffer(mfd->fbi[0]);
-	unregister_framebuffer(mfd->fbi[1]);
-
+	unregister_framebuffer(mfd->fbi);
 
 #ifdef CONFIG_FB_BACKLIGHT
 	/* remove /sys/class/backlight */
-	backlight_device_unregister(mfd->fbi[0]->bl_dev);
+	backlight_device_unregister(mfd->fbi->bl_dev);
 #else
 	if (lcd_backlight_registered) {
 		lcd_backlight_registered = 0;
@@ -555,12 +421,12 @@ static int msm_fb_suspend(struct platform_device *pdev, pm_message_t state)
 		return 0;
 
 	acquire_console_sem();
-	//fb_set_suspend(mfd->fbi[0], FBINFO_STATE_SUSPENDED);
+	fb_set_suspend(mfd->fbi, FBINFO_STATE_SUSPENDED);
 
 	ret = msm_fb_suspend_sub(mfd);
 	if (ret != 0) {
 		printk(KERN_ERR "msm_fb: failed to suspend! %d\n", ret);
-		//fb_set_suspend(mfd->fbi[0], FBINFO_STATE_RUNNING);
+		fb_set_suspend(mfd->fbi, FBINFO_STATE_RUNNING);
 	} else {
 		pdev->dev.power.power_state = state;
 	}
@@ -575,13 +441,9 @@ static int msm_fb_suspend(struct platform_device *pdev, pm_message_t state)
 static int msm_fb_suspend_sub(struct msm_fb_data_type *mfd)
 {
 	int ret = 0;
-	struct msm_fb_panel_data *pdata;
-	pdata = (struct msm_fb_panel_data *)mfd->pdev->dev.platform_data;
 
 	if ((!mfd) || (mfd->key != MFD_KEY))
 		return 0;
-
-	down(&msm_fb_pan_sem);
 
 	/*
 	 * suspend this channel
@@ -591,19 +453,13 @@ static int msm_fb_suspend_sub(struct msm_fb_data_type *mfd)
 	mfd->suspend.panel_power_on = mfd->panel_power_on;
 
 	if (mfd->op_enable) {
-		if (mfd->panel_power_on) {
-
-			//Power off panel
-			ret = pdata->off(mfd->pdev);
-
-			if (ret) {
-				MSM_FB_INFO ("msm_fb_suspend: can't turn off display!\n");
-				up(&msm_fb_pan_sem);
-				return ret;
-			}
-			else {
-				mfd->panel_power_on = FALSE;
-			}
+		ret =
+		     msm_fb_blank_sub(FB_BLANK_POWERDOWN, mfd->fbi,
+				      mfd->suspend.op_enable);
+		if (ret) {
+			MSM_FB_INFO
+			    ("msm_fb_suspend: can't turn off display!\n");
+			return ret;
 		}
 		mfd->op_enable = FALSE;
 	}
@@ -630,8 +486,6 @@ static int msm_fb_suspend_sub(struct msm_fb_data_type *mfd)
 		}
 	}
 
-	up(&msm_fb_pan_sem);
-
 	return 0;
 }
 
@@ -639,13 +493,9 @@ static int msm_fb_suspend_sub(struct msm_fb_data_type *mfd)
 static int msm_fb_resume_sub(struct msm_fb_data_type *mfd)
 {
 	int ret = 0;
-	struct msm_fb_panel_data *pdata;
-	pdata = (struct msm_fb_panel_data *)mfd->pdev->dev.platform_data;
 
 	if ((!mfd) || (mfd->key != MFD_KEY))
 		return 0;
-
-	down(&msm_fb_pan_sem);
 
 	/* attach display channel irq if there's any */
 	if (mfd->channel_irq != 0)
@@ -656,21 +506,12 @@ static int msm_fb_resume_sub(struct msm_fb_data_type *mfd)
 	mfd->op_enable = mfd->suspend.op_enable;
 
 	if (mfd->suspend.panel_power_on) {
-		if (!mfd->panel_power_on) {
-
-			//Power on panel
-			ret = pdata->on(mfd->pdev);
-
-			if (ret) {
-				MSM_FB_INFO("msm_fb_resume: can't turn on display!\n");
-			}
-			else {
-				mfd->panel_power_on = TRUE;
-			}
-		}
+		ret =
+		     msm_fb_blank_sub(FB_BLANK_UNBLANK, mfd->fbi,
+				      mfd->op_enable);
+		if (ret)
+			MSM_FB_INFO("msm_fb_resume: can't turn on display!\n");
 	}
-
-	up(&msm_fb_pan_sem);
 
 	return ret;
 }
@@ -694,7 +535,7 @@ static int msm_fb_resume(struct platform_device *pdev)
 	acquire_console_sem();
 	ret = msm_fb_resume_sub(mfd);
 	pdev->dev.power.power_state = PMSG_ON;
-	//fb_set_suspend(mfd->fbi[0], FBINFO_STATE_RUNNING);
+	fb_set_suspend(mfd->fbi, FBINFO_STATE_RUNNING);
 	release_console_sem();
 
 	return ret;
@@ -762,7 +603,7 @@ static void msmfb_early_suspend(struct early_suspend *h)
 	* to show black screen on HDMI.
 	*/
 	struct fb_info *fbi = mfd->fbi;
-	switch (fbi->var.bits_per_pixel) {
+	switch (mfd->fbi->var.bits_per_pixel) {
 	case 32:
 		memset32_io((void *)fbi->screen_base, 0xFF000000,
 							fbi->fix.smem_len);
@@ -783,702 +624,18 @@ static void msmfb_early_resume(struct early_suspend *h)
 }
 #endif
 
-/*
- * Switching on and off of the video mode
- *
- * During the switching on/off of the video mode, the stack
- * of pipes is first unwinded from top to bottom;
- * then rewinded back up from bottom to top to the
- * new configuration
- *
- * For example, switching from fb1+fb0 to video+fb1+fb0:
- *
- * Step 0: <RGB2><RGB1>
- * Step 1: <RGB2>
- * Step 2:
- * Step 3: <VG1> (VG1 is the bottom pipe)
- * Step 4: <VG1><VG2>
- * Step 5: <VG1><VG2><RGB2>
- * Step 5: <VG1><VG2><RGB2><RGB1>
- */
-static int msm_fb_handle_video_mode_change(
-	struct msm_fb_data_type *mfd,
-	bool enable)
+void msm_fb_set_backlight(struct msm_fb_data_type *mfd, __u32 bkl_lvl)
 {
-	struct mdp4_overlay_pipe *pipe;
+	struct msm_fb_panel_data *pdata;
 
-	if(enable) {
+	pdata = (struct msm_fb_panel_data *)mfd->pdev->dev.platform_data;
 
-		mdp4_mixer_stage_down(
-			mdp4_overlay_ndx2pipe(mfd->overlay_g1_pipe_index));
-
-		if(mfd->enabled_fbs == (LAYER_VIDEO_0|LAYER_FB0|LAYER_FB1)) {
-			mdp4_mixer_stage_down(
-				mdp4_overlay_ndx2pipe(mfd->overlay_g2_pipe_index));
-		}
-
-		//Set up video overlay pipe
-		pipe =
-			mdp4_overlay_ndx2pipe(mfd->overlay_v1_pipe_index);
-		pipe->mixer_stage = MDP4_MIXER_STAGE_BASE;
-		pipe->solid_fill = 1;
-		mdp4_mixer_stage_up(pipe);
-		pipe =
-			mdp4_overlay_ndx2pipe(mfd->overlay_v2_pipe_index);
-		pipe->mixer_stage = MDP4_MIXER_STAGE0;
-		pipe->dst_y = 0;
-		pipe->dst_x = 0;
-		pipe->dst_h = mfd->panel_info.yres;
-		pipe->dst_w = mfd->panel_info.xres;
-		pipe->src_h = mfd->panel_info.yres;
-		pipe->src_w = mfd->panel_info.xres;
-		pipe->solid_fill = 1;
-		mdp4_mixer_stage_up(pipe);
-
-		if(mfd->enabled_fbs == (LAYER_VIDEO_0|LAYER_FB0|LAYER_FB1) ||
-			mfd->enabled_fbs == (LAYER_VIDEO_1|LAYER_FB0|LAYER_FB1)) {
-			pipe =
-				mdp4_overlay_ndx2pipe(mfd->overlay_g2_pipe_index);
-			pipe->mixer_stage = MDP4_MIXER_STAGE1;
-			mdp4_mixer_stage_up(pipe);
-
-			pipe =
-				mdp4_overlay_ndx2pipe(mfd->overlay_g1_pipe_index);
-			pipe->mixer_stage = MDP4_MIXER_STAGE2;
-			mdp4_mixer_stage_up(pipe);
-		}
-		else {
-			pipe =
-				mdp4_overlay_ndx2pipe(mfd->overlay_g1_pipe_index);
-			pipe->mixer_stage = MDP4_MIXER_STAGE1;
-			mdp4_mixer_stage_up(pipe);
-		}
-
-		mdp4_overlay_update_middle_layer(LAYER_VIDEO_0, mfd, 0, 0 );
-		mdp4_overlay_update_bottom_layer(LAYER_VIDEO_1, mfd, 0, 0 );
-		video_layers_on = true;
-
+	if ((pdata) && (pdata->set_backlight)) {
+		down(&mfd->sem);
+		mfd->bl_level = bkl_lvl;
+		pdata->set_backlight(mfd);
+		up(&mfd->sem);
 	}
-	else {
-
-		if(mfd->enabled_fbs == (LAYER_FB1|LAYER_FB0)) {
-			mdp4_mixer_stage_down(
-				mdp4_overlay_ndx2pipe(mfd->overlay_g1_pipe_index));
-		}
-
-		//Go back to fb0
-		mdp4_mixer_stage_down(
-			mdp4_overlay_ndx2pipe(mfd->overlay_g2_pipe_index));
-		mdp4_mixer_stage_down(
-			mdp4_overlay_ndx2pipe(mfd->overlay_v2_pipe_index));
-		mdp4_mixer_stage_down(
-			mdp4_overlay_ndx2pipe(mfd->overlay_v1_pipe_index));
-
-		//Make it nice during transitions
-		mfd->update_fb = LAYER_FB0;
-		// mfd->wait_for_vsync = LAYER_FB0;  // ian : don't wait for vsync on topaz for now
-
-		if(mfd->enabled_fbs == (LAYER_FB1|LAYER_FB0)) {
-			pipe =
-				mdp4_overlay_ndx2pipe(mfd->overlay_g2_pipe_index);
-			pipe->mixer_stage = MDP4_MIXER_STAGE_BASE;
-			mdp4_mixer_stage_up(pipe);
-
-			pipe =
-				mdp4_overlay_ndx2pipe(mfd->overlay_g1_pipe_index);
-			pipe->mixer_stage = MDP4_MIXER_STAGE0;
-			mdp4_mixer_stage_up(pipe);
-
-			mdp_set_dma_pan_info(mfd->fbi[1], NULL, true);
-			mdp4_overlay_update_bottom_layer(LAYER_FB1, mfd, 0, 0);
-			mdp4_overlay_push_top_layer(mfd);
-		}
-		else {
-			pipe =
-				mdp4_overlay_ndx2pipe(mfd->overlay_g1_pipe_index);
-			pipe->mixer_stage = MDP4_MIXER_STAGE_BASE;
-			mdp4_mixer_stage_up(pipe);
-
-			mdp_set_dma_pan_info(mfd->fbi[0], NULL, true);
-			mdp4_overlay_update_bottom_layer(LAYER_FB0, mfd, 0, 0);
-			mdp_dma_pan_update(mfd->fbi[0]);
-		}
-		video_layers_on = false;
-	}
-
-	return 0;
-}
-
-/*
- * Function to allocate all 4 RGB and VG pipes
- *
- * The mapping between input layer and pipe
- * is fixed and is as following:
- *
- * RGB1: fb0
- * RGB2: fb1
- * VG1:  flex video
- * VG2:  flex video
- *
- * For the video layers, the pipes are dynamically
- * assigned to either VIDEO_LAYER0 or VIDEO_LAYER1.
- *
- * Please see v4l2 related functions.
- */
-static int msm_fb_allocate_overlay_pipes(
-	struct msm_fb_data_type *mfd)
-{
-
-	int i,ret;
-	struct mdp_overlay overlay;
-	struct mdp4_overlay_pipe *pipe;
-
-	for(i = 0; i<2; i++) {
-
-		//pipes for topmost overlay layer
-		overlay.src.width  = mfd->panel_info.xres;
-		overlay.src.height = mfd->panel_info.yres;
-		overlay.src.format = MDP_ARGB_8888;
-		overlay.src_rect.x = 0;
-		overlay.src_rect.y = 0;
-		overlay.src_rect.w = mfd->panel_info.xres;
-		overlay.src_rect.h = mfd->panel_info.yres;
-  		overlay.dst_rect.x = 0;
-		overlay.dst_rect.y = 0;
-		overlay.dst_rect.w = mfd->panel_info.xres;
-		overlay.dst_rect.h = mfd->panel_info.yres;
-  		overlay.z_order = i;
-  		overlay.alpha = 0x0;
-  		overlay.transp_mask = 0xffffffff;
-  		overlay.flags = MDP_ROT_NOP;
-  		overlay.is_fg = 0;
-  		overlay.id = MSMFB_NEW_REQUEST;
-
-
-		ret = mdp4_overlay_set(mfd->fbi[0], &overlay);
-
-		if(ret != 0) {
-			printk("msm_fb: overlay RGB pipe%d allocation fail\n", i);
-			return ret;
-		}
-
-
-		pipe = mdp4_overlay_ndx2pipe(overlay.id);
-
-		if(i == 0) {
-			mfd->overlay_g1_pipe_index = overlay.id; //RGB1 for fb0
-			pipe->pipe_num = OVERLAY_PIPE_RGB1;
-		}
-		else if(i == 1) {
-			mfd->overlay_g2_pipe_index = overlay.id; //RGB2 for fb1
-			pipe->pipe_num = OVERLAY_PIPE_RGB2;
-		}
-
-		printk("msm_fb: overlay pipe id (%d) allocated\n", overlay.id);
-
-		//pipes for video layer
-		overlay.src.format = MDP_Y_CRCB_H2V2;
-		overlay.z_order = 0;
-		overlay.alpha = 0xFF;
-		overlay.transp_mask =  0xF81F;
-		overlay.flags = MDP_ROT_NOP;
-		overlay.is_fg = 1;
-		overlay.id = MSMFB_NEW_REQUEST;
-
-		ret = mdp4_overlay_set(mfd->fbi[0], &overlay);
-
-		if(ret != 0) {
-			printk("msm_fb: overlay VG pipe%d allocation fail\n", i);
-			return ret;
-		}
-
-		pipe = mdp4_overlay_ndx2pipe(overlay.id);
-
-		if(i == 0) {
-			mfd->overlay_v1_pipe_index = overlay.id; //VG1 for dummy base video layer
-			pipe->pipe_num = OVERLAY_PIPE_VG1;
-		}
-		else if(i == 1) {
-			mfd->overlay_v2_pipe_index = overlay.id; //VG2 for video
-			pipe->pipe_num = OVERLAY_PIPE_VG2;
-		}
-
-		printk("msm_fb: overlay video  pipe id (%d) allocated\n", overlay.id);
-	}
-
-
-	return 0;
-}
-
-/*
- * Switching on and off of the fb1
- * Handle the internal pipe configurations
- *
- * During the switching on/off of fb1, the stack
- * of pipes is first unwinded from top to bottom;
- * then rewinded back up from bottom to top to the
- * new configuration.
- *
- * For example, switching from video+fb1+fb0 to video+fb0:
- *
- * Step 0: <VG1><VG2><RGB2><RGB1>
- * Step 1: <VG1><VG2><RGB2>
- * Step 2: <VG1><VG2>
- * Step 3: <VG1><VG2><RGB1>
- *
- * A force update is added to ensure a clear transition.
- */
-static int msm_fb_handle_gaming_mode_change(
-	struct msm_fb_data_type *mfd,
-	bool enable)
-{
-	struct mdp4_overlay_pipe *pipe;
-
-	if(enable) {
-
-		if(mfd->enabled_fbs == (LAYER_FB0|LAYER_FB1)) {
-			mdp4_mixer_stage_down(
-				mdp4_overlay_ndx2pipe(mfd->overlay_g1_pipe_index));
-
-			pipe =
-				mdp4_overlay_ndx2pipe(mfd->overlay_g2_pipe_index);
-			pipe->mixer_stage = MDP4_MIXER_STAGE_BASE;
-			mdp4_mixer_stage_up(pipe);
-
-			pipe =
-				mdp4_overlay_ndx2pipe(mfd->overlay_g1_pipe_index);
-			pipe->mixer_stage = MDP4_MIXER_STAGE0;
-			mdp4_mixer_stage_up(pipe);
-
-			//Make sure the new layering info is sync'ed across
-			mdp_set_dma_pan_info(mfd->fbi[1], NULL, true);
-			mdp4_overlay_update_bottom_layer(LAYER_FB1, mfd, 0, 0 );
-
-		}
-		else if(mfd->enabled_fbs == (LAYER_VIDEO_0|LAYER_FB0|LAYER_FB1) ||
-				mfd->enabled_fbs == (LAYER_VIDEO_1|LAYER_FB0|LAYER_FB1) ||
-				mfd->enabled_fbs == (LAYER_VIDEO_1|LAYER_VIDEO_0|LAYER_FB0|LAYER_FB1)) {
-			mdp4_mixer_stage_down(
-				mdp4_overlay_ndx2pipe(mfd->overlay_g1_pipe_index));
-
-			pipe =
-				mdp4_overlay_ndx2pipe(mfd->overlay_g2_pipe_index);
-			pipe->mixer_stage = MDP4_MIXER_STAGE1;
-			mdp4_mixer_stage_up(pipe);
-
-			pipe =
-				mdp4_overlay_ndx2pipe(mfd->overlay_g1_pipe_index);
-			pipe->mixer_stage = MDP4_MIXER_STAGE2;
-			mdp4_mixer_stage_up(pipe);
-		}
-
-	}
-	else {
-
-		//Make it nice during transitions
-		mfd->update_fb = LAYER_FB0;
-		// mfd->wait_for_vsync = LAYER_FB0;  // ian: don't use vsync on topaz for now
-
-		if(mfd->enabled_fbs == (LAYER_FB0)) {
-			mdp4_mixer_stage_down(
-				mdp4_overlay_ndx2pipe(mfd->overlay_g1_pipe_index));
-			mdp4_mixer_stage_down(
-				mdp4_overlay_ndx2pipe(mfd->overlay_g2_pipe_index));
-			pipe =
-				mdp4_overlay_ndx2pipe(mfd->overlay_g1_pipe_index);
-			pipe->mixer_stage = MDP4_MIXER_STAGE_BASE;
-			mdp4_mixer_stage_up(pipe);
-
-			//Show new layers
-			mdp_set_dma_pan_info(mfd->fbi[0], NULL, true);
-			mdp4_overlay_update_bottom_layer(LAYER_FB0, mfd, 0, 0 );
-
-		}
-		else if(mfd->enabled_fbs == (LAYER_VIDEO_0|LAYER_FB0)) {
-
-			mdp4_mixer_stage_down(
-				mdp4_overlay_ndx2pipe(mfd->overlay_g1_pipe_index));
-			mdp4_mixer_stage_down(
-				mdp4_overlay_ndx2pipe(mfd->overlay_g2_pipe_index));
-			pipe =
-				mdp4_overlay_ndx2pipe(mfd->overlay_g1_pipe_index);
-			pipe->mixer_stage = MDP4_MIXER_STAGE1;
-			mdp4_mixer_stage_up(pipe);
-
-		}
-
-	}
-
-	//Show new layers
-	mdp4_overlay_push_top_layer(mfd);
-
-	return 0;
-}
-
-
-
-/*
- * Control function to enable/disable a specific layer
- * (triggerd by FB_BLANK_BLANK/FB_BLANK_UNBLANK ioctl
- *  against a certain layer in userspace)
- *
- * In userspace, there are four layers in the following
- * stack ordering:
- *
- * fb0
- * fb1
- * video0
- * video1
- *
- * The "enable (UNBLANK)" * and "disable (BLANK)" of each of
- * the layer is abstracted away. Due to the fact that Qualcomm
- * intends the configuration of blending to be built dynamically
- * as a pipeline. It needs to be rebuilt on mode changes. This
- * function defines all the pre-determined states, and
- * handles all the re-configurations.
- *
- * Internally there are 8 valid states based on different
- * combinations of enablement for each of the above layers.
- *
- *
- * fb0:                 			<RGB1>
- * fb1 + fb0:           			<RGB2><RGB1>
- * video0 + fb0:        			<VG1><VG2><RGB1>
- * video1 + fb0:        			<VG1><VG2><RGB1>
- * video0 + fb1 + fb0:   			<VG1><VG2><RGB2><RGB1>
- * video1 + fb1 + fb0:   			<VG1><VG2><RGB2><RGB1>
- * video1 + video0 + fb0:   		<VG1><VG2><RGB1>
- * video1 + video0 + fb1 + fb0:   	<VG1><VG2><RGB2><RGB1>
- *
- * Based on the state diagram, all layer enable/disable can
- * be classified as gaming or video mode change. They are
- * then handled by the following functions respectively:
- *
- * msm_fb_handle_gaming_mode_change()
- * msm_fb_handle_video_mode_change()
- *
-*/
-static int msm_fb_mode_enable(
-	struct msm_fb_data_type *mfd,
-	int mode,
-	boolean on)
-{
-	int video_change = -1; 		//1: video enable; 0: video disable
-	int gaming_change = -1; 	//1: fb1 enable; 0; fb1 disable
-
-	printk(KERN_DEBUG"msm_fb: Layers from : %s\n",
-		fb_strs[mfd->enabled_fbs]);
-
-	//Lock down panning
-	down(&msm_fb_pan_sem);
-
-	switch (mfd->enabled_fbs) {
-
-		case LAYER_FB0:
-
-			if(mode == LAYER_VIDEO_0 && on) {
-
-				//Go to video + fb0 (video mode)
-				mfd->enabled_fbs = (LAYER_VIDEO_0|LAYER_FB0);
-				video_change = 1;
-
-			}
-			else if(mode == LAYER_VIDEO_1 && on) {
-				//Go to video + fb0 (video mode)
-				mfd->enabled_fbs = (LAYER_VIDEO_1|LAYER_FB0);
-				video_change = 1;
-			}
-			else if(mode == LAYER_FB1 && on) {
-
-				//Go to fb1 + fb0
-				mfd->enabled_fbs = (LAYER_FB0|LAYER_FB1);
-				gaming_change = 1;
-
-			}
-			else if(mode == LAYER_FB0 && on)
-				goto already_done;
-			else
-				goto invalid;
-
-		break;
-
-
-		case (LAYER_FB1|LAYER_FB0):
-
-			if(mode == LAYER_VIDEO_0 && on) {
-				//Go to video + fb1 + fb0
-				mfd->enabled_fbs = (LAYER_VIDEO_0|LAYER_FB0|LAYER_FB1);
-				video_change = 1;
-			}
-			else if(mode == LAYER_VIDEO_1 && on) {
-				//Go to video + fb1 + fb0
-				mfd->enabled_fbs = (LAYER_VIDEO_1|LAYER_FB1|LAYER_FB0);
-				video_change = 1;
-			}
-			else if(mode == LAYER_FB1 && !on) {
-
-				//Go back to fb0
-				mfd->enabled_fbs = LAYER_FB0;
-				gaming_change = 0;
-
-			}
-			else if((mode == LAYER_FB0 && on) ||
-						(mode == LAYER_FB1 && on))
-				goto already_done;
-			else
-				goto invalid;
-
-		break;
-
-		case (LAYER_VIDEO_1|LAYER_FB0):
-
-			if(mode == LAYER_VIDEO_1 && !on) {
-
-				//Go back to fb0
-				mfd->enabled_fbs = LAYER_FB0;
-				video_change = 0;
-				video1_has_data = false;
-			}
-			else if(mode == LAYER_VIDEO_0 && on) {
-				mfd->enabled_fbs = (LAYER_VIDEO_1|LAYER_VIDEO_0|LAYER_FB0);
-				if (video1_has_data) {
-					mdp4_overlay_update_bottom_layer(LAYER_VIDEO_1, mfd,
-						(int)video1_last_req.src.filp, video1_last_req.src.offset);
-				}
-				else {
-					mdp4_overlay_update_bottom_layer(LAYER_VIDEO_1, mfd, 0, 0);
-				}
-			}
-			else if(mode == LAYER_FB1 && on) {
-				//Go to video + fb1 + fb0
-				mfd->enabled_fbs = (LAYER_VIDEO_1|LAYER_FB1|LAYER_FB0);
-				gaming_change = 1;
-			}
-			else if((mode == LAYER_VIDEO_1 && on) ||
-						(mode == LAYER_FB0 && on))
-				goto already_done;
-			else
-				goto invalid;
-
-		break;
-
-		case (LAYER_VIDEO_0|LAYER_FB0):
-
-			if(mode == LAYER_VIDEO_0 && !on) {
-
-				//Go back to fb0
-				mfd->enabled_fbs = LAYER_FB0;
-				video0_has_data = false;
-				video_change = 0;
-
-			}
-			else if(mode == LAYER_VIDEO_1 && on) {
-				mfd->enabled_fbs = (LAYER_VIDEO_1|LAYER_VIDEO_0|LAYER_FB0);
-				mdp4_overlay_update_bottom_layer(LAYER_VIDEO_1, mfd, 0, 0);
-			}
-			else if(mode == LAYER_FB1 && on) {
-
-				//Go to video + fb1 + fb0
-				mfd->enabled_fbs = (LAYER_VIDEO_0|LAYER_FB1|LAYER_FB0);
-				gaming_change = 1;
-
-			}
-			else if((mode == LAYER_VIDEO_0 && on) ||
-						(mode == LAYER_FB0 && on))
-				goto already_done;
-			else
-				goto invalid;
-
-		break;
-
-		case (LAYER_VIDEO_0|LAYER_FB1|LAYER_FB0):
-
-			if(mode == LAYER_FB1 && !on) {
-
-				//Go back to video + fb0
-				mfd->enabled_fbs = (LAYER_VIDEO_0|LAYER_FB0);
-				gaming_change = 0;
-
-			}
-			else if(mode == LAYER_VIDEO_0 && !on) {
-
-				//Go back to fb1 +  fb0
-				mfd->enabled_fbs = (LAYER_FB0|LAYER_FB1);
-				video0_has_data = false;
-				video_change = 0;
-
-			}
-			else if(mode == LAYER_VIDEO_1 && on) {
-				mfd->enabled_fbs = LAYER_FB0|LAYER_FB1|LAYER_VIDEO_0|LAYER_VIDEO_1;
-				mdp4_overlay_update_bottom_layer(LAYER_VIDEO_1, mfd, 0, 0);
-			}
-			else if((mode == LAYER_VIDEO_0 && on) ||
-						(mode == LAYER_FB0 && on)||
-						(mode == LAYER_FB1 && on))
-				goto already_done;
-			else
-				goto invalid;
-
-		break;
-
-		case (LAYER_VIDEO_1|LAYER_FB1|LAYER_FB0):
-
-			if(mode == LAYER_FB1 && !on) {
-
-				//Go back to video + fb0
-				mfd->enabled_fbs = (LAYER_VIDEO_1|LAYER_FB0);
-				gaming_change = 0;
-
-			}
-			else if(mode == LAYER_VIDEO_1 && !on) {
-
-				//Go back to fb1 +  fb0
-				mfd->enabled_fbs = (LAYER_FB0|LAYER_FB1);
-				video1_has_data = false;
-				video_change = 0;
-
-			}
-			else if(mode == LAYER_VIDEO_0 && on) {
-				mfd->enabled_fbs = LAYER_FB0|LAYER_FB1|LAYER_VIDEO_0|LAYER_VIDEO_1;
-				mdp4_overlay_update_bottom_layer(LAYER_VIDEO_1, mfd, 0, 0);
-			}
-			else if((mode == LAYER_VIDEO_1 && on) ||
-						(mode == LAYER_FB0 && on)||
-						(mode == LAYER_FB1 && on))
-				goto already_done;
-			else
-				goto invalid;
-		break;
-
-		case (LAYER_VIDEO_1|LAYER_VIDEO_0|LAYER_FB0):
-
-			if(mode == LAYER_VIDEO_1 && !on) {
-
-				mfd->enabled_fbs = LAYER_FB0|LAYER_VIDEO_0;
-				video1_has_data = false;
-
-				mdp4_overlay_update_bottom_layer(LAYER_VIDEO_0, mfd, 0, 0);
-				if (video0_has_data) {
-					__msm_fb_v4l2_update(&video0_last_req,MSMV4L2_LAYER0);
-				}
-				else {
-					video_change = 0;
-				}
-
-			}
-			else if(mode == LAYER_VIDEO_0 && !on) {
-
-				mfd->enabled_fbs = LAYER_FB0|LAYER_VIDEO_1;
-				video0_has_data = false;
-				mdp4_overlay_update_bottom_layer(LAYER_VIDEO_1, mfd, 0, 0);
-				if (video1_has_data) {
-					__msm_fb_v4l2_update(&video1_last_req,MSMV4L2_LAYER1);
-				}
-				else {
-					video_change = 0;
-				}
-
-			}
-			else if(mode == LAYER_FB1 && on) {
-
-				mfd->enabled_fbs = (LAYER_VIDEO_1|LAYER_VIDEO_0|LAYER_FB1|LAYER_FB0);
-				gaming_change = 1;
-
-			}
-			else if((mode == LAYER_VIDEO_1 && on) ||
-					(mode == LAYER_VIDEO_0 && on)||
-					(mode == LAYER_FB0 && on))
-				goto already_done;
-			else
-				goto invalid;
-
-		break;
-
-
-		case (LAYER_VIDEO_1|LAYER_VIDEO_0|LAYER_FB1|LAYER_FB0):
-
-			//Internal state tracking, no need to restructure pipes
-			//Video mode is still on
-
-			if(mode == LAYER_VIDEO_1 && !on) {
-				mfd->enabled_fbs = LAYER_FB0|LAYER_FB1|LAYER_VIDEO_0;
-				video1_has_data = false;
-				mdp4_overlay_update_bottom_layer(LAYER_VIDEO_0, mfd, 0, 0);
-				if (video0_has_data) {
-					__msm_fb_v4l2_update(&video0_last_req,MSMV4L2_LAYER0);
-				}
-				else {
-					video_change = 0;
-				}
-			}
-			else if(mode == LAYER_VIDEO_0 && !on) {
-				mfd->enabled_fbs = LAYER_FB0|LAYER_FB1|LAYER_VIDEO_1;
-				video0_has_data = false;
-				mdp4_overlay_update_bottom_layer(LAYER_VIDEO_1, mfd, 0, 0);
-				if (video1_has_data) {
-					__msm_fb_v4l2_update(&video1_last_req,MSMV4L2_LAYER1);
-				}
-				else {
-					video_change = 0;
-				}
-			}
-			else if(mode == LAYER_FB1 && !on) {
-
-				mfd->enabled_fbs = (LAYER_VIDEO_1|LAYER_VIDEO_0|LAYER_FB0);
-				gaming_change = 0;
-			}
-			else if((mode == LAYER_VIDEO_1 && on) ||
-					(mode == LAYER_VIDEO_0 && on)||
-					(mode == LAYER_FB0 && on) ||
-					(mode == LAYER_FB1 && on))
-				goto already_done;
-			else
-				goto invalid;
-
-		break;
-
-		default:
-
-			printk("msmfb: Currently fb state (%d) not valid", mfd->enabled_fbs);
-
-		break;
-	}
-
-	/*
- 	 * The transition required is known at this point
- 	 * Will handle the pipe configurations here if needed
- 	 */
-
-	if(gaming_change != -1) {
-		msm_fb_handle_gaming_mode_change(mfd, !!gaming_change);
-	}
-
-	if(video_change != -1) {
-		msm_fb_handle_video_mode_change(mfd, !!video_change);
-	}
-
-	up(&msm_fb_pan_sem);
-
-	printk(KERN_DEBUG"msm_fb: Layers to   : %s\n", fb_strs[mfd->enabled_fbs]);
-
-	return 0;
-
-already_done:
-	up(&msm_fb_pan_sem);
-
-	printk(KERN_DEBUG"msm_fb: invalid to switch layer %s %s\n",
-		fb_mode_strs[mode], (on)?"on":"off");
-
-	return -1;
-
-invalid:
-
-	up(&msm_fb_pan_sem);
-
-	printk(KERN_DEBUG"msm_fb:  invalid to switch layer %s %s \n",
-		fb_mode_strs[mode], (on)?"on":"off");
-	return -1;
-
 }
 
 static int msm_fb_blank_sub(int blank_mode, struct fb_info *info,
@@ -1498,409 +655,50 @@ static int msm_fb_blank_sub(int blank_mode, struct fb_info *info,
 	}
 
 	switch (blank_mode) {
-
 	case FB_BLANK_UNBLANK:
+		if (!mfd->panel_power_on) {
+			msleep(16);
+			ret = pdata->on(mfd->pdev);
+			if (ret == 0) {
+				mfd->panel_power_on = TRUE;
 
-		msm_fb_mode_enable(mfd,
-			info->node ? LAYER_FB1 : LAYER_FB0, true);
-
+/* ToDo: possible conflict with android which doesn't expect sw refresher */
+/*
+	  if (!mfd->hw_refresh)
+	  {
+	    if ((ret = msm_fb_resume_sw_refresher(mfd)) != 0)
+	    {
+	      MSM_FB_INFO("msm_fb_blank_sub: msm_fb_resume_sw_refresher failed = %d!\n",ret);
+	    }
+	  }
+*/
+			}
+		}
 		break;
 
-	case FB_BLANK_NORMAL:
 	case FB_BLANK_VSYNC_SUSPEND:
 	case FB_BLANK_HSYNC_SUSPEND:
+	case FB_BLANK_NORMAL:
 	case FB_BLANK_POWERDOWN:
-
-		msm_fb_mode_enable(mfd,
-			info->node ? LAYER_FB1 : LAYER_FB0, false);
-
-		break;
-
 	default:
-		printk("msmfb: invalid blank mode\n");
+		if (mfd->panel_power_on) {
+			int curr_pwr_state;
+
+			mfd->op_enable = FALSE;
+			curr_pwr_state = mfd->panel_power_on;
+			mfd->panel_power_on = FALSE;
+
+			msleep(16);
+			ret = pdata->off(mfd->pdev);
+			if (ret)
+				mfd->panel_power_on = curr_pwr_state;
+
+			mfd->op_enable = TRUE;
+		}
 		break;
 	}
 
 	return ret;
-}
-
-/* Information about V4L2 and msm_fb
- *
- * There is support for two video layers in WebOS,
- * they are defined as following:
- *
- * Position    msm_fb            V4L2              Dev Node
- *
- * Top         LAYER_VIDEO_0     MSMV4L2_LAYER0    /dev/video0
- *
- * Bottom      LAYER_VIDEO_1     MSMV4L2_LAYER1    /dev/video1
- *
- * video0 is always on top and can be of arbitaray size, and
- * video1 must be at the bottom and fills the full screen due
- * to Qualcomm's hardware limitation.
- *
- * There are two entry points for v4l2 in msm_fb to
- * provide support for the two video layers:
- *
- * msm_fb_v4l2_enable()
- * -enable and disable of a video layer
- *
- * msm_fb_v4l2_update()
- * -update of a video layer
- *
- * The MSMV4L2_LAYER0 and MSMV4L2_LAYER1 map to LAYER_VIDEO_0
- * and LAYER_VIDEO_1 directly; but the two layers DO NOT have
- * fixed assignment to the hardware pipes. This is due to the
- * fact that it convenient to have a dummy video layer enabled
- * for certain configurations. For example:
- *
- * video1 + fb0: <VG1><VG2><RGB1>
- * video0 + fb0: <VG1><VG2><RGB1>
- *
- * The two configurations both use VG1 as the dummy black layer;
- * and VG2 as either video 1 or video0. The dummy black VG1 layer
- * allows the contents of video0 and video1 to be shown at arbitrary
- * sizes with their background always be black.
- *
- * When a configuration seeks for both video layers to be enabled:
- *
- * video1 + video0 + fb1 + fb0: <VG1><VG2><RGB1>
- *
- * <VG1> is utilized for video1 and <VG2> is utilized for video0.
- * msm_fb_v4l2_enable() handles this re-configuration dynamically
- * if there is any video layer change.
-*/
-
-/*
- * Function for v4l2 to enable a video layer
- *
- */
-int msm_fb_v4l2_enable(bool enable, int layer)
-{
-	struct msm_fb_data_type* mfd = mfd_list[0];
-
-	if(layer == MSMV4L2_LAYER0)
-		msm_fb_mode_enable(mfd, LAYER_VIDEO_0, enable);
-	else if(layer == MSMV4L2_LAYER1)
-		msm_fb_mode_enable(mfd, LAYER_VIDEO_1, enable);
-
-	return 0;
-}
-
-/*
- * Function for v4l2 to push frames for a video layer
- */
-static int __msm_fb_v4l2_update(
-	struct mdp_blit_int_req *req, int layer)
-{
-	struct msm_fb_data_type* mfd = mfd_list[0];
-	struct mdp4_overlay_pipe *pipe = NULL;
-
-	if (!video_layers_on)
-		msm_fb_handle_video_mode_change(mfd, 1);
-	//Force vsync in video mode
-	mfd->update_fb = LAYER_FB0;
-	// mfd->wait_for_vsync = LAYER_FB0;   // ian: don't use vsync for now on topaz
-
-	if(layer == MSMV4L2_LAYER1) {
-
-		//BOTTOM LAYER IN THE FB
-
-		if (req->dst_rect.h != mfd->panel_info.yres ||
-			req->dst_rect.w != mfd->panel_info.xres ||
-			req->dst_rect.x != 0 ||
-			req->dst_rect.y != 0) {
-
-			printk(KERN_ERR"%s: Invalid Bottom Layer dimensions\n",__func__);
-			return -1;
-		}
-
-		if((mfd->enabled_fbs & LAYER_VIDEO_0) && video0_has_data) {
-			// Both video layers are enabled, so the bottom one uses pipe VG1 which
-			// is the bottom most _pipe_
-			pipe = mdp4_overlay_ndx2pipe(
- 				mfd->overlay_v1_pipe_index);
-		}
-		else {
-			// Only video layer 1 enabled, so it uses pipe VG2 and VG1 is the
-			// pipe for the bottom most dummy layer
-			pipe = mdp4_overlay_ndx2pipe(
- 				mfd->overlay_v2_pipe_index);
-		}
-		memcpy(&video1_last_req, req, sizeof(struct mdp_blit_int_req));
-		video1_has_data = true;
-	}
-	else if(layer == MSMV4L2_LAYER0) {
-
-		//TOP LAYER IN THE FB
-		// Video layer 0 is always the topmost, so can therefore always use pipe VG2 and
-		// VG1 is either dummy or used by layer 1.
-		pipe = mdp4_overlay_ndx2pipe(
-			mfd->overlay_v2_pipe_index);
-		memcpy(&video0_last_req, req, sizeof(struct mdp_blit_int_req));
-		video0_has_data = true;
-	}
-
-
-	pipe->src_height = req->src.height;
-	pipe->src_width = req->src.width;
-	pipe->src_y = req->src_rect.y;
-	pipe->src_x = req->src_rect.x;
-	pipe->src_h = req->src_rect.h;
-	pipe->src_w = req->src_rect.w;
-#ifdef CONFIG_FB_MSM_FLIP_UD
-	pipe->dst_y = mfd->panel_info.yres - req->dst_rect.y - req->dst_rect.h;
-#else
-	pipe->dst_y = req->dst_rect.y;
-#endif
-#ifdef CONFIG_FB_MSM_FLIP_LR
-	pipe->dst_x = mfd->panel_info.xres - req->dst_rect.x - req->dst_rect.w;
-#else
-	pipe->dst_x = req->dst_rect.x;
-#endif
-	pipe->dst_h = req->dst_rect.h;
-	pipe->dst_w = req->dst_rect.w;
-	pipe->solid_fill = 0;
-
-	MSM_FB_INFO("src h %d w %d\n",
-		pipe->src_height, pipe->src_width);
-	MSM_FB_INFO("src rect: y %d x %d h %d w %d\n",
-		pipe->src_y, pipe->src_x,
-		pipe->src_h, pipe->src_w);
-	MSM_FB_INFO("dst rect: y %d x %d h %d w %d\n",
-		pipe->dst_y, pipe->dst_x,
-		pipe->dst_h, pipe->dst_w);
-
-	if(pipe->src_format != req->src.format) {
-		pipe->src_format = req->src.format;
-		mdp4_overlay_format2pipe(pipe);
-		printk(KERN_INFO"msm_fb: video layer format changed to %d\n",
-			pipe->src_format);
-	}
-
-	if(mfd->enabled_fbs == (LAYER_VIDEO_0|LAYER_FB0)) {
-
-		pipe =  mdp4_overlay_ndx2pipe(
-				mfd->overlay_v1_pipe_index);
-		pipe->solid_fill = 1;
-
-		mdp4_overlay_update_middle_layer(
-			LAYER_VIDEO_0, mfd, (int)req->src.filp, req->src.offset);
-		mdp4_overlay_update_bottom_layer(
-			LAYER_VIDEO_0, mfd, 0, 0);
-
-	}
-	else if(mfd->enabled_fbs == (LAYER_VIDEO_1|LAYER_FB0)) {
-
-		pipe =  mdp4_overlay_ndx2pipe(
-				mfd->overlay_v1_pipe_index);
-		pipe->solid_fill = 1;
-
-		mdp4_overlay_update_middle_layer(
-			LAYER_VIDEO_1, mfd, (int)req->src.filp, req->src.offset);
-
-	}
-	else if(mfd->enabled_fbs == (LAYER_VIDEO_1|LAYER_VIDEO_0|LAYER_FB0)) {
-
-		if(layer == MSMV4L2_LAYER1) {
-			if (video0_has_data) {
-				pipe =  mdp4_overlay_ndx2pipe(mfd->overlay_v1_pipe_index);
-				pipe->solid_fill = 0;
-				mdp4_overlay_update_bottom_layer(
-					LAYER_VIDEO_1, mfd, (int)req->src.filp, req->src.offset);
-
-				mdp4_overlay_update_middle_layer(
-					LAYER_VIDEO_0,mfd,
-					(int)video0_last_req.src.filp, video0_last_req.src.offset);
-			}
-			else {
-				mdp4_overlay_update_middle_layer(
-					LAYER_VIDEO_1, mfd, (int)req->src.filp, req->src.offset);
-
-				mdp4_overlay_update_bottom_layer(
-					LAYER_VIDEO_0,mfd, 0, 0);
-			}
-		}
-		else if(layer == MSMV4L2_LAYER0) {
-			pipe =  mdp4_overlay_ndx2pipe(mfd->overlay_v1_pipe_index);
-			if (video1_has_data) {
-				pipe->src_height = video1_last_req.src.height;
-				pipe->src_width = video1_last_req.src.width;
-				pipe->src_y = video1_last_req.src_rect.y;
-				pipe->src_x = video1_last_req.src_rect.x;
-				pipe->src_h = video1_last_req.src_rect.h;
-				pipe->src_w = video1_last_req.src_rect.w;
-#ifdef CONFIG_FB_MSM_FLIP_UD
-				pipe->dst_y = mfd->panel_info.yres -
-					video1_last_req.dst_rect.y -
-					video1_last_req.dst_rect.h;
-#else
-				pipe->dst_y = video1_last_req.dst_rect.y;
-#endif
-#ifdef CONFIG_FB_MSM_FLIP_LR
-				pipe->dst_x = mfd->panel_info.xres -
-					video1_last_req.dst_rect.x -
-					video1_last_req.dst_rect.w;
-#else
-				pipe->dst_x = video1_last_req.dst_rect.x;
-#endif
-				pipe->dst_h = video1_last_req.dst_rect.h;
-				pipe->dst_w = video1_last_req.dst_rect.w;
-				pipe->solid_fill = 0;
-
-				if(pipe->src_format != video1_last_req.src.format) {
-					pipe->src_format = video1_last_req.src.format;
-					mdp4_overlay_format2pipe(pipe);
-				}
-
-				mdp4_overlay_update_bottom_layer(
-					LAYER_VIDEO_1, mfd,
-					(int)video1_last_req.src.filp, video1_last_req.src.offset);
-			} else {
-				pipe->solid_fill = 1;
-				mdp4_overlay_update_bottom_layer(
-					LAYER_VIDEO_0, mfd, 0, 0);
-			}
-			mdp4_overlay_update_middle_layer(
-				LAYER_VIDEO_0, mfd, (int)req->src.filp, req->src.offset);
-
-		}
-
-	}
-	else if(mfd->enabled_fbs == (LAYER_VIDEO_0|LAYER_FB1|LAYER_FB0)) {
-
-		pipe =  mdp4_overlay_ndx2pipe(
-				mfd->overlay_v1_pipe_index);
-		pipe->solid_fill = 1;
-
-		mdp4_overlay_update_middle_layer(
-			LAYER_VIDEO_0,mfd,(int)req->src.filp, req->src.offset);
-
-		mdp4_overlay_update_middle_layer(
-			LAYER_FB1,mfd,(int)-1, 0);
-
-		mdp4_overlay_update_bottom_layer(
-			LAYER_VIDEO_0, mfd, 0, 0);
-
-	}
-	else if(mfd->enabled_fbs == (LAYER_VIDEO_1|LAYER_FB1|LAYER_FB0)) {
-
-		pipe =  mdp4_overlay_ndx2pipe(
-				mfd->overlay_v1_pipe_index);
-		pipe->solid_fill = 1;
-
-		mdp4_overlay_update_middle_layer(
-			LAYER_VIDEO_1,mfd,(int)req->src.filp, req->src.offset);
-
-		mdp4_overlay_update_middle_layer(
-			LAYER_FB1,mfd,(int)-1, 0);
-
-	}
-	else if(mfd->enabled_fbs == (LAYER_VIDEO_1|LAYER_VIDEO_0|LAYER_FB1|LAYER_FB0)) {
-
-		if(layer == MSMV4L2_LAYER1) {
-			if (video0_has_data) {
-				pipe =  mdp4_overlay_ndx2pipe(mfd->overlay_v1_pipe_index);
-				pipe->solid_fill = 0;
-				mdp4_overlay_update_bottom_layer(
-					LAYER_VIDEO_1, mfd, (int)req->src.filp, req->src.offset);
-
-				mdp4_overlay_update_middle_layer(
-					LAYER_VIDEO_0,mfd,
-					(int)video0_last_req.src.filp, video0_last_req.src.offset);
-			}
-			else {
-				mdp4_overlay_update_middle_layer(
-					LAYER_VIDEO_1, mfd, (int)req->src.filp, req->src.offset);
-
-				mdp4_overlay_update_bottom_layer(
-					LAYER_VIDEO_0,mfd, 0, 0);
-			}
-
-			mdp4_overlay_update_middle_layer(
-				LAYER_FB1,mfd,(int)-1, 0);
-
-		}
-		else if(layer == MSMV4L2_LAYER0) {
-			pipe =  mdp4_overlay_ndx2pipe(mfd->overlay_v1_pipe_index);
-			if (video1_has_data) {
-				pipe->src_height = video1_last_req.src.height;
-				pipe->src_width = video1_last_req.src.width;
-				pipe->src_y = video1_last_req.src_rect.y;
-				pipe->src_x = video1_last_req.src_rect.x;
-				pipe->src_h = video1_last_req.src_rect.h;
-				pipe->src_w = video1_last_req.src_rect.w;
-#ifdef CONFIG_FB_MSM_FLIP_UD
-				pipe->dst_y = mfd->panel_info.yres -
-					video1_last_req.dst_rect.y -
-					video1_last_req.dst_rect.h;
-#else
-				pipe->dst_y = video1_last_req.dst_rect.y;
-#endif
-#ifdef CONFIG_FB_MSM_FLIP_LR
-				pipe->dst_x = mfd->panel_info.xres -
-					video1_last_req.dst_rect.x -
-					video1_last_req.dst_rect.w;
-#else
-				pipe->dst_x = video1_last_req.dst_rect.x;
-#endif
-				pipe->dst_h = video1_last_req.dst_rect.h;
-				pipe->dst_w = video1_last_req.dst_rect.w;
-				pipe->solid_fill = 0;
-
-				if(pipe->src_format != video1_last_req.src.format) {
-					pipe->src_format = video1_last_req.src.format;
-					mdp4_overlay_format2pipe(pipe);
-				}
-
-				mdp4_overlay_update_bottom_layer(
-					LAYER_VIDEO_1, mfd,
-					(int)video1_last_req.src.filp, video1_last_req.src.offset);
-			}
-			else {
-				pipe->solid_fill = 1;
-				mdp4_overlay_update_bottom_layer(
-					LAYER_VIDEO_1, mfd, 0, 0);
-			}
-
-			mdp4_overlay_update_middle_layer(
-				LAYER_VIDEO_0,mfd,(int)req->src.filp, req->src.offset);
-
-			mdp4_overlay_update_middle_layer(
-				LAYER_FB1,mfd,(int)-1, 0);
-		}
-	}
-
-	mdp4_overlay_push_top_layer(mfd);
-
-	return 0;
-}
-
-int msm_fb_v4l2_update( struct mdp_blit_int_req *req, int layer)
-{
-	int ret = 0;
-
-	down(&msm_fb_pan_sem);
-
-	ret = __msm_fb_v4l2_update(req, layer);
-
-	up(&msm_fb_pan_sem);
-
-	return ret;
-}
-
-void msm_fb_set_backlight(struct msm_fb_data_type *mfd, __u32 bkl_lvl)
-{
-	struct msm_fb_panel_data *pdata;
-
-	pdata = (struct msm_fb_panel_data *)mfd->pdev->dev.platform_data;
-
-	if ((pdata) && (pdata->set_backlight)) {
-		down(&mfd->sem);
-		mfd->bl_level = bkl_lvl;
-		pdata->set_backlight(mfd);
-		up(&mfd->sem);
-	}
 }
 
 static void msm_fb_fillrect(struct fb_info *info,
@@ -1977,16 +775,6 @@ static int msm_fb_set_lut(struct fb_cmap *cmap, struct fb_info *info)
 
 	mfd->lut_update(info, cmap);
 	return 0;
-}
-
-static int msm_fb_set_dma_p_csc(struct mdp_ccs *matrix, struct fb_info *info)
-{
-	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)info->par;
-
-	if (!mfd->set_dma_p_csc)
-		return -ENODEV;
-
-	return mfd->set_dma_p_csc(info, matrix);
 }
 
 /*
@@ -2066,81 +854,6 @@ static struct fb_ops msm_fb_ops = {
 	.fb_mmap = msm_fb_mmap,
 };
 
-#ifdef MSM_FB_DEBUG_FILL
-static void msm_fb_debug_fill(
-	int w, int h,
-	const char* fb0_addr,
-	const char* fb1_addr){
-
-	char *bp;
-	int j,k;
- 	bp = (char *)fb0_addr;
-
-	/*
- 	 * Test case for fb0:
- 	 * Have a black block in the middle
- 	 * Surrounding area will have varying alpha
- 	 */
-	for ( j = 0; j < (h*3); j++) {
-		for (k = 0; k < w; k++) {
-
-			if( (k >=140 && k <180) &&
-				((j >=100 && j < 140) ||
-				(j >=h+100 && j < h+140) ||
-				(j >=(2*h +100) && j < (2*h + 140))) ) {
-
-				*bp++ = 0x11; /* B */
-				*bp++ = 0x22; /* G */
-				*bp++ = 0x33;  /* R */
-				*bp++ = 0xFF;
-
-			}
-			else {
-
-				*bp++ = 0x00; /* B */
-				*bp++ = 0x00; /* G */
-				*bp++ = 0x00;  /* R */
-				if(j >= 2*h)
-					*bp++ = 0xAA;  /* A */
-				else if(j >= h )
-					*bp++ = 0x66;  /* A */
-				else
-					*bp++ = 0x11;  /* A */
-
-			}
-		}
-	}
-
-	/*
- 	 * Test case for fb1
- 	 */
- 	bp = (char *)fb1_addr;
-
-	for ( j = 0; j < h*3; j++) {
-      for (k = 0; k < w; k++) {
-
-			if(j >= h*2) {
-         	*bp++ = 0xFF; /* R */
-         	*bp++ = 0x00; /* G */
-         	*bp++ = 0x00; /* B */
-			}
-			else if(j >= h ) {
-         	*bp++ = 0x00; /* R */
-         	*bp++ = 0xFF; /* G */
-         	*bp++ = 0x00; /* B */
-			}
-			else {
-         	*bp++ = 0x00; /* R */
-         	*bp++ = 0x00; /* G */
-         	*bp++ = 0xFF; /* B */
-			}
-         	*bp++ = 0x55;  /* A */
-      }
-	}
-
-}
-#endif
-
 static __u32 msm_fb_line_length(__u32 fb_index, __u32 xres, int bpp)
 {
 	/* The adreno GPU hardware requires that the pitch be aligned to
@@ -2148,7 +861,10 @@ static __u32 msm_fb_line_length(__u32 fb_index, __u32 xres, int bpp)
 	   is writing directly to fb0, the framebuffer pitch
 	   also needs to be 32 pixel aligned */
 
-	return ALIGN(xres, 32) * bpp;
+	if (fb_index == 0)
+		return ALIGN(xres, 32) * bpp;
+	else
+		return xres * bpp;
 }
 
 static int msm_fb_register(struct msm_fb_data_type *mfd)
@@ -2156,161 +872,147 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 	int ret = -ENODEV;
 	int bpp;
 	struct msm_panel_info *panel_info = &mfd->panel_info;
-	struct fb_info *fbi = NULL;
+	struct fb_info *fbi = mfd->fbi;
 	struct fb_fix_screeninfo *fix;
 	struct fb_var_screeninfo *var;
 	int *id;
 	int fbram_offset;
-	int i;
 
 	/*
 	 * fb info initialization
 	 */
-	for(i=0; i<2; i++) {
+	fix = &fbi->fix;
+	var = &fbi->var;
 
-		if(i == 0) {
-			fbi = mfd->fbi[0];
-			mfd->fb_imgType = MDP_ARGB_8888;
-		}
-		else if(i == 1) {
-			fbi = mfd->fbi[1];
-			mfd->fb_imgType = MDP_ARGB_8888;
-		}
+	fix->type_aux = 0;	/* if type == FB_TYPE_INTERLEAVED_PLANES */
+	fix->visual = FB_VISUAL_TRUECOLOR;	/* True Color */
+	fix->ywrapstep = 0;	/* No support */
+	fix->mmio_start = 0;	/* No MMIO Address */
+	fix->mmio_len = 0;	/* No MMIO Address */
+	fix->accel = FB_ACCEL_NONE;/* FB_ACCEL_MSM needes to be added in fb.h */
 
-		fix = &fbi->fix;
-		var = &fbi->var;
+	var->xoffset = 0,	/* Offset from virtual to visible */
+	var->yoffset = 0,	/* resolution */
+	var->grayscale = 0,	/* No graylevels */
+	var->nonstd = 0,	/* standard pixel format */
+	var->activate = FB_ACTIVATE_VBL,	/* activate it at vsync */
+	var->height = -1,	/* height of picture in mm */
+	var->width = -1,	/* width of picture in mm */
+	var->accel_flags = 0,	/* acceleration flags */
+	var->sync = 0,	/* see FB_SYNC_* */
+	var->rotate = 0,	/* angle we rotate counter clockwise */
+	mfd->op_enable = FALSE;
 
-		snprintf(fix->id, sizeof(fix->id), "msmfb40_%x", (__u32) i);
+	switch (mfd->fb_imgType) {
+	case MDP_RGB_565:
+		fix->type = FB_TYPE_PACKED_PIXELS;
+		fix->xpanstep = 1;
+		fix->ypanstep = 1;
+		var->vmode = FB_VMODE_NONINTERLACED;
+		var->blue.offset = 0;
+		var->green.offset = 5;
+		var->red.offset = 11;
+		var->blue.length = 5;
+		var->green.length = 6;
+		var->red.length = 5;
+		var->blue.msb_right = 0;
+		var->green.msb_right = 0;
+		var->red.msb_right = 0;
+		var->transp.offset = 0;
+		var->transp.length = 0;
+		bpp = 2;
+		break;
 
-		fix->type_aux = 0;	/* if type == FB_TYPE_INTERLEAVED_PLANES */
-		fix->visual = FB_VISUAL_TRUECOLOR;	/* True Color */
-		fix->ywrapstep = 0;	/* No support */
-		fix->mmio_start = 0;	/* No MMIO Address */
-		fix->mmio_len = 0;	/* No MMIO Address */
-		fix->accel = FB_ACCEL_NONE;/* FB_ACCEL_MSM needes to be added in fb.h */
+	case MDP_RGB_888:
+		fix->type = FB_TYPE_PACKED_PIXELS;
+		fix->xpanstep = 1;
+		fix->ypanstep = 1;
+		var->vmode = FB_VMODE_NONINTERLACED;
+		var->blue.offset = 0;
+		var->green.offset = 8;
+		var->red.offset = 16;
+		var->blue.length = 8;
+		var->green.length = 8;
+		var->red.length = 8;
+		var->blue.msb_right = 0;
+		var->green.msb_right = 0;
+		var->red.msb_right = 0;
+		var->transp.offset = 0;
+		var->transp.length = 0;
+		bpp = 3;
+		break;
 
-		var->xoffset = 0,	/* Offset from virtual to visible */
-		var->yoffset = 0,	/* resolution */
-		var->grayscale = 0,	/* No graylevels */
-		var->nonstd = 0,	/* standard pixel format */
-		var->activate = FB_ACTIVATE_VBL,	/* activate it at vsync */
-		var->height = -1,	/* height of picture in mm */
-		var->width = -1,	/* width of picture in mm */
-		var->accel_flags = 0,	/* acceleration flags */
-		var->sync = 0,	/* see FB_SYNC_* */
-		var->rotate = 0;	/* angle we rotate counter clockwise */
+	case MDP_ARGB_8888:
+		fix->type = FB_TYPE_PACKED_PIXELS;
+		fix->xpanstep = 1;
+		fix->ypanstep = 1;
+		var->vmode = FB_VMODE_NONINTERLACED;
+		var->blue.offset = 0;
+		var->green.offset = 8;
+		var->red.offset = 16;
+		var->blue.length = 8;
+		var->green.length = 8;
+		var->red.length = 8;
+		var->blue.msb_right = 0;
+		var->green.msb_right = 0;
+		var->red.msb_right = 0;
+		var->transp.offset = 24;
+		var->transp.length = 8;
+		bpp = 4;
+		break;
 
+	case MDP_RGBA_8888:
+		fix->type = FB_TYPE_PACKED_PIXELS;
+		fix->xpanstep = 1;
+		fix->ypanstep = 1;
+		var->vmode = FB_VMODE_NONINTERLACED;
+		var->blue.offset = 8;
+		var->green.offset = 16;
+		var->red.offset = 24;
+		var->blue.length = 8;
+		var->green.length = 8;
+		var->red.length = 8;
+		var->blue.msb_right = 0;
+		var->green.msb_right = 0;
+		var->red.msb_right = 0;
+		var->transp.offset = 0;
+		var->transp.length = 8;
+		bpp = 4;
+		break;
 
-		switch (mfd->fb_imgType) {
-			case MDP_RGB_565:
-				fix->type = FB_TYPE_PACKED_PIXELS;
-				fix->xpanstep = 1;
-				fix->ypanstep = 1;
-				var->vmode = FB_VMODE_NONINTERLACED;
-				var->blue.offset = 0;
-				var->green.offset = 5;
-				var->red.offset = 11;
-				var->blue.length = 5;
-				var->green.length = 6;
-				var->red.length = 5;
-				var->blue.msb_right = 0;
-				var->green.msb_right = 0;
-				var->red.msb_right = 0;
-				var->transp.offset = 0;
-				var->transp.length = 0;
-				bpp = 2;
-			break;
+	case MDP_YCRYCB_H2V1:
+		/* ToDo: need to check TV-Out YUV422i framebuffer format */
+		/*       we might need to create new type define */
+		fix->type = FB_TYPE_INTERLEAVED_PLANES;
+		fix->xpanstep = 2;
+		fix->ypanstep = 1;
+		var->vmode = FB_VMODE_NONINTERLACED;
 
-			case MDP_RGB_888:
-				fix->type = FB_TYPE_PACKED_PIXELS;
-				fix->xpanstep = 1;
-				fix->ypanstep = 1;
-				var->vmode = FB_VMODE_NONINTERLACED;
-				var->blue.offset = 0;
-				var->green.offset = 8;
-				var->red.offset = 16;
-				var->blue.length = 8;
-				var->green.length = 8;
-				var->red.length = 8;
-				var->blue.msb_right = 0;
-				var->green.msb_right = 0;
-				var->red.msb_right = 0;
-				var->transp.offset = 0;
-				var->transp.length = 0;
-				bpp = 3;
-			break;
+		/* how about R/G/B offset? */
+		var->blue.offset = 0;
+		var->green.offset = 5;
+		var->red.offset = 11;
+		var->blue.length = 5;
+		var->green.length = 6;
+		var->red.length = 5;
+		var->blue.msb_right = 0;
+		var->green.msb_right = 0;
+		var->red.msb_right = 0;
+		var->transp.offset = 0;
+		var->transp.length = 0;
+		bpp = 2;
+		break;
 
-			case MDP_ARGB_8888:
-				fix->type = FB_TYPE_PACKED_PIXELS;
-				fix->xpanstep = 1;
-				fix->ypanstep = 1;
-				var->vmode = FB_VMODE_NONINTERLACED;
-				var->blue.offset = 0;
-				var->green.offset = 8;
-				var->red.offset = 16;
-				var->blue.length = 8;
-				var->green.length = 8;
-				var->red.length = 8;
-				var->blue.msb_right = 0;
-				var->green.msb_right = 0;
-				var->red.msb_right = 0;
-				var->transp.offset = 24;
-				var->transp.length = 8;
-				bpp = 4;
-			break;
+	default:
+		MSM_FB_ERR("msm_fb_init: fb %d unkown image type!\n",
+			   mfd->index);
+		return ret;
+	}
 
-			case MDP_RGBA_8888:
-				fix->type = FB_TYPE_PACKED_PIXELS;
-				fix->xpanstep = 1;
-				fix->ypanstep = 1;
-				var->vmode = FB_VMODE_NONINTERLACED;
-				var->blue.offset = 8;
-				var->green.offset = 16;
-				var->red.offset = 24;
-				var->blue.length = 8;
-				var->green.length = 8;
-				var->red.length = 8;
-				var->blue.msb_right = 0;
-				var->green.msb_right = 0;
-				var->red.msb_right = 0;
-				var->transp.offset = 0;
-				var->transp.length = 8;
-				bpp = 4;
-			break;
-
-			case MDP_YCRYCB_H2V1:
-				/* ToDo: need to check TV-Out YUV422i framebuffer format */
-				/*       we might need to create new type define */
-				fix->type = FB_TYPE_INTERLEAVED_PLANES;
-				fix->xpanstep = 2;
-				fix->ypanstep = 1;
-				var->vmode = FB_VMODE_NONINTERLACED;
-
-				/* how about R/G/B offset? */
-				var->blue.offset = 0;
-				var->green.offset = 5;
-				var->red.offset = 11;
-				var->blue.length = 5;
-				var->green.length = 6;
-				var->red.length = 5;
-				var->blue.msb_right = 0;
-				var->green.msb_right = 0;
-				var->red.msb_right = 0;
-				var->transp.offset = 0;
-				var->transp.length = 0;
-				bpp = 2;
-			break;
-
-			default:
-				MSM_FB_ERR("msm_fb_init: fb %d unkown image type!\n",
-					mfd->index);
-			return ret;
-		}
-
-		fix->line_length = msm_fb_line_length(mfd->index, panel_info->xres,
-						      bpp);
-		/* calculate smem_len based on max size of two supplied modes */
-		fix->smem_len = roundup(MAX(msm_fb_line_length(mfd->index,
+	fix->line_length = msm_fb_line_length(mfd->index, panel_info->xres,
+					      bpp);
+	/* calculate smem_len based on max size of two supplied modes */
+	fix->smem_len = roundup(MAX(msm_fb_line_length(mfd->index,
 					       panel_info->xres,
 					       bpp) *
 			    panel_info->yres * mfd->fb_page,
@@ -2320,98 +1022,11 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 			    panel_info->mode2_yres * mfd->fb_page), PAGE_SIZE);
 
 
-		var->pixclock = mfd->panel_info.clk_rate;
 
-		var->xres = panel_info->xres;
-		var->yres = panel_info->yres;
-		var->xres_virtual = panel_info->xres;
-		var->yres_virtual = panel_info->yres * mfd->fb_page;
-		var->bits_per_pixel = bpp * 8;	/* FrameBuffer color depth */
+	mfd->var_xres = panel_info->xres;
+	mfd->var_yres = panel_info->yres;
 
-
-		//if (mfd->index == 0)
-		if (i == 1)
-			fix->line_length = ALIGN(panel_info->xres, 32) * bpp;
-		else
-			fix->line_length = panel_info->xres * bpp;
-
-		fix->smem_len = fix->line_length * panel_info->yres * mfd->fb_page;
-
-		fbi->fbops = &msm_fb_ops;
-		fbi->flags = FBINFO_FLAG_DEFAULT;
-		fbi->pseudo_palette = msm_fb_pseudo_palette;
-
-		if(i == 0) {
-
-			fbram_offset = PAGE_ALIGN((int)fbram)-(int)fbram;
-			fbram += fbram_offset;
-			fbram_phys += fbram_offset;
-			fbram_size -= fbram_offset;
-
-			if (fbram_size < fix->smem_len) {
-				printk(KERN_ERR "error: no more framebuffer memory for fb0!\n");
-				return -ENOMEM;
-			}
-			fbi->screen_base = fbram;
-			fbi->fix.smem_start = (unsigned long)fbram_phys;
-		}
-		else if(i == 1) {
-
-			fbram_offset = PAGE_ALIGN((int)fb1ram)-(int)fb1ram;
-			fb1ram += fbram_offset;
-			fb1ram_phys += fbram_offset;
-			fb1ram_size -= fbram_offset;
-
-			if (fb1ram_size < fix->smem_len) {
-				printk(KERN_ERR "error: no more framebuffer memory for fb1!\n");
-				return -ENOMEM;
-			}
-			/* PALM: nasty override to get the full fb1 size */
-			fix->smem_len = fb1ram_size;
-
-			fbi->screen_base = fb1ram;
-			fbi->fix.smem_start = (unsigned long)fb1ram_phys;
-		}
-
-		if (mfd->lut_update) {
-			ret = fb_alloc_cmap(&fbi->cmap, 256, 0);
-			if (ret)
-				printk(KERN_ERR "%s: fb_alloc_cmap() failed!\n",
-					__func__);
-		}
-
-		if (register_framebuffer(fbi) < 0) {
-			if (mfd->lut_update)
-				fb_dealloc_cmap(&fbi->cmap);
-
-			if (mfd->cursor_buf)
-				dma_free_coherent(NULL,
-					MDP_CURSOR_SIZE,
-					mfd->cursor_buf,
-					(dma_addr_t) mfd->cursor_buf_phys);
-
-			mfd->op_enable = FALSE;
-			return -EPERM;
-		}
-
-		if(i == 0) {
-			fbram += fix->smem_len;
-			fbram_phys += fix->smem_len;
-			fbram_size -= fix->smem_len;
-		}
-		else {
-			fb1ram += fix->smem_len;
-			fb1ram_phys += fix->smem_len;
-			fb1ram_size -= fix->smem_len;
-		}
-
-		MSM_FB_INFO
-	   	 ("FrameBuffer[%d] %dx%d size=%d bytes is registered successfully!\n",
-	     		i , fbi->var.xres, fbi->var.yres, fbi->fix.smem_len);
-
-	}
-
-
+	var->pixclock = mfd->panel_info.clk_rate;
 	mfd->var_pixclock = var->pixclock;
 
 	var->xres = panel_info->xres;
@@ -2419,11 +1034,10 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 	var->xres_virtual = panel_info->xres;
 	var->yres_virtual = panel_info->yres * mfd->fb_page;
 	var->bits_per_pixel = bpp * 8;	/* FrameBuffer color depth */
-
-	/*
-	 * id field for fb app
-	 */
-	id = (int *)&mfd->panel;
+		/*
+		 * id field for fb app
+		 */
+	    id = (int *)&mfd->panel;
 
 #if defined(CONFIG_FB_MSM_MDP22)
 	snprintf(fix->id, sizeof(fix->id), "msmfb22_%x", (__u32) *id);
@@ -2436,23 +1050,37 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 #else
 	error CONFIG_FB_MSM_MDP undefined !
 #endif
+	 fbi->fbops = &msm_fb_ops;
+	fbi->flags = FBINFO_FLAG_DEFAULT;
+	fbi->pseudo_palette = msm_fb_pseudo_palette;
 
 	mfd->ref_cnt = 0;
 	mfd->sw_currently_refreshing = FALSE;
-	mfd->sw_refreshing_enable = FALSE;
-	mfd->panel_power_on = TRUE;
-
-	//Vsync configs
-	mfd->vsync_idle_count = 0;
-	mfd->vsync_enabled = false;
-	mfd->wait_for_vsync = 0;
+	mfd->sw_refreshing_enable = TRUE;
+	mfd->panel_power_on = FALSE;
 
 	mfd->pan_waiting = FALSE;
 	init_completion(&mfd->pan_comp);
 	init_completion(&mfd->refresher_comp);
 	init_MUTEX(&mfd->sem);
 
+	fbram_offset = PAGE_ALIGN((int)fbram)-(int)fbram;
+	fbram += fbram_offset;
+	fbram_phys += fbram_offset;
+	fbram_size -= fbram_offset;
+
+	if (fbram_size < fix->smem_len) {
+		printk(KERN_ERR "error: no more framebuffer memory!\n");
+		return -ENOMEM;
+	}
+
+	fbi->screen_base = fbram;
+	fbi->fix.smem_start = (unsigned long)fbram_phys;
+
+	memset(fbi->screen_base, 0x0, fix->smem_len);
+
 	mfd->op_enable = TRUE;
+	mfd->panel_power_on = FALSE;
 
 	/* cursor memory allocation */
 	if (mfd->cursor_update) {
@@ -2464,13 +1092,34 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 			mfd->cursor_update = 0;
 	}
 
-#ifdef MSM_FB_DEBUG_FILL
-	msm_fb_debug_fill(
-			panel_info->xres,
-			panel_info->yres,
-			mfd->fbi[0]->screen_base,
-			mfd->fbi[1]->screen_base);
-#endif
+	if (mfd->lut_update) {
+		ret = fb_alloc_cmap(&fbi->cmap, 256, 0);
+		if (ret)
+			printk(KERN_ERR "%s: fb_alloc_cmap() failed!\n",
+					__func__);
+	}
+
+	if (register_framebuffer(fbi) < 0) {
+		if (mfd->lut_update)
+			fb_dealloc_cmap(&fbi->cmap);
+
+		if (mfd->cursor_buf)
+			dma_free_coherent(NULL,
+				MDP_CURSOR_SIZE,
+				mfd->cursor_buf,
+				(dma_addr_t) mfd->cursor_buf_phys);
+
+		mfd->op_enable = FALSE;
+		return -EPERM;
+	}
+
+	fbram += fix->smem_len;
+	fbram_phys += fix->smem_len;
+	fbram_size -= fix->smem_len;
+
+	MSM_FB_INFO
+	    ("FrameBuffer[%d] %dx%d size=%d bytes is registered successfully!\n",
+	     mfd->index, fbi->var.xres, fbi->var.yres, fbi->fix.smem_len);
 
 #ifdef CONFIG_FB_MSM_LOGO
 	if (!load_565rle_image(INIT_IMAGE_FILE)) ;	/* Flip buffer */
@@ -2628,6 +1277,15 @@ static int msm_fb_open(struct fb_info *info, int user)
 	}
 
 
+	if (!mfd->ref_cnt) {
+		mdp_set_dma_pan_info(info, NULL, TRUE);
+
+		if (msm_fb_blank_sub(FB_BLANK_UNBLANK, info, mfd->op_enable)) {
+			printk(KERN_ERR "msm_fb_open: can't turn on display!\n");
+			return -1;
+		}
+	}
+
 	mfd->ref_cnt++;
 	return 0;
 }
@@ -2645,19 +1303,20 @@ static int msm_fb_release(struct fb_info *info, int user)
 
 	mfd->ref_cnt--;
 
-	/*if (!mfd->ref_cnt) {
+	if (!mfd->ref_cnt) {
 		if ((ret =
 		     msm_fb_blank_sub(FB_BLANK_POWERDOWN, info,
 				      mfd->op_enable)) != 0) {
 			printk(KERN_ERR "msm_fb_release: can't turn off display!\n");
 			return ret;
 		}
-	}*/
+	}
 
 	pm_runtime_put(info->dev);
 	return ret;
 }
 
+DECLARE_MUTEX(msm_fb_pan_sem);
 
 static int msm_fb_pan_display(struct fb_var_screeninfo *var,
 			      struct fb_info *info)
@@ -2666,21 +1325,14 @@ static int msm_fb_pan_display(struct fb_var_screeninfo *var,
 	struct mdp_dirty_region *dirtyPtr = NULL;
 	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)info->par;
 
-
 	if ((!mfd->op_enable) || (!mfd->panel_power_on))
-	{
 		return -EPERM;
-	}
 
 	if (var->xoffset > (info->var.xres_virtual - info->var.xres))
-	{
 		return -EINVAL;
-	}
 
 	if (var->yoffset > (info->var.yres_virtual - info->var.yres))
-	{
 		return -EINVAL;
-	}
 
 	if (info->fix.xpanstep)
 		info->var.xoffset =
@@ -2723,70 +1375,13 @@ static int msm_fb_pan_display(struct fb_var_screeninfo *var,
 		dirtyPtr = &dirty;
 	}
 
-	/*
-	 * Handling different updates from fb0 and fb1 when device is in
- 	 * different blending modes. In general, the topmost layer (fb0)
- 	 * is pushed whenever there is an update in any layers.
- 	 */
 	down(&msm_fb_pan_sem);
-
-	if(mfd->enabled_fbs == (LAYER_FB0)) {
-
-		if(info->node == 0) {
-			mfd->update_fb = LAYER_FB0;
-			mdp_set_dma_pan_info(info, dirtyPtr,
-				(var->activate == FB_ACTIVATE_VBL));
-			//Push fb0 (top)
-			mdp4_overlay_push_top_layer(mfd);
-		}
-	}
-	else if(mfd->enabled_fbs == (LAYER_FB0|LAYER_FB1)) {
-
-		//Update fb1 (bottom)
-		if(info->node == 1) {
-			mfd->update_fb = LAYER_FB1;
-			mdp_set_dma_pan_info(mfd->fbi[1], dirtyPtr,
-				(var->activate == FB_ACTIVATE_VBL));
-			mdp4_overlay_update_bottom_layer(LAYER_FB1, mfd, 0, 0 );
-		}
-		else {
-			mfd->update_fb = LAYER_FB0;
-		}
-
-		//Push fb0 (top)
-		mdp4_overlay_push_top_layer(mfd);
-
-	}
-	else if(mfd->enabled_fbs == (LAYER_VIDEO_0|LAYER_FB0)) {
-
-		//Force vsync in video mode
-		mfd->update_fb = LAYER_FB0;
-		mfd->wait_for_vsync = LAYER_FB0;  // ian: don't use on topaz
-
-		//Push fb0 (top)
-		mdp4_overlay_push_top_layer(mfd);
-	}
-	else if(mfd->enabled_fbs == (LAYER_VIDEO_0|LAYER_FB0|LAYER_FB1) ||
-			mfd->enabled_fbs == (LAYER_VIDEO_1|LAYER_FB0|LAYER_FB1) ||
-			mfd->enabled_fbs == (LAYER_VIDEO_1|LAYER_VIDEO_0|LAYER_FB0|LAYER_FB1)) {
-
-		//Update fb1 (middle)
-		if(info->node == 1) {
-			mfd->update_fb = LAYER_FB1;
-			mfd->wait_for_vsync = LAYER_FB1;
-			mdp4_overlay_update_middle_layer(LAYER_FB1,mfd,-1, 0);
-		}
-		else {
-			mfd->update_fb = LAYER_FB0;
-			 mfd->wait_for_vsync = LAYER_FB0;
-		}
-		//Push fb0 (top)
-		mdp4_overlay_push_top_layer(mfd);
-	}
-
-	++mfd->panel_info.frame_count;
+	mdp_set_dma_pan_info(info, dirtyPtr,
+			     (var->activate == FB_ACTIVATE_VBL));
+	mdp_dma_pan_update(info);
 	up(&msm_fb_pan_sem);
 
+	++mfd->panel_info.frame_count;
 	return 0;
 }
 
@@ -2871,6 +1466,9 @@ static int msm_fb_check_var(struct fb_var_screeninfo *var, struct fb_info *info)
 	if ((var->xres_virtual <= 0) || (var->yres_virtual <= 0))
 		return -EINVAL;
 
+	if (info->fix.smem_len <
+		(var->xres_virtual*var->yres_virtual*(var->bits_per_pixel/8)))
+		return -EINVAL;
 
 	if ((var->xres == 0) || (var->yres == 0))
 		return -EINVAL;
@@ -2895,6 +1493,7 @@ static int msm_fb_set_par(struct fb_info *info)
 	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)info->par;
 	struct fb_var_screeninfo *var = &info->var;
 	int old_imgType;
+	int blank = 0;
 
 	old_imgType = mfd->fb_imgType;
 	switch (var->bits_per_pixel) {
@@ -2916,7 +1515,10 @@ static int msm_fb_set_par(struct fb_info *info)
 		break;
 
 	case 32:
-		mfd->fb_imgType = MDP_ARGB_8888;
+		if (var->transp.offset == 24)
+			mfd->fb_imgType = MDP_ARGB_8888;
+		else
+			mfd->fb_imgType = MDP_RGBA_8888;
 		break;
 
 	default:
@@ -2931,9 +1533,15 @@ static int msm_fb_set_par(struct fb_info *info)
 		mfd->var_xres = var->xres;
 		mfd->var_yres = var->yres;
 		mfd->var_pixclock = var->pixclock;
+		blank = 1;
 	}
-	info->fix.line_length = msm_fb_line_length(mfd->index, var->xres,
-						var->bits_per_pixel/8);
+	mfd->fbi->fix.line_length = msm_fb_line_length(mfd->index, var->xres,
+						       var->bits_per_pixel/8);
+
+	if (blank) {
+		msm_fb_blank_sub(FB_BLANK_POWERDOWN, info, mfd->op_enable);
+		msm_fb_blank_sub(FB_BLANK_UNBLANK, info, mfd->op_enable);
+	}
 
 	return 0;
 }
@@ -3832,7 +2440,7 @@ static int msmfb_overlay_play(struct fb_info *info, unsigned long *argp)
 		return ret;
 	}
 
-	ret = mdp4_overlay_play(info, &req, &p_src_file, true);
+	ret = mdp4_overlay_play(info, &req, &p_src_file);
 
 #ifdef CONFIG_ANDROID_PMEM
 	if (p_src_file)
@@ -3965,7 +2573,6 @@ static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 	struct fb_cursor cursor;
 	struct fb_cmap cmap;
 	struct mdp_histogram hist;
-	struct mdp_ccs dma_p_ccs_matrix;
 #ifndef CONFIG_FB_MSM_MDP40
 	struct mdp_ccs ccs_matrix;
 #endif
@@ -4018,22 +2625,6 @@ static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 	case MSMFB_BLIT:
 		down(&msm_fb_ioctl_ppp_sem);
 		ret = msmfb_blit(info, argp);
-		up(&msm_fb_ioctl_ppp_sem);
-
-		break;
-
-	/* Ioctl for setting dma_p csc matrix from user space */
-	case MSMFB_SET_DMA_P_CSC:
-		ret = copy_from_user(&dma_p_ccs_matrix, argp, sizeof(dma_p_ccs_matrix));
-		if (ret) {
-			printk(KERN_ERR
-				"%s:MSMFB_SET_DMA_P_CSC ioctl failed \n",
-				__func__);
-			return ret;
-		}
-
-		down(&msm_fb_ioctl_ppp_sem);
-		ret = msm_fb_set_dma_p_csc(&dma_p_ccs_matrix, info);
 		up(&msm_fb_ioctl_ppp_sem);
 
 		break;
@@ -4172,16 +2763,6 @@ static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 		ret = mdp_stop_histogram(info);
 		break;
 
-	case FBIO_WAITFORVSYNC:
-		down(&msm_fb_pan_sem);
-
-		if(info->node == 0)
-			mfd->wait_for_vsync |= LAYER_FB0;
-		else
-			mfd->wait_for_vsync |= LAYER_FB1;
-
-		up(&msm_fb_pan_sem);
-		break;
 
 	case MSMFB_GET_PAGE_PROTECTION:
 		fb_page_protection.page_protection
@@ -4242,8 +2823,7 @@ struct platform_device *msm_fb_add_device(struct platform_device *pdev)
 {
 	struct msm_fb_panel_data *pdata;
 	struct platform_device *this_dev = NULL;
-	struct fb_info *fbi0 = NULL;
-	struct fb_info *fbi1 = NULL;
+	struct fb_info *fbi;
 	struct msm_fb_data_type *mfd = NULL;
 	u32 type, id, fb_num;
 
@@ -4276,42 +2856,29 @@ struct platform_device *msm_fb_add_device(struct platform_device *pdev)
 	}
 
 	/*
-	 * msmfb has been restructured to expose two set of buffers
-	 * for userspace - fb0 and fb1. Each set of buffers will have
-	 * its own fb_info (fbi); but they will share one
-	 * msm_fb_data_type (mfd), which holds the contextual information
-	 * such as hardware state, locks, etc.
+	 * alloc framebuffer info + par data
 	 */
-	fbi0 = framebuffer_alloc(sizeof(struct msm_fb_data_type), NULL);
-	fbi1 = framebuffer_alloc(0, NULL);
-	if (fbi0 == NULL || fbi1 == NULL) {
+	fbi = framebuffer_alloc(sizeof(struct msm_fb_data_type), NULL);
+	if (fbi == NULL) {
 		platform_device_put(this_dev);
 		printk(KERN_ERR "msm_fb: can't alloca framebuffer info data!\n");
 		return NULL;
 	}
 
-	//fb0 and fb1 share same mfd
-	mfd = fbi0->par;
-	fbi1->par = mfd;
-
-	fbi_list[fbi_list_index] = fbi0;
-	mfd->fbi[fbi_list_index++] = fbi0;
-	fbi_list[fbi_list_index] = fbi1;
-	mfd->fbi[fbi_list_index++] = fbi1;
-
-
-	//Set up some global stuff
+	mfd = (struct msm_fb_data_type *)fbi->par;
 	mfd->key = MFD_KEY;
+	mfd->fbi = fbi;
 	mfd->panel.type = type;
 	mfd->panel.id = id;
 	mfd->fb_page = fb_num;
 	mfd->index = fbi_list_index;
-	mfd->mdp_fb_page_protection = MDP_FB_PAGE_PROTECTION_WRITETHROUGHCACHE;
+	mfd->mdp_fb_page_protection = MDP_FB_PAGE_PROTECTION_WRITECOMBINE;
+
 	/* link to the latest pdev */
 	mfd->pdev = this_dev;
-	mfd->enabled_fbs = LAYER_FB0;
 
 	mfd_list[mfd_list_index++] = mfd;
+	fbi_list[fbi_list_index++] = fbi;
 
 	/*
 	 * set driver data
@@ -4321,9 +2888,8 @@ struct platform_device *msm_fb_add_device(struct platform_device *pdev)
 	if (platform_device_add(this_dev)) {
 		printk(KERN_ERR "msm_fb: platform_device_add failed!\n");
 		platform_device_put(this_dev);
-		framebuffer_release(fbi0);
-		framebuffer_release(fbi1);
-		fbi_list_index-=2;
+		framebuffer_release(fbi);
+		fbi_list_index--;
 		return NULL;
 	}
 	return this_dev;

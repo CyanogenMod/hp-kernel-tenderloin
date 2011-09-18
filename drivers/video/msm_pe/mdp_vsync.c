@@ -39,8 +39,6 @@
 #include "mdp.h"
 #include "msm_fb.h"
 #include "mddihost.h"
-#include <linux/hrtimer.h>
-#include <linux/hres_counter.h>
 
 #ifdef CONFIG_FB_MSM_MDP40
 #include "mdp4.h"
@@ -195,22 +193,7 @@ static void mdp_vsync_handler(void *data)
 
 #endif
 	} else {
-		if(mfd->vsync_idle_count == mfd->panel_info.lcd.vsync_disable_count) {
-				disable_irq_nosync(mfd->channel_irq);
-				mfd->vsync_enabled = false;
-				mfd->vsync_idle_count = 0;
-				MSM_FB_DEBUG("MDP: disbaling vsync\n");
-		}
-		else {
-				if(!mfd->vsync_enabled) {
-					mfd->vsync_enabled = true;
-					wake_up(&mfd->vsync_wq);
-				}
-
-				mfd->last_vsync_timetick = ktime_get_real();
-				mfd->vsync_idle_count++;
-		}
-
+		mfd->last_vsync_timetick = ktime_get_real();
 	}
 
 	mfd->vsync_handler_pending = FALSE;
@@ -368,8 +351,7 @@ void mdp_config_vsync(struct msm_fb_data_type *mfd)
 		mfd->use_mdp_vsync = 0;
 		hrtimer_init(&mfd->dma_hrtimer, CLOCK_MONOTONIC,
 			     HRTIMER_MODE_REL);
-		//mfd->dma_hrtimer.function = mdp_dma2_vsync_hrtimer_handler;
-		mfd->dma_hrtimer.function = mdp4_overlay_vsync_hrtimer_handler;
+		mfd->dma_hrtimer.function = mdp_dma2_vsync_hrtimer_handler;
 		mfd->vsync_width_boundary = vmalloc(mfd->panel_info.xres * 4);
 #endif
 
@@ -479,26 +461,9 @@ uint32 mdp_get_lcd_line_counter(struct msm_fb_data_type *mfd)
 	ktime_t last_vsync_timetick_local;
 	ktime_t curr_time;
 	unsigned long flag;
-	long rc;
 
 	if ((!mfd->panel_info.lcd.vsync_enable) || (!vsync_mode))
 		return 0;
-
-	//If vsync has been dynamically disabled due to inactivity,
-	//lets re-enable here and use the next one as reference.
-	if(!mfd->vsync_enabled) {
-		MSM_FB_DEBUG("MDP: re-enabling\n");
-		enable_irq(mfd->channel_irq);
-		rc = wait_event_interruptible_timeout(
-						mfd->vsync_wq,
-						mfd->vsync_enabled == true,
-                  msecs_to_jiffies(100));
-		if(rc == 0) {
-			disable_irq(mfd->channel_irq);
-			return 0;
-		}
-		MSM_FB_DEBUG("MDP: re-enabled\n");
-	}
 
 	spin_lock_irqsave(&mdp_spin_lock, flag);
 	last_vsync_timetick_local = mfd->last_vsync_timetick;
@@ -522,8 +487,7 @@ uint32 mdp_get_lcd_line_counter(struct msm_fb_data_type *mfd)
 
 	if (lcd_line > mfd->total_lcd_lines) {
 		MSM_FB_INFO
-		    ("mdp_get_lcd_line_counter: mdp_lcd_rd_cnt >= mfd->total_lcd_lines error! %d %d\n",
-				lcd_line, mfd->total_lcd_lines);
+		    ("mdp_get_lcd_line_counter: mdp_lcd_rd_cnt >= mfd->total_lcd_lines error!\n");
 	}
 
 	return lcd_line;

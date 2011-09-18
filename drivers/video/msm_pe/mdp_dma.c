@@ -67,8 +67,8 @@ static void mdp_dma2_update_lcd(struct msm_fb_data_type *mfd)
 	uint16 mddi_vdo_packet_reg;
 	struct msm_fb_panel_data *pdata =
 	    (struct msm_fb_panel_data *)mfd->pdev->dev.platform_data;
+	uint32 ystride = mfd->fbi->fix.line_length;
 	uint32 mddi_pkt_desc;
-	uint32 ystride = mfd->fbi[0]->fix.line_length;
 
 	dma2_cfg_reg = DMA_PACK_ALIGN_LSB |
 		    DMA_OUT_SEL_AHB | DMA_IBUF_NONCONTIGUOUS;

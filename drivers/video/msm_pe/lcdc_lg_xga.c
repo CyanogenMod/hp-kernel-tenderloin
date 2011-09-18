@@ -146,7 +146,7 @@ static int __init lcdc_lg_panel_init(void)
 	pinfo->pdest = DISPLAY_1;
 	pinfo->wait_cycle = 0;
 	pinfo->bpp = 18;
-	pinfo->fb_num = 3;
+	pinfo->fb_num = 2;
 	pinfo->clk_rate = 96000000;
 	pinfo->bl_max = PWM_LEVEL;
 	pinfo->bl_min = 0;

@@ -381,7 +381,6 @@ void mdp4_overlay_format_to_pipe(uint32 format, struct mdp4_overlay_pipe *pipe);
 uint32 mdp4_overlay_format(struct mdp4_overlay_pipe *pipe);
 uint32 mdp4_overlay_unpack_pattern(struct mdp4_overlay_pipe *pipe);
 uint32 mdp4_overlay_op_mode(struct mdp4_overlay_pipe *pipe);
-void mdp4_lcdc_overlay_update_base_layer(struct msm_fb_data_type *mfd);
 void mdp4_lcdc_overlay(struct msm_fb_data_type *mfd);
 void mdp4_overlay_dtv_vsync_push(struct msm_fb_data_type *mfd,
 			struct mdp4_overlay_pipe *pipe);
@@ -398,7 +397,6 @@ void mdp4_overlay0_done_dsi_video(void);
 void mdp4_overlay0_done_dsi_cmd(struct mdp_dma_data *dma);
 void mdp4_dsi_cmd_overlay(struct msm_fb_data_type *mfd);
 void mdp4_overlay_rgb_setup(struct mdp4_overlay_pipe *pipe);
-void mdp4_overlay_vg_setup(struct mdp4_overlay_pipe *pipe);
 void mdp4_overlay_reg_flush(struct mdp4_overlay_pipe *pipe, int all);
 void mdp4_mixer_blend_setup(struct mdp4_overlay_pipe *pipe);
 struct mdp4_overlay_pipe *mdp4_overlay_stage_pipe(int mixer, int stage);
@@ -407,33 +405,13 @@ void mdp4_mixer_stage_down(struct mdp4_overlay_pipe *pipe);
 int mdp4_mixer_stage_can_run(struct mdp4_overlay_pipe *pipe);
 void mdp4_overlayproc_cfg(struct mdp4_overlay_pipe *pipe);
 void mdp4_mddi_overlay(struct msm_fb_data_type *mfd);
-void mdp4_overlay_schedule(
-	struct msm_fb_data_type *mfd,
-	struct mdp4_overlay_pipe *pipe,
-	uint32 term);
-void mdp4_overlay_update_lcd(struct msm_fb_data_type *mfd);
 int mdp4_overlay_format2type(uint32 format);
 int mdp4_overlay_format2pipe(struct mdp4_overlay_pipe *pipe);
 int mdp4_overlay_get(struct fb_info *info, struct mdp_overlay *req);
 int mdp4_overlay_set(struct fb_info *info, struct mdp_overlay *req);
 int mdp4_overlay_unset(struct fb_info *info, int ndx);
 int mdp4_overlay_play(struct fb_info *info, struct msmfb_overlay_data *req,
-				struct file **pp_src_file, bool push);
-int mdp4_overlay_update_bottom_layer(
-	int layer,
-	struct msm_fb_data_type *mfd,
-	int memory_id,
-	int offset);
-int mdp4_overlay_update_middle_layer(
-	int layer,
-	struct msm_fb_data_type *mfd,
-	int memory_id,
-	int offset);
-int mdp4_overlay_push_top_layer(
-	struct msm_fb_data_type *mfd);
-struct mdp4_overlay_pipe *mdp4_overlay_ndx2pipe(int ndx);
-int mdp4_set_dma_pan_info(struct fb_info *info,
-	struct msmfb_data *img);
+				struct file **pp_src_file);
 struct mdp4_overlay_pipe *mdp4_overlay_pipe_alloc(int ptype, int mixer,
 				int req_share);
 void mdp4_overlay_pipe_free(struct mdp4_overlay_pipe *pipe);

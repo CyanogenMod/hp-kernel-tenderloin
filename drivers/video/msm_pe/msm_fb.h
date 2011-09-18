@@ -63,21 +63,10 @@
 #define MFD_KEY  0x11161126
 #define MSM_FB_MAX_DEV_LIST 32
 
-#define LAYER_FB0			(1)
-#define LAYER_FB1			(1<<1)
-#define LAYER_VIDEO_0		(1<<2)
-#define LAYER_VIDEO_1		(1<<3)
-
 struct disp_info_type_suspend {
 	boolean op_enable;
 	boolean sw_refreshing_enable;
 	boolean panel_power_on;
-};
-
-struct msmfb_info {
-   struct fb_info *fb_info;
-   struct msm_fb_data_type *mfd;
-   unsigned yoffset;
 };
 
 struct msm_fb_data_type {
@@ -90,6 +79,7 @@ struct msm_fb_data_type {
 	struct msm_panel_info panel_info;
 
 	DISP_TARGET dest;
+	struct fb_info *fbi;
 
 	boolean op_enable;
 	uint32 fb_imgType;
@@ -125,7 +115,6 @@ struct msm_fb_data_type {
 	struct timer_list vsync_resync_timer;
 	boolean vsync_handler_pending;
 	struct work_struct vsync_resync_worker;
-	struct work_struct overlay_vsync_worker;
 
 	ktime_t last_vsync_timetick;
 
@@ -144,8 +133,6 @@ struct msm_fb_data_type {
 			      struct fb_cmap *cmap);
 	int (*do_histogram) (struct fb_info *info,
 			      struct mdp_histogram *hist);
-	int (*set_dma_p_csc) (struct fb_info *info,
-			      struct mdp_ccs *matrix);
 	void *cursor_buf;
 	void *cursor_buf_phys;
 
@@ -174,32 +161,8 @@ struct msm_fb_data_type {
 #endif
 	u32 mdp_fb_page_protection;
 
-	struct pm_qos_request_list *pm_qos_req;
-
 	struct clk *ebi1_clk;
 	boolean dma_update_flag;
-
-	/* Augmented Palm Info */
-
-	/*Vsync*/
-	wait_queue_head_t vsync_wq;
-	uint32 vsync_idle_count;
-	bool vsync_enabled;
-	int wait_for_vsync;
-
-	/*Suspend/Resume*/
-	bool suspended;
-
-	/*Overlay*/
-	struct fb_info *fbi[FB_MAX];
-	int fb_num;
-	int update_fb;
-	int enabled_fbs;				//status of active fbs
-
-	int overlay_g1_pipe_index;	//RGB1
-	int overlay_g2_pipe_index;	//RGB2
-	int overlay_v1_pipe_index; //VG1
-	int overlay_v2_pipe_index; //VG2
 };
 
 struct dentry *msm_fb_get_debugfs_root(void);

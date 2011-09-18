@@ -112,8 +112,6 @@ static struct platform_driver mddi_driver = {
 
 extern int int_mddi_pri_flag;
 DEFINE_MUTEX(pmdh_clk_lock);
-static int mddi_pad_ctrl;
-static int mddi_is_in_suspend;
 
 int pmdh_clk_func(int value)
 {
@@ -215,12 +213,6 @@ static int mddi_off(struct platform_device *pdev)
 
 	if (mddi_pdata && mddi_pdata->mddi_power_save)
 		mddi_pdata->mddi_power_save(0);
-
-	if (mddi_is_in_suspend)
-		return 0;
-	mddi_is_in_suspend = 1;
-	mddi_disable(0);
-
 #ifdef CONFIG_MSM_BUS_SCALING
 	mdp_bus_scale_update_request(0);
 #else
@@ -236,9 +228,6 @@ static int mddi_on(struct platform_device *pdev)
 	int ret = 0;
 	u32 clk_rate;
 	struct msm_fb_data_type *mfd;
-
-	mddi_host_type host_idx = MDDI_HOST_PRIM;
-
 #ifdef ENABLE_FWD_LINK_SKEW_CALIBRATION
 	mddi_host_type host_idx = MDDI_HOST_PRIM;
 	u32 stat_reg;
@@ -271,8 +260,7 @@ static int mddi_on(struct platform_device *pdev)
 	}
 #endif
 
-#if 0
-	clk_rate = mfd->fbi[0]->var.pixclock;
+	clk_rate = mfd->fbi->var.pixclock;
 	clk_rate = min(clk_rate, mfd->panel_info.clk_max);
 
 	if (mddi_pdata &&
@@ -285,20 +273,6 @@ static int mddi_on(struct platform_device *pdev)
 	if (clk_set_min_rate(mddi_clk, clk_rate) < 0)
 		printk(KERN_ERR "%s: clk_set_min_rate failed\n",
 			__func__);
-
-#endif
-
-	if (!mddi_is_in_suspend)
-		return 0;
-
-	mddi_is_in_suspend = 0;
-
-	enable_irq(INT_MDDI_PRI);
-	clk_enable(mddi_clk);
-	if (mddi_pclk)
-		clk_enable(mddi_pclk);
-	mddi_host_reg_out(PAD_CTL, mddi_pad_ctrl);
-
 
 #ifdef CONFIG_MSM_BUS_SCALING
 	mdp_bus_scale_update_request(2);
