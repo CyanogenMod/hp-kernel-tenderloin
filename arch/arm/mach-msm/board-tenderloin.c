@@ -39,6 +39,7 @@
 #include <linux/spi/spi.h>
 #include <linux/cy8ctma395.h>
 #include <linux/i2c/lsm303dlh.h>
+#include <linux/mpu.h>
 
 #ifdef CONFIG_ANDROID_PMEM
 #include <linux/android_pmem.h>
@@ -1599,17 +1600,42 @@ static struct lsm303dlh_mag_platform_data lsm303dlh_mag_pdata = {
 	.negate_z = 0,
 };
 
-static struct i2c_board_info lsm303dlh_acc_i2c_board_info[] = {
+static struct mpu3050_platform_data mpu_pdata = {
+	.int_config  = 0x10,
+	.orientation = {  -1,  0,  0,
+			           0,  1,  0,
+			           0,  0, -1 },
+    /* accel */
+	.accel = {
+		 .get_slave_descr = get_accel_slave_descr,
+		 .adapt_num   = 0,
+		 .bus         = EXT_SLAVE_BUS_SECONDARY,
+		 .address     = 0x18,
+		 .orientation = {  -1,  0,  0,
+		         		    0,  1,  0,
+				            0,  0, -1 },
+	 },
+};
+
+static struct i2c_board_info __initdata lsm303dlh_acc_i2c_board_info[] = {
     {
         I2C_BOARD_INFO ( "lsm303dlh_acc_sysfs", 0x18),
         .platform_data = &lsm303dlh_acc_pdata,
     },
 };
 
-static struct i2c_board_info lsm303dlh_mag_i2c_board_info[] = {
+static struct i2c_board_info __initdata lsm303dlh_mag_i2c_board_info[] = {
     {
         I2C_BOARD_INFO ( "lsm303dlh_mag_sysfs", 0x1e),
         .platform_data = &lsm303dlh_mag_pdata,
+    },
+};
+
+static struct i2c_board_info __initdata mpu3050_i2c_board_info[] = {
+    {
+        I2C_BOARD_INFO ( MPU_NAME, 0x68),
+        .irq = MSM_GPIO_TO_INT(TENDERLOIN_GYRO_INT),
+        .platform_data = &mpu_pdata,
     },
 };
 
@@ -4612,7 +4638,6 @@ struct i2c_registry {
 };
 
 static struct i2c_registry msm8x60_i2c_devices[] __initdata = {
-
     {
         I2C_TENDERLOIN,
         MSM_GSBI3_QUP_I2C_BUS_ID,
@@ -4625,7 +4650,12 @@ static struct i2c_registry msm8x60_i2c_devices[] __initdata = {
         &lsm303dlh_mag_i2c_board_info,
         ARRAY_SIZE(lsm303dlh_mag_i2c_board_info),
     },
-
+    {
+        I2C_TENDERLOIN,
+        MSM_GSBI3_QUP_I2C_BUS_ID,
+        &mpu3050_i2c_board_info,
+        ARRAY_SIZE(mpu3050_i2c_board_info),
+    },
 #ifdef CONFIG_PMIC8058
 	{
 		I2C_TENDERLOIN,

@@ -62,3 +62,4 @@ obj-$(CONFIG_LOW_MEMORY_NOTIFY) += lowmemnotify.o
 obj-$(CONFIG_BRCM4751)          += brcm4751.o
 obj-$(CONFIG_PMIC8058_BATTALARM) += pmic8058-batt-alarm.o
 obj-$(CONFIG_MDMGPIO)		+= mdmgpio.o
+obj-$(CONFIG_MPU_SENSORS_MPU3050)	+= mpu3050/
