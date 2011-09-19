@@ -204,7 +204,7 @@ void mdp4_overlay_dmap_cfg(struct msm_fb_data_type *mfd, int lcdc)
 	if (mfd->fb_imgType == MDP_BGR_565)
 		dma2_cfg_reg |= DMA_PACK_PATTERN_BGR;
 	else
-		dma2_cfg_reg |= DMA_PACK_PATTERN_BGR;
+		dma2_cfg_reg |= DMA_PACK_PATTERN_RGB;
 
 
 	if (mfd->panel_info.bpp == 18) {
@@ -343,6 +343,14 @@ static void mdp4_scale_setup(struct mdp4_overlay_pipe *pipe)
 	}
 }
 
+/* Hack - android gralloc does not want to stay away from its RGBA idea,
+ * so we change the pattern here */
+uint32 mdp4_overlay_unpack_pattern2(struct mdp4_overlay_pipe *pipe)
+{
+	return (pipe->element3 << 24) | (pipe->element0 << 16) |
+			(pipe->element1 << 8) | pipe->element2;
+}
+
 void mdp4_overlay_rgb_setup(struct mdp4_overlay_pipe *pipe)
 {
 	char *rgb_base;
@@ -358,7 +366,7 @@ void mdp4_overlay_rgb_setup(struct mdp4_overlay_pipe *pipe)
 	dst_xy = ((pipe->dst_y << 16) | pipe->dst_x);
 
 	format = mdp4_overlay_format(pipe);
-	pattern = mdp4_overlay_unpack_pattern(pipe);
+	pattern = mdp4_overlay_unpack_pattern2(pipe);
 
 #ifdef MDP4_IGC_LUT_ENABLE
 	pipe->op_mode |= MDP4_OP_IGC_LUT_EN;
