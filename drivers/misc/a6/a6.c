@@ -36,6 +36,9 @@
 #include <linux/gpio.h>
 #include <linux/cdev.h>
 #include <linux/debugfs.h>
+
+#include <linux/power_supply.h>
+
 #include "high_level_funcs.h"
 
 #define A2A_RD_BUFF_SIZE (4 * 1024)
@@ -480,6 +483,11 @@ struct a6_device_state {
 	char *a2a_rd_buf, *a2a_wr_buf;
 	char *a2a_rp, *a2a_wp;
 };
+
+struct a6_ps_state {
+	struct device *i2c_dev;
+	struct mutex dev_mutex;
+} batt_state;
 
 #ifdef A6_PQ
 int32_t a6_start_ai_dispatch_task(struct a6_device_state* state);
@@ -1147,6 +1155,49 @@ struct device_attribute custom_devattr[] = {
 	 .show = a6_diag_show, .store = a6_diag_store},
  	{{.name = "validate_cksum", .mode = S_IRUGO},
  	 .show = a6_val_cksum_show, .store = NULL},
+};
+
+static enum power_supply_property a6_fish_battery_properties[] = {
+	POWER_SUPPLY_PROP_STATUS,
+	POWER_SUPPLY_PROP_HEALTH,
+	POWER_SUPPLY_PROP_PRESENT,
+	POWER_SUPPLY_PROP_TECHNOLOGY,
+	POWER_SUPPLY_PROP_CAPACITY,
+};
+
+static enum power_supply_property a6_fish_power_properties[] = {
+	POWER_SUPPLY_PROP_ONLINE,
+};
+
+static char *supply_list[] = {
+	"battery",
+};
+
+static int a6_fish_power_get_property(struct power_supply *psy,
+				   enum power_supply_property psp,
+				   union power_supply_propval *val);
+
+static int a6_fish_battery_get_property(struct power_supply *psy,
+				     enum power_supply_property psp,
+				     union power_supply_propval *val);
+
+static struct power_supply a6_fish_power_supplies[] = {
+	{
+		.name = "battery",
+		.type = POWER_SUPPLY_TYPE_BATTERY,
+		.properties = a6_fish_battery_properties,
+		.num_properties = ARRAY_SIZE(a6_fish_battery_properties),
+		.get_property = a6_fish_battery_get_property,
+	},
+	{
+		.name = "ac",
+		.type = POWER_SUPPLY_TYPE_MAINS,
+		.supplied_to = supply_list,
+		.num_supplicants = ARRAY_SIZE(supply_list),
+		.properties = a6_fish_power_properties,
+		.num_properties = ARRAY_SIZE(a6_fish_power_properties),
+		.get_property = a6_fish_power_get_property,
+	},
 };
 
 #ifdef A6_PQ
@@ -3599,6 +3650,7 @@ static irqreturn_t a6_irq(int irq, void *dev_id)
 {
 	struct a6_device_state* state = (struct a6_device_state *)dev_id;
 	int rc;
+	int i = 0;
 
 	a6_tp_irq_count++;
 #if defined PROFILE_USAGE
@@ -3618,6 +3670,10 @@ static irqreturn_t a6_irq(int irq, void *dev_id)
 		set_bit(INT_PENDING, state->flags);
 	} else {
 		queue_work(state->ka6d_workqueue, &state->a6_irq_work);
+	}
+	
+	for (i = 0; i < ARRAY_SIZE(a6_fish_power_supplies); i++) {
+		power_supply_changed(&a6_fish_power_supplies[i]);
 	}
 
 	return IRQ_HANDLED;
@@ -4120,6 +4176,157 @@ struct file_operations a6_pmem_fops = {
 	.release = a6_pmem_close,
 };
 
+static int a6_fish_power_get_property(struct power_supply *psy,
+				   enum power_supply_property psp,
+				   union power_supply_propval *val)
+{
+	unsigned int temp_val = 0;
+	char *buf = NULL;
+
+	switch (psp) {
+	case POWER_SUPPLY_PROP_ONLINE:
+		if (psy->type == POWER_SUPPLY_TYPE_MAINS && 
+				(batt_state.i2c_dev != NULL)){
+			if ( (buf = kzalloc (PAGE_SIZE, GFP_KERNEL)) == NULL){
+				return -ENOMEM;
+			}
+
+			a6_generic_show (batt_state.i2c_dev, &a6_register_desc_arr[31].dev_attr, buf);
+			sscanf (buf, "%u", &temp_val);
+			kfree (buf);
+
+			if ( (temp_val & TS2_I2C_FLAGS_2_WIRED_CHARGE) ||
+					(temp_val & TS2_I2C_FLAGS_2_PUCK_CHARGE)){
+				val->intval = 1;
+			} else {
+				val->intval = 0;
+			}
+		} else
+			val->intval = 0;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+
+#define CHARGING_CURR_HYSTERESIS_MIN	-10000
+#define CHARGING_CURR_HYSTERESIS_MAX	25000
+static int a6_fish_battery_get_property(struct power_supply *psy,
+				     enum power_supply_property psp,
+				     union power_supply_propval *val)
+{
+	int temp_val = 0;
+	char *buf = NULL;
+	unsigned int temp_val2 = 0;
+
+	switch (psp) {
+	case POWER_SUPPLY_PROP_STATUS:
+		if (batt_state.i2c_dev){
+			/* a6 "status" reg is actually semi-health, it always shows "charge-termination" even while charging */
+			if ( (buf = kzalloc (PAGE_SIZE, GFP_KERNEL)) == NULL){
+				return -ENOMEM;
+			}
+#if 0		//Current seems to go negative if the screen is on, even when plugged into the wall
+			a6_generic_show (batt_state.i2c_dev, &a6_register_desc_arr[14].dev_attr, buf);
+			sscanf (buf, "%d", &temp_val);
+
+			if ( temp_val > CHARGING_CURR_HYSTERESIS_MIN && 
+					temp_val < CHARGING_CURR_HYSTERESIS_MAX) {
+				val->intval = POWER_SUPPLY_STATUS_FULL;
+			} else if (temp_val > 0){
+				val->intval = POWER_SUPPLY_STATUS_CHARGING;
+			} else {
+				val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
+			}
+#else
+			memset (buf, 0, PAGE_SIZE);
+			a6_generic_show (batt_state.i2c_dev, &a6_register_desc_arr[31].dev_attr, buf);
+			sscanf (buf, "%u", &temp_val2);
+
+			if ( (temp_val2 & TS2_I2C_FLAGS_2_WIRED_CHARGE) ||
+					(temp_val2 & TS2_I2C_FLAGS_2_PUCK_CHARGE)){
+				memset (buf, 0, PAGE_SIZE);
+				a6_generic_show (batt_state.i2c_dev, &a6_register_desc_arr[9].dev_attr, buf);
+				sscanf (buf, "%d", &temp_val);
+				if (temp_val == 100) {
+					val->intval = POWER_SUPPLY_STATUS_FULL;
+				} else {
+					val->intval = POWER_SUPPLY_STATUS_CHARGING;
+				}
+			} else {
+				val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
+			}
+#endif
+			kfree (buf);
+
+		} else {
+			val->intval = POWER_SUPPLY_STATUS_UNKNOWN;
+		}
+		break;
+	case POWER_SUPPLY_PROP_HEALTH:
+		if (batt_state.i2c_dev){
+			if ( (buf = kzalloc (PAGE_SIZE, GFP_KERNEL)) == NULL){
+				return -ENOMEM;
+			}
+			a6_generic_show (batt_state.i2c_dev, &a6_register_desc_arr[8].dev_attr, buf);
+			kfree (buf);
+			// TODO: parse temps and set OVERHEAT, parse "age" and set DEAD */
+		}
+
+		val->intval = POWER_SUPPLY_HEALTH_GOOD;
+		break;
+	case POWER_SUPPLY_PROP_PRESENT:
+		val->intval = 1;
+		break;
+	case POWER_SUPPLY_PROP_TECHNOLOGY:
+		val->intval = POWER_SUPPLY_TECHNOLOGY_LION;
+		break;
+	case POWER_SUPPLY_PROP_CAPACITY:
+		if (batt_state.i2c_dev){
+			if ( (buf = kzalloc (PAGE_SIZE, GFP_KERNEL)) == NULL){
+				return -ENOMEM;
+			}
+			a6_generic_show (batt_state.i2c_dev, &a6_register_desc_arr[9].dev_attr, buf);
+			sscanf (buf, "%d", &val->intval);
+			kfree (buf);
+		} else {
+			val->intval = 100;
+		}
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int a6_fish_battery_probe(struct platform_device *pdev)
+{
+	int i;
+	int rc;
+
+	/* init power supplier framework */
+	for (i = 0; i < ARRAY_SIZE(a6_fish_power_supplies); i++) {
+		rc = power_supply_register(&pdev->dev, &a6_fish_power_supplies[i]);
+		if (rc)
+			pr_err("%s: Failed to register power supply (%d)\n",
+			       __func__, rc);
+	}
+
+	return 0;
+}
+
+static struct platform_driver a6_fish_battery_driver = {
+	.probe	= a6_fish_battery_probe,
+	.driver	= {
+		.name	= "a6_fish_battery",
+		.owner	= THIS_MODULE,
+	},
+};
+
 
 /******************************************************************************
 * a6_i2c_probe()
@@ -4322,6 +4529,11 @@ static int a6_i2c_probe(struct i2c_client *client, const struct i2c_device_id *d
 #endif
 #endif
 
+	if (strncmp (dev_id->name, A6_DEVICE_0, strlen (A6_DEVICE_0)) == 0){
+		//TODO: lock
+		batt_state.i2c_dev = &client->dev;
+	}
+
 	printk(KERN_NOTICE "A6 driver initialized successfully!\n");
 	return 0;
 
@@ -4350,6 +4562,11 @@ err0:
 static int a6_i2c_remove(struct i2c_client *client)
 {
 	struct a6_device_state* state = (struct a6_device_state*)i2c_get_clientdata(client);
+
+	if (&client->dev == batt_state.i2c_dev){
+		//TODO: lock
+		batt_state.i2c_dev = NULL;
+	}
 
 	a6_remove_dev_files(state, &client->dev);
 
@@ -4433,6 +4650,9 @@ static struct i2c_driver a6_i2c_driver = {
 ***********************************************************************************/
 static int __init a6_module_init(void)
 {
+	printk(KERN_INFO "Before a6 call to platform_driver_register.\n");
+	platform_driver_register(&a6_fish_battery_driver);
+
 	printk(KERN_INFO "Before a6 call to i2c_add_driver.\n");
 	return i2c_add_driver(&a6_i2c_driver);
 }
@@ -4443,6 +4663,7 @@ static int __init a6_module_init(void)
 static void __exit a6_module_exit(void)
 {
 	i2c_del_driver(&a6_i2c_driver);
+	platform_driver_unregister(&a6_fish_battery_driver);
 }
 
 module_init(a6_module_init);

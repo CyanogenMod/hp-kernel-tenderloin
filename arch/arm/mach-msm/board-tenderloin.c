@@ -3788,6 +3788,10 @@ static struct platform_device msm_wlan_pm_device = {
 	.id = -1,
 };
 
+static struct platform_device a6_fish_battery_device = {
+	.name = "a6_fish_battery",
+};
+
 
 static int tenderloin_tp_init(int on)
 {
@@ -6898,6 +6902,7 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
 
 #ifdef CONFIG_A6
 	tenderloin_init_a6();
+	platform_device_register (&a6_fish_battery_device);
 #endif
 
 #ifdef CONFIG_MSM8X60_AUDIO
