@@ -868,3 +868,103 @@ u32 ddl_allocate_enc_hw_buffers(struct ddl_client_context *ddl)
 	}
 	return status;
 }
+
+void ddl_decoder_chroma_dpb_change(struct ddl_client_context *ddl)
+{
+	struct ddl_context *ddl_context = ddl->ddl_context;
+	struct ddl_decoder_data *decoder = &ddl->codec_data.decoder;
+	struct ddl_frame_data_tag *frame =
+			&(decoder->dp_buf.dec_pic_buffers[0]);
+	u32 luma[DDL_MAX_BUFFER_COUNT];
+	u32 chroma[DDL_MAX_BUFFER_COUNT];
+	u32 luma_size, i, dpb;
+	luma_size = decoder->dpb_buf_size.size_y;
+	dpb = decoder->dp_buf.no_of_dec_pic_buf;
+	DDL_MSG_HIGH("%s Decoder num DPB buffers = %u Luma Size = %u"
+			 __func__, dpb, luma_size);
+	if (dpb > DDL_MAX_BUFFER_COUNT)
+		dpb = DDL_MAX_BUFFER_COUNT;
+	for (i = 0; i < dpb; i++) {
+		luma[i] = DDL_OFFSET(
+			ddl_context->dram_base_a.align_physical_addr,
+			frame[i].vcd_frm.physical);
+		chroma[i] = luma[i] + luma_size;
+		DDL_MSG_LOW("%s Decoder Luma address = %x"
+			"Chroma address = %x", __func__, luma[i], chroma[i]);
+	}
+	vidc_1080p_set_decode_recon_buffers(dpb, luma, chroma);
+}
+
+u32 ddl_check_reconfig(struct ddl_client_context *ddl)
+{
+	u32 need_reconfig = true;
+	struct ddl_decoder_data *decoder = &ddl->codec_data.decoder;
+	if (decoder->cont_mode) {
+		if ((decoder->actual_output_buf_req.sz <=
+			 decoder->client_output_buf_req.sz) &&
+			(decoder->actual_output_buf_req.actual_count <=
+			 decoder->client_output_buf_req.actual_count)) {
+			need_reconfig = false;
+			if (decoder->min_dpb_num >
+				decoder->min_output_buf_req.min_count) {
+				decoder->min_output_buf_req =
+					decoder->actual_output_buf_req;
+			}
+			DDL_MSG_LOW("%s Decoder width = %u height = %u "
+				"Client width = %u height = %u\n",
+				__func__, decoder->frame_size.width,
+				 decoder->frame_size.height,
+				 decoder->client_frame_size.width,
+				 decoder->client_frame_size.height);
+		}
+	} else {
+		if ((decoder->frame_size.width ==
+			decoder->client_frame_size.width) &&
+			(decoder->frame_size.height ==
+			decoder->client_frame_size.height) &&
+			(decoder->actual_output_buf_req.sz <=
+			decoder->client_output_buf_req.sz) &&
+			(decoder->actual_output_buf_req.min_count ==
+			decoder->client_output_buf_req.min_count) &&
+			(decoder->actual_output_buf_req.actual_count ==
+			decoder->client_output_buf_req.actual_count) &&
+			(decoder->frame_size.scan_lines ==
+			decoder->client_frame_size.scan_lines) &&
+			(decoder->frame_size.stride ==
+			decoder->client_frame_size.stride))
+				need_reconfig = false;
+	}
+	return need_reconfig;
+}
+
+void ddl_handle_reconfig(u32 res_change, struct ddl_client_context *ddl)
+{
+	struct ddl_decoder_data *decoder = &ddl->codec_data.decoder;
+	if ((decoder->cont_mode) &&
+		(res_change == DDL_RESL_CHANGE_DECREASED)) {
+		DDL_MSG_LOW("%s Resolution decreased, continue decoding\n",
+				 __func__);
+		vidc_sm_get_min_yc_dpb_sizes(
+					&ddl->shared_mem[ddl->command_channel],
+					&decoder->dpb_buf_size.size_y,
+					&decoder->dpb_buf_size.size_c);
+		DDL_MSG_LOW(" %s Resolution decreased, size_y = %u"
+				" size_c = %u\n",
+				__func__,
+				decoder->dpb_buf_size.size_y,
+				decoder->dpb_buf_size.size_c);
+		ddl_decoder_chroma_dpb_change(ddl);
+		vidc_sm_set_chroma_addr_change(
+				&ddl->shared_mem[ddl->command_channel],
+				true);
+		ddl_vidc_decode_frame_run(ddl);
+	} else {
+		DDL_MSG_LOW("%s Resolution change, start realloc\n",
+				 __func__);
+		decoder->reconfig_detected = true;
+		ddl->client_state = DDL_CLIENT_WAIT_FOR_EOS_DONE;
+		ddl->cmd_state = DDL_CMD_EOS;
+		vidc_1080p_frame_start_realloc(ddl->instance_id);
+	}
+}
+
