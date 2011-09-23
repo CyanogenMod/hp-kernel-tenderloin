@@ -99,9 +99,6 @@
 #include <linux/nduid.h>
 #endif
 
-#ifdef CONFIG_BLUETOOTH_POWER_STATE
-#include <linux/bluetooth-power-pe.h>
-#endif
 #include <linux/i2c/atmel_maxtouch.h>
 
 #ifdef CONFIG_MFD_WM8994
@@ -270,7 +267,7 @@ static int __init boardtype_setup(char *boardtype_str)
 __setup("boardtype=", boardtype_setup);
 
 // Pointer to wifi/3G pin arrays
-static int *pin_table = NULL;
+int *pin_table = NULL;
 
 static u8 boardtype_is_3g(void) {
 	if (board_type >= TOPAZ_3G_PROTO) {
@@ -3500,44 +3497,10 @@ static struct platform_device board_user_pins_device = {
 };
 #endif
 
-#ifdef CONFIG_BLUETOOTH_POWER_STATE
-/*
- * Bluetooth power state driver
- */
-
-static int bt_power(unsigned int on)
-{
-	int ret = 0;
-	int gpios[] = {pin_table[BT_POWER_PIN], pin_table[BT_WAKE_PIN]};
-
-	printk(KERN_INFO "Powering %s BT\n", on?"on":"off");
-
-	if (!on) {
-		gpio_set_value(pin_table[BT_POWER_PIN], 0);
-	}
-
-	ret = configure_gpiomux_gpios(on, gpios, ARRAY_SIZE(gpios));
-
-	if (on) {
-		gpio_set_value(pin_table[BT_POWER_PIN], 1);
-	}
-
-	return ret;
-}
-
-static struct bluetooth_power_state_platform_data bt_power_state_tenderloin = {
-	.dev_name = "bt_power",
-	.bt_power = bt_power
+static struct platform_device tenderloin_rfkill = {
+	.name = "tenderloin_rfkill",
+	.id = -1,
 };
-
-static struct platform_device bluetooth_power_state_device = {
-	.name = "bt_power",
-	.id = 0,
-	.dev = {
-		.platform_data = &bt_power_state_tenderloin
-	}
-};
-#endif // CONFIG_BLUETOOTH_POWER_STATE
 
 
 #ifdef CONFIG_HRES_COUNTER
@@ -3906,9 +3869,7 @@ static struct platform_device *tenderloin_devices[] __initdata = {
 #ifdef CONFIG_USER_PINS
 	&board_user_pins_device,
 #endif
-#ifdef CONFIG_BLUETOOTH_POWER_STATE
-	&bluetooth_power_state_device,
-#endif
+	&tenderloin_rfkill,
 	&msm_device_vidc,
 #ifdef CONFIG_PMIC8058
 	&rpm_vreg_device[RPM_VREG_ID_PM8058_L0],

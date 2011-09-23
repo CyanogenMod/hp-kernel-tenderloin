@@ -142,6 +142,7 @@ obj-$(CONFIG_MACH_TENDERLOIN) += board-tenderloin.o devices-tenderloin.o
 obj-$(CONFIG_MACH_TENDERLOIN) += msm8x60-pinmux.o
 obj-$(CONFIG_MACH_TENDERLOIN) += gpiomux-tenderloin.o
 obj-$(CONFIG_MACH_TENDERLOIN) += a6_sbw_impl_tenderloin.o
+obj-$(CONFIG_MACH_TENDERLOIN) += board-tenderloin-rfkill.o
 obj-$(CONFIG_MACH_RUMP) += board-rump.o devices-rump.o
 obj-$(CONFIG_MACH_RUMP) += msm8x60-pinmux.o
 obj-$(CONFIG_MACH_RUMP) += gpiomux-rump.o
