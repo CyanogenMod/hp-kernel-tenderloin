@@ -38,6 +38,7 @@
 #include <linux/debugfs.h>
 
 #include <linux/power_supply.h>
+#include <mach/msm_hsusb.h>
 
 #include "high_level_funcs.h"
 
@@ -487,6 +488,7 @@ struct a6_device_state {
 struct a6_ps_state {
 	struct device *i2c_dev;
 	struct mutex dev_mutex;
+	enum chg_type otg_chg_type;
 } batt_state;
 
 #ifdef A6_PQ
@@ -1192,6 +1194,15 @@ static struct power_supply a6_fish_power_supplies[] = {
 	{
 		.name = "ac",
 		.type = POWER_SUPPLY_TYPE_MAINS,
+		.supplied_to = supply_list,
+		.num_supplicants = ARRAY_SIZE(supply_list),
+		.properties = a6_fish_power_properties,
+		.num_properties = ARRAY_SIZE(a6_fish_power_properties),
+		.get_property = a6_fish_power_get_property,
+	},
+	{
+		.name = "usb",
+		.type = POWER_SUPPLY_TYPE_USB,
 		.supplied_to = supply_list,
 		.num_supplicants = ARRAY_SIZE(supply_list),
 		.properties = a6_fish_power_properties,
@@ -3650,7 +3661,6 @@ static irqreturn_t a6_irq(int irq, void *dev_id)
 {
 	struct a6_device_state* state = (struct a6_device_state *)dev_id;
 	int rc;
-	int i = 0;
 
 	a6_tp_irq_count++;
 #if defined PROFILE_USAGE
@@ -3670,10 +3680,8 @@ static irqreturn_t a6_irq(int irq, void *dev_id)
 		set_bit(INT_PENDING, state->flags);
 	} else {
 		queue_work(state->ka6d_workqueue, &state->a6_irq_work);
-	}
 	
-	for (i = 0; i < ARRAY_SIZE(a6_fish_power_supplies); i++) {
-		power_supply_changed(&a6_fish_power_supplies[i]);
+		power_supply_changed(&a6_fish_power_supplies[0]);
 	}
 
 	return IRQ_HANDLED;
@@ -4185,7 +4193,10 @@ static int a6_fish_power_get_property(struct power_supply *psy,
 
 	switch (psp) {
 	case POWER_SUPPLY_PROP_ONLINE:
-		if (psy->type == POWER_SUPPLY_TYPE_MAINS && 
+		if ( ((psy->type == POWER_SUPPLY_TYPE_MAINS &&
+				batt_state.otg_chg_type == USB_CHG_TYPE__WALLCHARGER) ||
+				(psy->type == POWER_SUPPLY_TYPE_USB &&
+				batt_state.otg_chg_type == USB_CHG_TYPE__SDP)) &&
 				(batt_state.i2c_dev != NULL)){
 			if ( (buf = kzalloc (PAGE_SIZE, GFP_KERNEL)) == NULL){
 				return -ENOMEM;
@@ -4302,6 +4313,17 @@ static int a6_fish_battery_get_property(struct power_supply *psy,
 
 	return 0;
 }
+
+void a6_charger_event (int otg_chg_type)
+{
+	batt_state.otg_chg_type = otg_chg_type;
+
+	power_supply_changed(&a6_fish_power_supplies[1]);
+	power_supply_changed(&a6_fish_power_supplies[2]);
+
+	return;
+}
+EXPORT_SYMBOL (a6_charger_event);
 
 static int a6_fish_battery_probe(struct platform_device *pdev)
 {
@@ -4615,6 +4637,7 @@ static int a6_i2c_resume (struct i2c_client *dev)
 	clear_bit(IS_SUSPENDED, state->flags);
 	if (test_and_clear_bit(INT_PENDING, state->flags)) {
 		queue_work(state->ka6d_workqueue, &state->a6_irq_work);
+		power_supply_changed(&a6_fish_power_supplies[0]);
 	}
 
 	return 0;

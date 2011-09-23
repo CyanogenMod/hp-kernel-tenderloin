@@ -1225,6 +1225,9 @@ static struct msm_otg_platform_data msm_otg_pdata = {
 #ifdef CONFIG_BATTERY_MSM8X60
 	.chg_vbus_draw = msm_charger_vbus_draw,
 #endif
+#ifdef CONFIG_A6
+	.chg_connected = a6_charger_event,
+#endif
 };
 #endif
 

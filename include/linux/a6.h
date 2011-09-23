@@ -65,4 +65,7 @@ struct a6_wake_ops {
 	int	(*force_wake)(void *);
 	int	(*force_sleep)(void *);
 };
+
+void a6_charger_event (int otg_chg_type);
+
 #endif // _A6_H
