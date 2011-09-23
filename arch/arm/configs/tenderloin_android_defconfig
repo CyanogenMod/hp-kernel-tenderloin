@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Linux kernel version: 2.6.35-palm
-# Sun Sep 18 15:24:42 2011
+# Thu Sep 22 23:47:28 2011
 #
 CONFIG_ARM=y
 CONFIG_SYS_SUPPORTS_APM_EMULATION=y
@@ -917,6 +917,7 @@ CONFIG_BT_MSM_SLEEP=y
 # CONFIG_BT_HCIBFUSB is not set
 # CONFIG_BT_HCIVHCI is not set
 # CONFIG_BT_MRVL is not set
+# CONFIG_MSM_BT_POWER is not set
 # CONFIG_AF_RXRPC is not set
 CONFIG_FIB_RULES=y
 CONFIG_WIRELESS=y
@@ -937,7 +938,9 @@ CONFIG_WIRELESS_EXT_SYSFS=y
 # Some wireless drivers require a rate control algorithm
 #
 # CONFIG_WIMAX is not set
-# CONFIG_RFKILL is not set
+CONFIG_RFKILL=y
+CONFIG_RFKILL_PM=y
+# CONFIG_RFKILL_INPUT is not set
 # CONFIG_NET_9P is not set
 # CONFIG_CAIF is not set
 
@@ -995,6 +998,7 @@ CONFIG_HSUART=y
 # CONFIG_BRCM4751 is not set
 CONFIG_MDMGPIO=y
 # CONFIG_UID_STAT is not set
+# CONFIG_WL127X_RFKILL is not set
 # CONFIG_APANIC is not set
 # CONFIG_TSIF is not set
 # CONFIG_HAPTIC_ISA1200 is not set
@@ -1009,7 +1013,7 @@ CONFIG_NDUID=y
 CONFIG_USER_PINS=y
 # CONFIG_PINMUX is not set
 CONFIG_KERNEL_LOG=y
-CONFIG_BLUETOOTH_POWER_STATE=y
+# CONFIG_BLUETOOTH_POWER_STATE is not set
 CONFIG_LOW_MEMORY_NOTIFY=y
 # CONFIG_PMIC8058_BATTALARM is not set
 # CONFIG_C2PORT is not set
@@ -1196,6 +1200,7 @@ CONFIG_USB_NET_CDC_SUBSET=y
 # CONFIG_USB_EPSON2888 is not set
 # CONFIG_USB_KC2190 is not set
 # CONFIG_USB_NET_ZAURUS is not set
+# CONFIG_USB_HSO is not set
 # CONFIG_USB_NET_INT51X1 is not set
 # CONFIG_USB_IPHETH is not set
 # CONFIG_USB_SIERRA_NET is not set
@@ -2459,6 +2464,7 @@ CONFIG_ANDROID_LOW_MEMORY_KILLER=y
 #
 # Texas Instruments shared transport line discipline
 #
+# CONFIG_TI_ST is not set
 # CONFIG_ST_BT is not set
 # CONFIG_GOBI_USBNET is not set
 # CONFIG_AR6000_WLAN is not set
