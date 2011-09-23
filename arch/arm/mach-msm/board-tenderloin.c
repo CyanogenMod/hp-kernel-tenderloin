@@ -3337,7 +3337,7 @@ static struct hsuart_platform_data btuart_data = {
 
 static u64 btuart_dmamask = ~(u32)0;
 static struct platform_device btuart_device = {
-	.name = "hsuart",
+	.name = "hsuart_tty",
 	.id   =  0, // configure UART2 as hi speed uart
 	.dev  = {
 		.dma_mask           = &btuart_dmamask,

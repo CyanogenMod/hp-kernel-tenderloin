@@ -36,16 +36,20 @@
 #include <linux/time.h>
 #include <linux/hrtimer.h>
 
+#include <linux/tty.h>
+#include <linux/tty_driver.h>
+#include <linux/tty_flip.h>
+
 #include <mach/msm_hsuart.h>
 
 
-#define  DRIVER_NAME      			"hsuart"
+#define  DRIVER_NAME      			"hsuart_tty"
 #define  DRIVER_VERSION   			 (0x100)
 
 /*
  * global switch to enable debug msgs in the module
  */
-static int	_dbg_lvl_ = 0x1;
+static int	_dbg_lvl_ = 0x01;
 #define HSUART_DEBUG_LEVEL_ERR		(0x1)
 #define HSUART_DEBUG_LEVEL_INFO		(0x2)
 #define HSUART_DEBUG_LEVEL_DEBUG	(0x4)
@@ -53,7 +57,7 @@ static int	_dbg_lvl_ = 0x1;
 #define HSUART_DEBUG_LEVEL_EXIT		(0x10)
 
 
-#define HSUART_DEBUG_ENABLE			0
+#define HSUART_DEBUG_ENABLE			1
 #define HSUART_FUNC_LOG_ENABLE		0
 #if HSUART_DEBUG_ENABLE
 #define HSUART_DEBUG(args...)	{if (_dbg_lvl_ & HSUART_DEBUG_LEVEL_DEBUG) \
@@ -137,8 +141,8 @@ struct dev_ctxt {
 	unsigned long is_initilized;
 
 	/* misc char device */
-	struct miscdevice       mdev;
-	struct file_operations  fops;
+//	struct miscdevice       mdev;
+//	struct file_operations  fops;
 	struct platform_device *pdev;
 	const char             *dev_name; 
 	struct hsuart_platform_data *pdata;
@@ -185,7 +189,11 @@ struct dev_ctxt {
 	unsigned long  			rx_ttl;
 	unsigned long  			rx_dropped;
 	unsigned long  			tx_ttl;
+
+	struct tty_struct *tty;
 };
+
+struct dev_ctxt tty_info[1];
 
 /*
  * Event loggin support.
@@ -339,6 +347,62 @@ hsuart_alloc_tx_dma_buf(struct dev_ctxt* io_p_contxt)
 	}	
 	HSUART_EXIT();
 
+	return ret;
+}
+
+/**
+*
+* Helper function, used as predicate to determine how many bytes
+* can be read
+
+* @param[in][out]       io_p_lists - The lists structure to look 
+*				for the buffer in.
+
+* @return 1 in case that bytes are buffered 0 if not and for success; 
+* -EINVL in case of error.
+*
+*/
+static int
+hsuart_rx_avail(struct rxtx_lists* io_p_lists)
+{
+	int			ret = 0;
+	unsigned long		flags;
+	int			empty;
+	struct buffer_item*	p_buffer;
+
+	HSUART_ENTER();
+
+	spin_lock_irqsave(&(io_p_lists->lock), flags);
+
+	if (NULL != io_p_lists) {	
+		empty = list_empty(&(io_p_lists->full));
+		if (!empty) {
+			p_buffer = list_first_entry(&(io_p_lists->used),
+						    struct buffer_item,
+						    list_item);
+			ret = p_buffer->fullness;
+		}
+		else {
+			empty = list_empty(&(io_p_lists->used));
+			if (!empty) {
+				p_buffer = list_first_entry(&(io_p_lists->used),
+						    struct buffer_item,
+						    list_item);
+				if (p_buffer->fullness) {
+					ret = p_buffer->fullness;
+				}
+			}
+		}
+	}
+	else {
+		HSUART_ERR("%s: %s, invalid params\n",
+			DRIVER_NAME,
+			__PRETTY_FUNCTION__);
+		ret = 0;
+	}
+
+	spin_unlock_irqrestore(&(io_p_lists->lock), flags);
+	HSUART_EXIT();
 	return ret;
 }
 
@@ -1292,10 +1356,10 @@ hsuart_copy_buf_to_user(struct buffer_item* io_p_buffer,
 			p_buffer->read_index,
 			(unsigned int)o_p_buf);
 
-		ret = copy_to_user(
+		ret = memcpy(
 			o_p_buf, 
 			&(p_buffer->p_vaddr[p_buffer->read_index]),
-			count);
+			count)==0;
 		if (ret) {
 			HSUART_ERR("%s: %s, failed copying data to user err 0x%x line %d.\n",
 			    DRIVER_NAME, 
@@ -1337,10 +1401,10 @@ hsuart_copy_buf_to_user(struct buffer_item* io_p_buffer,
 
 			length2 = (count - length1);
 
-			ret = copy_to_user(
+			ret = memcpy(
 				o_p_buf, 
 				&p_buffer->p_vaddr[p_buffer->read_index],
-				length1);
+				length1)==0;
 			if (!ret) {
 				ret_cnt += length1;
 				p_buffer->fullness -= ret_cnt;
@@ -1384,10 +1448,10 @@ hsuart_copy_buf_to_user(struct buffer_item* io_p_buffer,
 
 			length1 = count;
 	
-			ret = copy_to_user(
+			ret = memcpy(
 				o_p_buf, 
 				&p_buffer->p_vaddr[p_buffer->read_index],
-				length1);
+				length1)==0;
 			ret_cnt = length1;
 			p_buffer->fullness -= ret_cnt;
 			p_buffer->read_index += ret_cnt;
@@ -1413,18 +1477,15 @@ hsuart_copy_buf_to_user(struct buffer_item* io_p_buffer,
 	HSUART_EXIT();
 	return ret;
 }
-static ssize_t 
-hsuart_read(struct file *file, char __user* o_p_buf, size_t count, 
-              loff_t *ppos)
+static int
+hsuart_read(struct dev_ctxt* p_contxt, const unsigned char *buf, int count)
 {
-	struct dev_ctxt*	p_contxt;
 	unsigned long		flags;
 	int			ret;
 	struct buffer_item*	p_buffer = NULL;
 	int			copied_cnt = 0;
 
 //	p_contxt = container_of(file->f_op, struct dev_ctxt, fops);
-	p_contxt = file->private_data;
 
 	HSUART_ENTER();
 	HSUART_DEBUG("%s: %s called, count %d\n",
@@ -1444,9 +1505,10 @@ hsuart_read(struct file *file, char __user* o_p_buf, size_t count,
 		if ((0 == ret) && (NULL != p_buffer)) {
 			bytes_to_copy = min(p_buffer->fullness, (int)(count - copied_cnt)); 
 
+			printk("Going to read, fullness %d, count %d, copied %d\n", p_buffer->fullness, count ,copied_cnt);
 			ret = hsuart_copy_buf_to_user(
 						p_buffer, 
-						o_p_buf + copied_cnt, 
+						buf + copied_cnt, 
 						bytes_to_copy);
 			if (0 <= ret) {
 				BUG_ON(ret != bytes_to_copy);
@@ -1458,7 +1520,7 @@ hsuart_read(struct file *file, char __user* o_p_buf, size_t count,
 					__PRETTY_FUNCTION__,
 					(unsigned int)p_buffer,
 					(unsigned int)p_buffer->read_index,
-					(unsigned int)o_p_buf,
+					(unsigned int)buf,
 					copied_cnt);
 				ret = -EFAULT;
 				goto done_read_copy;
@@ -1490,12 +1552,10 @@ hsuart_read(struct file *file, char __user* o_p_buf, size_t count,
 			/*
 			 * No buffer is available
 			 */
-			if( file->f_flags & O_NONBLOCK) {
-				if (0 == copied_cnt) { 
-					copied_cnt = -EAGAIN;
-				}
-				goto done_read_copy;
+			if (0 == copied_cnt) { 
+				copied_cnt = -EAGAIN;
 			}
+			goto done_read_copy;
 			ret = wait_event_interruptible(
 					p_contxt->got_rx_buffer, 
 					(1 == hsuart_rx_data_exist(&(p_contxt->rx_lists))));
@@ -1536,6 +1596,7 @@ hsuart_copy_user_to_buf(struct buffer_item* io_p_buffer, const char* i_p_buf, in
 	int			ret		= 0;
 	int			ret_cnt		= 0;
 	int			err		= 0;
+	int i;
 
 	HSUART_DEBUG("%s: %s called, io_p_buffer 0x%x, i_p_buf 0x%x, count %d\n", 
 			DRIVER_NAME, 
@@ -1552,15 +1613,21 @@ hsuart_copy_user_to_buf(struct buffer_item* io_p_buffer, const char* i_p_buf, in
 
 	BUG_ON(NULL == io_p_buffer);
 	BUG_ON(NULL == i_p_buf);
+
+
+	printk("Wrote: ");
+	for(i=0; i < count; i++)
+		printk("%2.2X ", i_p_buf[i]);
+	printk("\n");
 	/*
 	 * Write pointer is smaller than the read pointer, we can copy
 	 * the whole thing...
 	 */
 	if (p_buffer->read_index <= p_buffer->write_index) {
-		err = copy_from_user(
+		err = memcpy(
 			&(p_buffer->p_vaddr[p_buffer->write_index]), 
 			i_p_buf, 
-			count);
+			count)==0;
 		if (err) {
 			HSUART_ERR("%s:%s, copy from user failed p_vaddr0x%x, write_index0x%x, i_p_buf0x%x, count%d\n",
 				DRIVER_NAME, 
@@ -1583,15 +1650,15 @@ hsuart_copy_user_to_buf(struct buffer_item* io_p_buffer, const char* i_p_buf, in
 	 */
 	else {
 		int length1 = p_buffer->size - p_buffer->write_index;
-		err = copy_from_user(
+		err = memcpy(
 			&(p_buffer->p_vaddr[p_buffer->write_index]), 
 			i_p_buf, 
-			length1);
+			length1)==1;
 		if (!err) {
-			err = copy_from_user(
+			err = memcpy(
 				p_buffer->p_vaddr,
 				i_p_buf + length1,
-				count - length1);
+				count - length1)==0;
 			if (err) {
 				HSUART_ERR("%s:%s, copy from user failed p_vaddr0x%x, write_index0x%x, i_p_buf0x%x, count%d\n",
 					DRIVER_NAME, 
@@ -1631,8 +1698,7 @@ done_copy:
 }
 
 static ssize_t 
-hsuart_write(struct file *file, const char __user* i_p_buf, size_t count, 
-               loff_t *ppos)
+hsuart_write(struct tty_struct *tty, const unsigned char *buf, int count)
 {
 	struct dev_ctxt*	p_context;
 	ssize_t			ret		= 0;
@@ -1651,7 +1717,7 @@ hsuart_write(struct file *file, const char __user* i_p_buf, size_t count,
 	unsigned long		flags;
 
 //	p_context = container_of(file->f_op, struct dev_ctxt, fops);
-	p_context = file->private_data;
+	p_context = tty->driver_data;
 	HSUART_DEBUG("%s: %s called, count %d\n",
 			p_context->dev_name, __PRETTY_FUNCTION__, count);
 
@@ -1666,10 +1732,14 @@ hsuart_write(struct file *file, const char __user* i_p_buf, size_t count,
 			 */
 			available_bytes = p_buffer->size - p_buffer->fullness;
 			cnt = min(bytes_to_copy, available_bytes);
+
+			printk("Going to write, size %d, fullness %d, count %d, avail %d\n", p_buffer->size, p_buffer->fullness, bytes_to_copy , available_bytes);
+
 			ret = hsuart_copy_user_to_buf(
 						p_buffer, 
-						i_p_buf + copied_cnt, 
+						buf + copied_cnt, 
 						cnt);
+			ret = cnt;
 			if (ret >= 0) {
 				BUG_ON(cnt != ret);
 				copied_cnt += ret;
@@ -1703,7 +1773,7 @@ hsuart_write(struct file *file, const char __user* i_p_buf, size_t count,
 			}
 		}
 		else {
-			if (file->f_flags & O_NONBLOCK) {
+			{
 				HSUART_DEBUG("%s:%s, no more free space, try again later...\n",
 					p_context->dev_name, 
 					__PRETTY_FUNCTION__);
@@ -1995,7 +2065,7 @@ hsuart_ioctl_set_uart_mode(struct dev_ctxt* io_p_context,
 		ret = -EFAULT; 
 		goto Done;
 	}
-	HSUART_DEBUG("%s, speed 0x%x, flags 0x%x\n",
+	printk("%s, speed 0x%x, flags 0x%x\n",
 		__FUNCTION__,mode.speed, mode.flags);
 
 	if(mode.speed != io_p_context->uart_speed ) {
@@ -2036,15 +2106,15 @@ Done:
 }
 
 static int 
-hsuart_ioctl( struct inode * inode, struct file *file, 
-              unsigned int cmd, unsigned long args)
+hsuart_ioctl(struct tty_struct *tty, struct file *file,
+			 unsigned int cmd, unsigned long args)
 {
-	int 				ret = 0;
+	int 				ret = -ENOIOCTLCMD;;
 	struct dev_ctxt* 		p_contxt;
 	void *				usr_ptr   = (void*) (args);
 	int   				usr_bytes = _IOC_SIZE(cmd);
 
-	p_contxt = container_of(file->f_op, struct dev_ctxt, fops);
+	p_contxt = (struct dev_ctxt*)tty->driver_data;
 
 	HSUART_ENTER();
 	HSUART_DEBUG("%s, cmd 0x%x, args 0x%lx\n",
@@ -2133,14 +2203,16 @@ Done:
 }
 
 static int 
-hsuart_open(struct inode *inode, struct file *file)
+hsuart_open(struct tty_struct *tty, struct file *f)
 {
 	struct dev_ctxt*	p_context;
-	int			ret;
+	int			ret=0;
 
 	HSUART_ENTER();
 
-	p_context = container_of(file->f_op, struct dev_ctxt, fops);
+	p_context = tty_info + tty->index;
+	tty->driver_data = p_context;
+	p_context->tty = tty;
 
 	HSUART_DEBUG( " Hsuart open id %d opened %d initialized %d\n" , 
                          p_context->hsuart_id, 
@@ -2178,12 +2250,9 @@ hsuart_open(struct inode *inode, struct file *file)
 	/*
 	 * attach private data to the file handle for future use
 	 */
-	file->private_data = p_context;
 	p_context->tx_ttl = 0;
 	p_context->rx_ttl = 0;
 	p_context->rx_dropped = 0;
-
-	ret = nonseekable_open(inode, file);
     
 	HSUART_EXIT();
 
@@ -2191,14 +2260,14 @@ hsuart_open(struct inode *inode, struct file *file)
 }
 
 static int 
-hsuart_close(struct inode *inode, struct file *file)
+hsuart_close(struct tty_struct *tty, struct file *f)
 {
 	struct dev_ctxt*	p_contxt;
 	int			ret = 0;
 
 	HSUART_ENTER();
 
-	p_contxt = container_of(file->f_op, struct dev_ctxt, fops);
+	p_contxt = tty->driver_data;
 
 	HSUART_DEBUG( " Hsuart close id %d opened %d initialized %d\n" , 
                          p_contxt->hsuart_id, 
@@ -2218,6 +2287,43 @@ hsuart_close(struct inode *inode, struct file *file)
 	return ret;
 }
 
+static int hsuart_write_room(struct tty_struct *tty)
+{
+	return 4096;
+}
+
+static int hsuart_chars_in_buffer(struct tty_struct *tty)
+{
+	struct dev_ctxt*	p_contxt;
+	p_contxt = tty->driver_data;
+	return 0;//hsuart_rx_avail(&(p_contxt->rx_lists));
+}
+
+char rcv_buf[4096];
+void hsuart_tty_flip(void)
+{
+	struct dev_ctxt*	p_contxt=tty_info;
+	int bytes;
+	char *ptr = rcv_buf;
+	struct tty_struct *tty = p_contxt->tty;
+	int i=0;
+
+	bytes = hsuart_rx_avail(&(p_contxt->rx_lists));
+	if(bytes<=0)
+		return;
+
+	hsuart_read(p_contxt,rcv_buf,bytes);
+
+	printk("Bytes: \n");
+	for(i=0; i < bytes; i++)
+		printk("%2.2X ", rcv_buf[i]);
+	printk("\n");
+
+	tty_insert_flip_string(tty, ptr, bytes);
+	tty_flip_buffer_push(tty);
+}
+
+#if 0
 static struct file_operations hsuart_fops = {
 	.llseek  = no_llseek,
 	.read    = hsuart_read,
@@ -2227,6 +2333,19 @@ static struct file_operations hsuart_fops = {
 	.ioctl   = hsuart_ioctl,
 	.open    = hsuart_open,
 	.release = hsuart_close,
+};
+#endif
+
+static struct tty_operations uart_tty_ops = {
+	.open = hsuart_open,
+	.close = hsuart_close,
+	.write = hsuart_write,
+	.write_room = hsuart_write_room,
+	.chars_in_buffer = hsuart_chars_in_buffer,
+//	.unthrottle = hsuart_unthrottle,
+//	.tiocmget = hsuart_tiocmget,
+//	.tiocmset = hsuart_tiocmset,
+	.ioctl = hsuart_ioctl,
 };
 
 
@@ -2256,10 +2375,16 @@ hsuart_remove ( struct platform_device *dev )
 	return ret;	 
 }
 
+struct platform_driver hsuart_dummy_driver;
+static int hsuart_dummy_probe(struct platform_device *pdev)
+{
+	return 0;
+}
 
 static int __devinit 
 hsuart_probe(struct platform_device  *dev)
 {
+	static struct tty_driver *	tty_driver;
 	struct hsuart_platform_data*	p_data;
 	struct dev_ctxt*		p_contxt = NULL;
 	int				ret;
@@ -2272,10 +2397,8 @@ hsuart_probe(struct platform_device  *dev)
 		return -ENODEV;
 	}
 
-	p_contxt = kzalloc (sizeof(struct dev_ctxt), GFP_KERNEL);
-	if(NULL == p_contxt) { 
-		return -ENOMEM;
-	}
+	p_contxt = tty_info;
+
 	/* Attach the context to its device */
 	platform_set_drvdata(dev, p_contxt);
 
@@ -2321,17 +2444,25 @@ hsuart_probe(struct platform_device  *dev)
 		goto probe_cleanup;
 	}
 
-	memcpy(&p_contxt->fops, &hsuart_fops, sizeof(struct file_operations));
+	//memcpy(&p_contxt->fops, &hsuart_fops, sizeof(struct file_operations));
+	tty_driver = alloc_tty_driver(1);
+	tty_driver->owner = THIS_MODULE;
+	tty_driver->driver_name = "hsuart_tty";
+	tty_driver->name = "ttyHS"; //p_contxt->dev_name;
+	tty_driver->major = 90;
+	tty_driver->minor_start = 0;
+	tty_driver->type = TTY_DRIVER_TYPE_SERIAL;
+	tty_driver->subtype = SERIAL_TYPE_NORMAL;
+	tty_driver->init_termios = tty_std_termios;
+	tty_driver->init_termios.c_iflag = 0;
+	tty_driver->init_termios.c_oflag = 0;
+	tty_driver->init_termios.c_cflag = B115200 | CS8 | CREAD;
+	tty_driver->init_termios.c_lflag = 0;
+	tty_driver->flags = TTY_DRIVER_RESET_TERMIOS |
+		TTY_DRIVER_REAL_RAW | TTY_DRIVER_INSTALLED;//TTY_DRIVER_DYNAMIC_DEV;
+	tty_set_operations(tty_driver, &uart_tty_ops);
 
-	/* Init & register misc device */
-	p_contxt->mdev.name	= p_contxt->dev_name;
-	p_contxt->mdev.minor	= MISC_DYNAMIC_MINOR;
-	p_contxt->mdev.fops 	= &p_contxt->fops;
-	
-	ret = misc_register(&p_contxt->mdev);
-	if (ret) {
-		goto probe_cleanup;
-	}
+	tty_register_driver(tty_driver);
 
 	p_contxt->uart_flags = p_data->uart_mode; 
 	p_contxt->uart_speed = p_data->uart_speed;
@@ -2339,7 +2470,14 @@ hsuart_probe(struct platform_device  *dev)
 	init_waitqueue_head(&(p_contxt->got_rx_buffer));
 	init_waitqueue_head(&(p_contxt->got_tx_buffer));
 
-	HSUART_INFO("%s:created '%s' device on UART %d\n", 
+//	tty_register_device(tty_driver, 0, 0);
+
+	hsuart_dummy_driver.probe = hsuart_dummy_probe;
+	hsuart_dummy_driver.driver.name = "whatev";
+	hsuart_dummy_driver.driver.owner = THIS_MODULE;
+	ret = platform_driver_register(&hsuart_dummy_driver);
+
+	printk("%s:created '%s' device on UART %d\n", 
 	        	DRIVER_NAME, 
 			p_contxt->dev_name, 
 			p_contxt->uart_port_number );

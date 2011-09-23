@@ -50,7 +50,7 @@ obj-$(CONFIG_MSM_MEMORY_LOW_POWER_MODE_SUSPEND_DEEP_POWER_DOWN) \
 obj-$(CONFIG_PMIC8058_XOADC) += pmic8058-xoadc.o
 obj-$(CONFIG_PMIC8058_MISC) += pmic8058-misc.o
 
-obj-$(CONFIG_HSUART) 			+= hsuart.o
+obj-$(CONFIG_HSUART) 			+= hsuart.o hsuart_tty.o
 obj-$(CONFIG_NDUID)		+= nduid.o
 obj-$(CONFIG_USER_PINS)		+= user-pins.o
 obj-$(CONFIG_PINMUX)		+= pinmux.o

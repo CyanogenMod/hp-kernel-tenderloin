@@ -1093,6 +1093,8 @@ MSM_HSUART_DEBUG("%s, write_index = %d; fullness = %d; valid_byte_cnt = %d\n",
 * @return None.
 *
 */
+void hsuart_tty_flip(void);
+
 static void
 __msm_hsuart_read_dm_worker(struct work_struct* io_p_work)
 {
@@ -1162,6 +1164,7 @@ __msm_hsuart_read_dm_worker(struct work_struct* io_p_work)
 	}
 
 	MSM_HSUART_EXIT();
+	hsuart_tty_flip();
 }
 
 static int __msm_hsuart_suspend(struct hsuart_context* p_context) 
