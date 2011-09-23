@@ -105,7 +105,7 @@ static struct rtac_voice	rtac_voice_data;
 static u32			rtac_voice_payload_size;
 static u32			rtac_voice_user_buf_size;
 static u8			*rtac_voice_buffer;
-
+static u32			voice_session_id[RTAC_MAX_ACTIVE_VOICE_COMBOS];
 
 
 struct mutex			rtac_dev_ctrl_mutex;
@@ -303,6 +303,8 @@ void set_rtac_voice_data(int idx, struct voice_data *v)
 	rtac_voice_data.voice[idx].cvs_handle = v->cvs_handle;
 	rtac_voice_data.voice[idx].cvp_handle = v->cvp_handle;
 
+	/* Store session ID for voice RTAC */
+	voice_session_id[idx] = v->session_id;
 }
 
 void rtac_add_voice(struct voice_data *v)
@@ -342,6 +344,7 @@ void shift_voice_devices(u32 idx)
 		memcpy(&rtac_voice_data.voice[idx],
 			&rtac_voice_data.voice[idx + 1],
 			sizeof(rtac_voice_data.voice[idx]));
+		voice_session_id[idx] = voice_session_id[idx + 1];
 	}
 }
 
@@ -360,6 +363,8 @@ void rtac_remove_voice(struct voice_data *v)
 				rtac_voice_data.num_of_voice_combos], 0,
 				sizeof(rtac_voice_data.voice
 				[rtac_voice_data.num_of_voice_combos]));
+			voice_session_id[rtac_voice_data.num_of_voice_combos]
+				= 0;
 			break;
 		}
 	}
@@ -367,6 +372,19 @@ void rtac_remove_voice(struct voice_data *v)
 	return;
 }
 
+static int get_voice_index(u32 cvs_handle)
+{
+	u32 i;
+
+	for (i = 0; i < rtac_voice_data.num_of_voice_combos; i++) {
+		if (rtac_voice_data.voice[i].cvs_handle == cvs_handle)
+			return i;
+	}
+
+	pr_err("%s: No voice index for CVS handle %d found returning 0\n",
+	       __func__, cvs_handle);
+	return 0;
+}
 
 
 /* ADM APR */
@@ -825,7 +843,8 @@ u32 send_voice_apr(u32 mode, void *buf, u32 opcode)
 		payload_size);
 	voice_params.src_svc = 0;
 	voice_params.src_domain = APR_DOMAIN_APPS;
-	voice_params.src_port = 0;
+	voice_params.src_port = voice_session_id[
+					get_voice_index(dest_port)];
 	voice_params.dest_svc = 0;
 	voice_params.dest_domain = APR_DOMAIN_MODEM;
 	voice_params.dest_port = dest_port;
