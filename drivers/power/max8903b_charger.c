@@ -78,7 +78,8 @@ static int max8903b_current_setup(enum max8903b_current value)
 		case CURRENT_1500MA:
 		case CURRENT_2000MA:
 			gpio_set_value(pdevice_resource->DCM_in, pdevice_resource->DCM_in_polarity ? 0 : 1); /* DC mode */
-			pdevice_resource->set_DC_CHG_Mode_current(value);
+			if (pdevice_resource->set_DC_CHG_Mode_current)
+				pdevice_resource->set_DC_CHG_Mode_current(value);
 			gpio_set_value(pdevice_resource->CEN_N_in, pdevice_resource->CEN_N_in_polarity ? 1 : 0);  /* charger enable */
 			printk(KERN_INFO "%s: CURRENT_750(4), 900(5), 1000(6), 1400(7), 2000MA(9): %d\n", __func__, value);
 			break;
@@ -196,6 +197,53 @@ static ssize_t store_currentlimit(struct device *dev, struct device_attribute *a
 
 	return count;
 }
+
+/* 
+ * Callback for msm72k_otg to notify charge supplied by phy.
+ * Current draw defaults to 500mA. WebOS seems to use the sysfs to
+ * set current_limit on usb plugin.
+ */
+//TODO: move usb/ac ps here, but then puck charger status won't show up.
+void chg_vbus_draw_8903b (unsigned ma)
+{
+	enum max8903b_current value;
+	//printk(KERN_INFO "store_currentlimit! \n");
+
+	switch (ma){
+#if 0
+		/* We get 4 CURRENT_ZERO notifications before the correct one 
+		 * during usb connects. usb doesn't send CURRENT_ZERO  notifications
+		 * during unplug anyway
+		 */
+		case 0:
+			value = CURRENT_ZERO; break;
+#endif
+		case 100:
+			value =  CURRENT_100MA; break;
+		case 500:
+			value = CURRENT_500MA; break;
+		case 750:
+			value = CURRENT_750MA; break;
+		case 900:
+			value = CURRENT_900MA; break;
+		case 1000:
+			value = CURRENT_1000MA; break;
+		case 1400:
+			value = CURRENT_1400MA; break;
+		case 1500:
+			value = CURRENT_1500MA; break;
+		case 2000:
+			value = CURRENT_2000MA; break;
+		default:
+			printk(KERN_INFO "Invalid charging command, ma: %d\n", ma);
+			return;
+	}
+
+	max8903b_current_setup(value);
+
+	return;
+}
+EXPORT_SYMBOL (chg_vbus_draw_8903b);
 
 
 /* /sys/power/charger/chargerstatus */

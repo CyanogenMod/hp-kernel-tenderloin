@@ -1222,8 +1222,10 @@ static struct msm_otg_platform_data msm_otg_pdata = {
 	.ldo_enable		 = msm_hsusb_ldo_enable,
 	.config_vddcx            = msm_hsusb_config_vddcx,
 	.init_vddcx              = msm_hsusb_init_vddcx,
-#ifdef CONFIG_BATTERY_MSM8X60
+#if defined(CONFIG_BATTERY_MSM8X60)
 	.chg_vbus_draw = msm_charger_vbus_draw,
+#elif defined (CONFIG_MAX8903B_CHARGER)
+	.chg_vbus_draw = chg_vbus_draw_8903b,
 #endif
 #ifdef CONFIG_A6
 	.chg_connected = a6_charger_event,
