@@ -3276,6 +3276,76 @@ static struct platform_device *early_regulators[] __initdata = {
 	&rpm_vreg_device[RPM_VREG_ID_PM8058_S1],
 #endif
 };
+#ifdef CONFIG_HSUART
+
+static int btuart_pin_mux(int on)
+{
+	int ret = 0;
+	int gpios[] = {UART1DM_CTS_GPIO, UART1DM_RX_GPIO, UART1DM_TX_GPIO};
+
+	printk(KERN_INFO "btuart_pin_mux: %s\n", on?"on":"off");
+
+	ret = configure_gpiomux_gpios(on, gpios, ARRAY_SIZE(gpios));
+
+	return ret;
+}
+
+static int btuart_deassert_rts(int deassert)
+{
+	int rc = 0;
+	static int active = 0;
+	printk(KERN_INFO "btuart_deassert_rts: %d(%s)\n", deassert, deassert?"put":"get");
+	if (deassert) {
+		if (active) {
+			rc = msm_gpiomux_put(UART1DM_RTS_GPIO);
+			if (!rc)
+				active = 0;
+		}
+	} else {
+		if (!active) {
+			rc = msm_gpiomux_get(UART1DM_RTS_GPIO);
+			if (!rc)
+				active = 1;
+		}
+	}
+
+	return rc;
+}
+
+
+/*
+ * BT High speed UART interface
+ */
+static struct hsuart_platform_data btuart_data = {
+	.dev_name   = "ttyHS0",
+	.uart_mode  = HSUART_MODE_FLOW_CTRL_NONE | HSUART_MODE_PARITY_NONE,
+	.uart_speed = HSUART_SPEED_115K,
+	.options    = HSUART_OPTION_DEFERRED_LOAD | HSUART_OPTION_TX_PIO | HSUART_OPTION_RX_DM ,
+
+	.tx_buf_size = 512,
+	.tx_buf_num  = 64,
+	.rx_buf_size = 512,
+	.rx_buf_num  = 64,
+	.max_packet_size = 450, // ~450
+	.min_packet_size = 6,   // min packet size
+	.rx_latency      = 10, // in bytes at current speed
+	.p_board_pin_mux_cb = btuart_pin_mux,
+	.p_board_config_gsbi_cb = board_gsbi6_init,
+	.p_board_rts_pin_deassert_cb = btuart_deassert_rts,
+//	.rts_pin         = 145,   // uart rts line pin
+};
+
+static u64 btuart_dmamask = ~(u32)0;
+static struct platform_device btuart_device = {
+	.name = "hsuart",
+	.id   =  0, // configure UART2 as hi speed uart
+	.dev  = {
+		.dma_mask           = &btuart_dmamask,
+		.coherent_dma_mask  = 0xffffffff,
+		.platform_data      = &btuart_data,
+	}
+};
+#endif // CONFIG_HSUART
 
 #ifdef CONFIG_KEYBOARD_GPIO_PE
 static struct gpio_keys_button board_gpio_keys_buttons[] = {
@@ -3826,6 +3896,9 @@ static struct platform_device *tenderloin_devices[] __initdata = {
 #endif
 #if defined(CONFIG_MSM_RPM_LOG) || defined(CONFIG_MSM_RPM_LOG_MODULE)
 	&msm_rpm_log_device,
+#endif
+#ifdef CONFIG_HSUART
+	&btuart_device,
 #endif
 #ifdef CONFIG_HRES_COUNTER
 	&hres_counter_device,

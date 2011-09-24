@@ -230,7 +230,7 @@ static struct resource msm_uart1_dm_resources[] = {
 static u64 msm_uart_dm1_dma_mask = DMA_BIT_MASK(32);
 
 struct platform_device msm_device_uart_dm1 = {
-        .name = "msm_serial_hs",
+	.name = "msm_uartdm",
 	.id = 0,
 	.num_resources = ARRAY_SIZE(msm_uart1_dm_resources),
 	.resource = msm_uart1_dm_resources,
@@ -1781,7 +1781,6 @@ struct clk_lookup msm_clocks_8x60[] = {
 	CLK_8X60("gsbi_pclk",		GSBI5_P_CLK, "spi_qsd.2", OFF),
 	CLK_8X60("gsbi_pclk",		GSBI5_P_CLK, "qup_i2c.9", OFF),
 	CLK_8X60("uartdm_pclk",		GSBI6_P_CLK, "msm_uartdm.0", OFF),
-	CLK_8X60("uartdm_pclk",		GSBI6_P_CLK, "msm_serial_hs.0", OFF),
 	CLK_8X60("gsbi_pclk",		GSBI7_P_CLK, "qup_i2c.4", OFF),
 	CLK_8X60("gsbi_pclk",		GSBI8_P_CLK, "qup_i2c.3", OFF),
 	CLK_8X60("gsbi_pclk",		GSBI9_P_CLK, "msm_serial_hsl.1", OFF),
