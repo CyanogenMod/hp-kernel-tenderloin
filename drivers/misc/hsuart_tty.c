@@ -57,7 +57,7 @@ static int	_dbg_lvl_ = 0x01;
 #define HSUART_DEBUG_LEVEL_EXIT		(0x10)
 
 
-#define HSUART_DEBUG_ENABLE			1
+#define HSUART_DEBUG_ENABLE			0
 #define HSUART_FUNC_LOG_ENABLE		0
 #if HSUART_DEBUG_ENABLE
 #define HSUART_DEBUG(args...)	{if (_dbg_lvl_ & HSUART_DEBUG_LEVEL_DEBUG) \
@@ -1505,7 +1505,7 @@ hsuart_read(struct dev_ctxt* p_contxt, const unsigned char *buf, int count)
 		if ((0 == ret) && (NULL != p_buffer)) {
 			bytes_to_copy = min(p_buffer->fullness, (int)(count - copied_cnt)); 
 
-			printk("Going to read, fullness %d, count %d, copied %d\n", p_buffer->fullness, count ,copied_cnt);
+//			printk("Going to read, fullness %d, count %d, copied %d\n", p_buffer->fullness, count ,copied_cnt);
 			ret = hsuart_copy_buf_to_user(
 						p_buffer, 
 						buf + copied_cnt, 
@@ -1614,11 +1614,13 @@ hsuart_copy_user_to_buf(struct buffer_item* io_p_buffer, const char* i_p_buf, in
 	BUG_ON(NULL == io_p_buffer);
 	BUG_ON(NULL == i_p_buf);
 
+#if 0
 
 	printk("Wrote: ");
 	for(i=0; i < count; i++)
 		printk("%2.2X ", i_p_buf[i]);
 	printk("\n");
+#endif
 	/*
 	 * Write pointer is smaller than the read pointer, we can copy
 	 * the whole thing...
@@ -1733,7 +1735,7 @@ hsuart_write(struct tty_struct *tty, const unsigned char *buf, int count)
 			available_bytes = p_buffer->size - p_buffer->fullness;
 			cnt = min(bytes_to_copy, available_bytes);
 
-			printk("Going to write, size %d, fullness %d, count %d, avail %d\n", p_buffer->size, p_buffer->fullness, bytes_to_copy , available_bytes);
+//			printk("Going to write, size %d, fullness %d, count %d, avail %d\n", p_buffer->size, p_buffer->fullness, bytes_to_copy , available_bytes);
 
 			ret = hsuart_copy_user_to_buf(
 						p_buffer, 
@@ -2313,12 +2315,12 @@ void hsuart_tty_flip(void)
 		return;
 
 	hsuart_read(p_contxt,rcv_buf,bytes);
-
+#if 0
 	printk("Bytes: \n");
 	for(i=0; i < bytes; i++)
 		printk("%2.2X ", rcv_buf[i]);
 	printk("\n");
-
+#endif
 	tty_insert_flip_string(tty, ptr, bytes);
 	tty_flip_buffer_push(tty);
 }
