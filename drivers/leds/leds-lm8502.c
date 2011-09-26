@@ -33,6 +33,7 @@
 #include <linux/delay.h>
 #include <linux/gpio.h>
 #include <linux/slab.h>
+#include "../staging/android/timed_output.h"
 #include "leds-lm8502.h"
 
 
@@ -77,7 +78,14 @@ struct lm8502_device_state {
     struct dentry        *debug_dir;
     u8 addr;
     u8 value;
+
+    struct hrtimer vib_timer;
+    struct timed_output_dev timed_dev;
+    spinlock_t spinlock;
+    struct work_struct work;
+    int state;
 };
+
 
 struct engine_cmd {
     struct lm8502_device_state *context;
@@ -122,6 +130,9 @@ static struct brightness_entry torch_brightness_map[] = {
 };
 
 static struct lm8502_device_state *lm8502_state;
+static struct workqueue_struct *lm8502_vib_wq;
+
+
 
 static u8 lm8502_get_closest_flash_current(u16 desired_current)
 {
@@ -958,6 +969,76 @@ static void lm8502_set_brightness(struct led_classdev *led_cdev,
     return;
 }
 
+static void lm8502_vib_enable(struct timed_output_dev *dev, int value)
+{
+	struct lm8502_device_state *vib = container_of(dev,
+            struct lm8502_device_state, timed_dev);
+	unsigned long flags;
+
+	hrtimer_cancel(&vib->vib_timer);
+	spin_lock_irqsave(&vib->spinlock, flags);
+#ifdef DEBUG
+	printk("%s(parent:%s): vibrates %d msec\n",
+			current->comm, current->parent->comm, value);
+#endif
+	if (value == 0)
+		vib->state = 0;
+	else {
+		vib->state = 1;
+		hrtimer_start(&vib->vib_timer,
+			      ktime_set(value / 1000, (value % 1000) * 1000000),
+			      HRTIMER_MODE_REL);
+	}
+	spin_unlock_irqrestore(&vib->spinlock, flags);
+	queue_work_on(0, lm8502_vib_wq, &vib->work);
+}
+
+static int lm8502_vib_set(struct lm8502_device_state *vib, int on)
+{
+    int rc;
+	if (on) {
+        rc =lm8502_i2c_write_reg(vib->i2c_dev, HAPTIC_FEEDBACK_CTRL,
+            0x02 + !!(vib->pdata.vib_invert_direction ^ vib->vib_direction));
+	} else {
+        rc = lm8502_i2c_write_reg(vib->i2c_dev, HAPTIC_FEEDBACK_CTRL, 0);
+	}
+    return rc;
+}
+
+static void lm8502_vib_update(struct work_struct *work)
+{
+	struct lm8502_device_state *vib = container_of(work,
+            struct lm8502_device_state, work);
+
+	lm8502_vib_set(vib, vib->state);
+}
+
+
+static int lm8502_vib_get_time(struct timed_output_dev *dev)
+{
+	struct lm8502_device_state *vib = container_of(dev,
+            struct lm8502_device_state, timed_dev);
+
+	if (hrtimer_active(&vib->vib_timer)) {
+		ktime_t r = hrtimer_get_remaining(&vib->vib_timer);
+		return r.tv.sec * 1000 + r.tv.nsec / 1000000;
+	} else
+		return 0;
+}
+
+static enum hrtimer_restart lm8502_vib_timer_func(struct hrtimer *timer)
+{
+	struct lm8502_device_state *vib = container_of(timer,
+            struct lm8502_device_state, vib_timer);
+#ifdef DEBUG
+	printk("%s\n", __func__);
+#endif
+	vib->state = 0;
+	queue_work_on(0, lm8502_vib_wq, &vib->work);
+	return HRTIMER_NORESTART;
+}
+
+
 static void lm8502_notify(struct work_struct *work)
 {
     u8 reg;
@@ -1426,6 +1507,24 @@ static int lm8502_i2c_probe(struct i2c_client *client, const struct i2c_device_i
     state->mdev.minor = MISC_DYNAMIC_MINOR;
     state->mdev.fops = &state->fops;
 
+    spin_lock_init(&state->spinlock);
+    INIT_WORK(&state->work, lm8502_vib_update);
+    lm8502_vib_wq = create_singlethread_workqueue("lm8502_vib_wq");
+    if (!lm8502_vib_wq) {
+        printk("%s: create_singlethread_workqueue failed\n", __func__);
+    }
+
+    hrtimer_init(&state->vib_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+    state->vib_timer.function = lm8502_vib_timer_func;
+
+    state->timed_dev.name = "vibrator";
+    state->timed_dev.get_time = lm8502_vib_get_time;
+    state->timed_dev.enable = lm8502_vib_enable;
+
+    if(timed_output_dev_register(&state->timed_dev) < 0)
+        printk(KERN_ERR "LM8502: unable to register timed_output dev\n");
+
+
     ret = misc_register(&state->mdev);
     if(ret) {
         printk(KERN_ERR "LM8502: Failed to create /dev/lm8502\n");
@@ -1728,6 +1827,10 @@ static int lm8502_i2c_suspend(struct i2c_client *client, pm_message_t pm_state)
         lm8502_i2c_read_reg(state->i2c_dev, ENGINE_CNTRL1, &enable_reg);
         lm8502_i2c_write_reg(state->i2c_dev, ENGINE_CNTRL1, 0);
     }
+
+    hrtimer_cancel(&state->vib_timer);
+    cancel_work_sync(&state->work);
+    lm8502_vib_set(state, 0);
 
     state->suspended = 1;
 
