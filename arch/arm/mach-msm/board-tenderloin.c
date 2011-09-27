@@ -40,6 +40,7 @@
 #include <linux/cy8ctma395.h>
 #include <linux/i2c/lsm303dlh.h>
 #include <linux/mpu.h>
+#include <linux/isl29023.h>
 
 #ifdef CONFIG_ANDROID_PMEM
 #include <linux/android_pmem.h>
@@ -1576,6 +1577,12 @@ static struct i2c_board_info a6_1_i2c_board_info = {
 	.platform_data = NULL,
 };
 
+static struct isl29023_platform_data isl29023_pdata = {
+    .rext = 10,
+    .polled = 1,
+    .poll_interval = 500,
+};
+
 static struct lsm303dlh_acc_platform_data lsm303dlh_acc_pdata = {
 	.poll_interval = 200,
 	.min_interval = 10,
@@ -1638,6 +1645,14 @@ static struct i2c_board_info __initdata mpu3050_i2c_board_info[] = {
         I2C_BOARD_INFO ( MPU_NAME, 0x68),
         .irq = MSM_GPIO_TO_INT(TENDERLOIN_GYRO_INT),
         .platform_data = &mpu_pdata,
+    },
+};
+
+static struct i2c_board_info __initdata isl29023_i2c_board_info[] = {
+    {
+        I2C_BOARD_INFO ( "isl29023", 0x44),
+        .irq = MSM_GPIO_TO_INT(TENDERLOIN_LS_INT),
+        .platform_data = &isl29023_pdata,
     },
 };
 
@@ -4626,6 +4641,12 @@ static struct i2c_registry msm8x60_i2c_devices[] __initdata = {
         &mpu3050_i2c_board_info,
         ARRAY_SIZE(mpu3050_i2c_board_info),
     },
+    {
+        I2C_TENDERLOIN,
+        MSM_GSBI3_QUP_I2C_BUS_ID,
+        &isl29023_i2c_board_info,
+        ARRAY_SIZE(isl29023_i2c_board_info),
+    },
 #ifdef CONFIG_PMIC8058
 	{
 		I2C_TENDERLOIN,
@@ -4696,6 +4717,7 @@ static void __init register_i2c_devices(void)
 #ifdef CONFIG_I2C
 	u8 mach_mask = 0;
 	int i;
+    int rc;
 
 	/* Build the matching 'supported_machs' bitmask */
 	if (machine_is_tenderloin())
@@ -4703,13 +4725,20 @@ static void __init register_i2c_devices(void)
 	else
 		pr_err("unmatched machine ID in register_i2c_devices\n");
 
-	/* Run the array and install devices as appropriate */
+    gpio_request(TENDERLOIN_LS_INT, "isl29023 int");
+    rc = gpio_direction_input(TENDERLOIN_LS_INT);
+	if (rc) {
+		pr_err("%s:Failed to configure GPIO %d\n",
+				__func__, TENDERLOIN_LS_INT);
+	}
+    /* Run the array and install devices as appropriate */
 	for (i = 0; i < ARRAY_SIZE(msm8x60_i2c_devices); ++i) {
 		if (msm8x60_i2c_devices[i].machs & mach_mask)
 			i2c_register_board_info(msm8x60_i2c_devices[i].bus,
 						msm8x60_i2c_devices[i].info,
 						msm8x60_i2c_devices[i].len);
 	}
+
 #endif
 }
 

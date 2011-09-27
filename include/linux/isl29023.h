@@ -47,6 +47,8 @@
 struct isl29023_platform_data {
 	char *vdd_reg;
 	int rext;
+	int polled;
+	int poll_interval;
 };
 
 #endif
