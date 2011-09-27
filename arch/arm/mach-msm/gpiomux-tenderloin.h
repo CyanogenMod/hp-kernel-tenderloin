@@ -134,6 +134,9 @@ extern struct msm_gpiomux_configs tenderloin_3g_dvt_gpiomux_cfgs[] __initdata;
 #define TENDERLOIN_WEBCAM_RST		106
 #define TENDERLOIN_WEBCAM_PWDN		107
 
+/* light sensor */
+#define TENDERLOIN_LS_INT       126
+
 /* gyro */
 #define TENDERLOIN_GYRO_INT		125
 #define TENDERLOIN_GYRO_INT_3G		75
