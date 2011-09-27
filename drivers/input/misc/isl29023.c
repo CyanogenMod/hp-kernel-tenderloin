@@ -62,7 +62,7 @@ struct isl29023_data {
 	struct mutex lock;
 	struct input_dev *input;
 	struct work_struct work;
-       struct delayed_work polled_work;
+	struct delayed_work polled_work;
 	struct workqueue_struct *workqueue;
 	char phys[32];
 	u8 reg_cache[ISL29023_NUM_CACHABLE_REGS];
@@ -835,6 +835,13 @@ static void isl29023_work(struct work_struct *work)
 {
 	struct isl29023_data *data =
 			container_of(work, struct isl29023_data, work);
+
+	struct isl29023_data *data_polled =
+			container_of((struct delayed_work *)work, struct isl29023_data, polled_work);
+
+	if (data_polled->polled)
+		data = data_polled;
+
 	struct i2c_client *client = data->client;
 	int lux;
 
@@ -1049,3 +1056,4 @@ MODULE_VERSION(DRIVER_VERSION);
 
 module_init(isl29023_init);
 module_exit(isl29023_exit);
+
