@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Linux kernel version: 2.6.35-palm
-# Sun Sep 25 01:08:14 2011
+# Mon Sep 26 21:48:30 2011
 #
 CONFIG_ARM=y
 CONFIG_SYS_SUPPORTS_APM_EMULATION=y
@@ -1323,6 +1323,7 @@ CONFIG_PMIC8058_PWRKEY_FOR_WEBOS=y
 # CONFIG_PMIC8058_OTHC is not set
 # CONFIG_BOSCH_BMA150 is not set
 CONFIG_INPUT_LSM303DLH=y
+CONFIG_INPUT_ISL29023=y
 
 #
 # Hardware I/O ports
