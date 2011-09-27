@@ -50,7 +50,6 @@ struct pcm {
 	atomic_t out_stopped;
 	atomic_t out_prefill;
 	struct wake_lock wakelock;
-	struct wake_lock idlelock;
 };
 
 void pcm_out_cb(uint32_t opcode, uint32_t token,
@@ -75,14 +74,12 @@ static void audio_prevent_sleep(struct pcm *audio)
 {
 	pr_debug("%s:\n", __func__);
 	wake_lock(&audio->wakelock);
-	wake_lock(&audio->idlelock);
 }
 
 static void audio_allow_sleep(struct pcm *audio)
 {
 	pr_debug("%s:\n", __func__);
 	wake_unlock(&audio->wakelock);
-	wake_unlock(&audio->idlelock);
 }
 
 static int pcm_out_enable(struct pcm *pcm)
@@ -291,8 +288,6 @@ static int pcm_out_open(struct inode *inode, struct file *file)
 	atomic_set(&pcm->out_opened, 1);
 	snprintf(name, sizeof name, "audio_pcm_%x", pcm->ac->session);
 	wake_lock_init(&pcm->wakelock, WAKE_LOCK_SUSPEND, name);
-	snprintf(name, sizeof name, "audio_pcm_idle_%x", pcm->ac->session);
-	wake_lock_init(&pcm->idlelock, WAKE_LOCK_IDLE, name);
 
 	file->private_data = pcm;
 	pr_info("[%s:%s] open session id[%d]\n", __MM_FILE__,
@@ -385,7 +380,6 @@ static int pcm_out_release(struct inode *inode, struct file *file)
 	q6asm_audio_client_free(pcm->ac);
 	audio_allow_sleep(pcm);
 	wake_lock_destroy(&pcm->wakelock);
-	wake_lock_destroy(&pcm->idlelock);
 	mutex_destroy(&pcm->lock);
 	mutex_destroy(&pcm->write_lock);
 	kfree(pcm);
