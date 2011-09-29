@@ -489,6 +489,9 @@ struct a6_ps_state {
 	struct device *i2c_dev;
 	struct mutex dev_mutex;
 	enum chg_type otg_chg_type;
+	struct delayed_work charge_work;
+	int stop_heartbeat;
+	int last_percent;
 } batt_state;
 
 #ifdef A6_PQ
@@ -3680,9 +3683,9 @@ static irqreturn_t a6_irq(int irq, void *dev_id)
 		set_bit(INT_PENDING, state->flags);
 	} else {
 		queue_work(state->ka6d_workqueue, &state->a6_irq_work);
-	
-		power_supply_changed(&a6_fish_power_supplies[0]);
 	}
+	
+	power_supply_changed(&a6_fish_power_supplies[0]);
 
 	return IRQ_HANDLED;
 }
@@ -4184,6 +4187,25 @@ struct file_operations a6_pmem_fops = {
 	.release = a6_pmem_close,
 };
 
+static int a6_fish_battery_get_percent(void)
+{
+	int temp_val = 0;
+	char *buf = NULL;
+
+	if (batt_state.i2c_dev){
+		if ( (buf = kzalloc (PAGE_SIZE, GFP_KERNEL)) == NULL){
+			return -ENOMEM;
+		}
+		a6_generic_show (batt_state.i2c_dev, &a6_register_desc_arr[9].dev_attr, buf);
+		sscanf (buf, "%d", &temp_val);
+		kfree (buf);
+	} else {
+		temp_val = 100;
+	}
+
+	return temp_val;
+}
+
 static int a6_fish_power_get_property(struct power_supply *psy,
 				   enum power_supply_property psp,
 				   union power_supply_propval *val)
@@ -4259,9 +4281,8 @@ static int a6_fish_battery_get_property(struct power_supply *psy,
 
 			if ( (temp_val2 & TS2_I2C_FLAGS_2_WIRED_CHARGE) ||
 					(temp_val2 & TS2_I2C_FLAGS_2_PUCK_CHARGE)){
-				memset (buf, 0, PAGE_SIZE);
-				a6_generic_show (batt_state.i2c_dev, &a6_register_desc_arr[9].dev_attr, buf);
-				sscanf (buf, "%d", &temp_val);
+
+				temp_val = a6_fish_battery_get_percent();
 				if (temp_val == 100) {
 					val->intval = POWER_SUPPLY_STATUS_FULL;
 				} else {
@@ -4296,16 +4317,7 @@ static int a6_fish_battery_get_property(struct power_supply *psy,
 		val->intval = POWER_SUPPLY_TECHNOLOGY_LION;
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY:
-		if (batt_state.i2c_dev){
-			if ( (buf = kzalloc (PAGE_SIZE, GFP_KERNEL)) == NULL){
-				return -ENOMEM;
-			}
-			a6_generic_show (batt_state.i2c_dev, &a6_register_desc_arr[9].dev_attr, buf);
-			sscanf (buf, "%d", &val->intval);
-			kfree (buf);
-		} else {
-			val->intval = 100;
-		}
+		val->intval = a6_fish_battery_get_percent();
 		break;
 	default:
 		return -EINVAL;
@@ -4325,6 +4337,26 @@ void a6_charger_event (int otg_chg_type)
 }
 EXPORT_SYMBOL (a6_charger_event);
 
+#define A6_BATT_HB_PERIOD (msecs_to_jiffies (5*60*1000))
+static void a6_battery_heartbeat(struct work_struct *a6_battery_work)
+{
+	int percent = 0;
+
+	if (batt_state.stop_heartbeat)
+		return;
+
+	if (batt_state.i2c_dev &&
+			(percent = a6_fish_battery_get_percent()) != batt_state.last_percent){
+
+		batt_state.last_percent = percent;
+		power_supply_changed(&a6_fish_power_supplies[0]);
+	}
+
+	if (!batt_state.stop_heartbeat)
+		schedule_delayed_work(&batt_state.charge_work,
+						A6_BATT_HB_PERIOD);
+}
+
 static int a6_fish_battery_probe(struct platform_device *pdev)
 {
 	int i;
@@ -4337,6 +4369,9 @@ static int a6_fish_battery_probe(struct platform_device *pdev)
 			pr_err("%s: Failed to register power supply (%d)\n",
 			       __func__, rc);
 	}
+
+	INIT_DELAYED_WORK(&batt_state.charge_work, a6_battery_heartbeat);
+	schedule_delayed_work(&batt_state.charge_work, A6_BATT_HB_PERIOD);
 
 	return 0;
 }
@@ -4637,8 +4672,9 @@ static int a6_i2c_resume (struct i2c_client *dev)
 	clear_bit(IS_SUSPENDED, state->flags);
 	if (test_and_clear_bit(INT_PENDING, state->flags)) {
 		queue_work(state->ka6d_workqueue, &state->a6_irq_work);
-		power_supply_changed(&a6_fish_power_supplies[0]);
 	}
+
+	power_supply_changed(&a6_fish_power_supplies[0]);
 
 	return 0;
 }
