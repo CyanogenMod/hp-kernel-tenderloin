@@ -10,7 +10,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
+ * along with this program; if not, write to the Free Software 
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
  * 02110-1301, USA.
  */
@@ -306,6 +306,7 @@ static struct msm_gpiomux_config msm8x60_ebi2_configs[] __initdata = {
 		.settings = {
             [GPIOMUX_ACTIVE] = GPIO_IN_2M_PU,
 			[GPIOMUX_SUSPENDED] = EBI2_A_D,
+			[GPIOMUX_ACTIVE] = GPIO_IN_2M_PU,
 		},
 	},
 	{

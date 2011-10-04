@@ -88,6 +88,11 @@ void vidc_sm_get_displayed_picture_frame(struct ddl_buf_addr
 	*shared_mem, u32 *n_disp_picture_frame);
 void vidc_sm_get_available_luma_dpb_address(
 	struct ddl_buf_addr *shared_mem, u32 *pn_free_luma_dpb_address);
+void vidc_sm_get_dec_order_resl(
+	struct ddl_buf_addr *shared_mem, u32 *width, u32 *height);
+void vidc_sm_get_dec_order_crop_info(
+	struct ddl_buf_addr *shared_mem, u32 *left,
+	u32 *right, u32 *top, u32 *bottom);
 void vidc_sm_set_extended_encoder_control(
 	struct ddl_buf_addr *shared_mem, u32 hec_enable,
 	enum VIDC_SM_frame_skip  frame_skip_mode, u32 seq_hdr_in_band,

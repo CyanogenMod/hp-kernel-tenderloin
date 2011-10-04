@@ -46,12 +46,22 @@
 #define MSMFB_OVERLAY_BLT_OFFSET     _IOW(MSMFB_IOCTL_MAGIC, 143, unsigned int)
 #define MSMFB_HISTOGRAM_START	_IO(MSMFB_IOCTL_MAGIC, 144)
 #define MSMFB_HISTOGRAM_STOP	_IO(MSMFB_IOCTL_MAGIC, 145)
-#define MSMFB_SET_DMA_P_CSC  _IOW(MSMFB_IOCTL_MAGIC, 146, struct mdp_ccs)
+#define MSMFB_NOTIFY_UPDATE	_IOW(MSMFB_IOCTL_MAGIC, 146, unsigned int)
 
-#define MSMFB_OVERLAY_3D       _IOWR(MSMFB_IOCTL_MAGIC, 146, \
+#define MSMFB_OVERLAY_3D       _IOWR(MSMFB_IOCTL_MAGIC, 147, \
 						struct msmfb_overlay_3d)
 
+#define MSMFB_MIXER_INFO       _IOWR(MSMFB_IOCTL_MAGIC, 148, \
+						struct msmfb_mixer_info_req)
+
+
+#define FB_TYPE_3D_PANEL 0x10101010
 #define MDP_IMGTYPE2_START 0x10000
+
+enum {
+	NOTIFY_UPDATE_START,
+	NOTIFY_UPDATE_STOP,
+};
 
 enum {
 	MDP_RGB_565,      /* RGB 565 planer */
@@ -70,6 +80,8 @@ enum {
 	MDP_Y_CBCR_H2V2_TILE,  /* Y and CbCr, pseudo planer tile */
 	MDP_Y_CR_CB_H2V2,  /* Y, Cr and Cb, planar */
 	MDP_Y_CB_CR_H2V2,  /* Y, Cb and Cr, planar */
+	MDP_Y_CRCB_H1V1,  /* Y and CrCb, pseduo planer w/ Cr is in MSB */
+	MDP_Y_CBCR_H1V1,  /* Y and CbCr, pseduo planer w/ Cb is in MSB */
 	MDP_IMGTYPE_LIMIT,
 	MDP_BGR_565 = MDP_IMGTYPE2_START,      /* BGR 565 planer */
 	MDP_FB_FORMAT,    /* framebuffer format */
@@ -105,6 +117,7 @@ enum {
 #define MDP_OV_PIPE_SHARE		0x00800000
 #define MDP_DEINTERLACE_ODD		0x00400000
 #define MDP_OV_PLAY_NOWAIT		0x00200000
+#define MDP_SOURCE_ROTATED_90		0x00100000
 
 #define MDP_TRANSP_NOP 0xffffffff
 #define MDP_ALPHA_NOP 0xff
@@ -124,35 +137,6 @@ struct mdp_rect {
 	uint32_t y;
 	uint32_t w;
 	uint32_t h;
-};
-
-struct mdp_int_img {
-   uint32_t width;
-   uint32_t height;
-   uint32_t format;
-   uint32_t offset;
-
-   /*smem_start/smem_len overrides filp*/
-   uint32_t smem_start;
-   uint32_t smem_len;
-   struct file* filp;
-};
-
-struct mdp_blit_int_req {
-   struct mdp_int_img src;
-   struct mdp_int_img bg;
-   struct mdp_int_img dst;
-   struct mdp_rect src_rect;
-   struct mdp_rect bg_rect;
-   struct mdp_rect dst_rect;
-   uint32_t alpha;
-   uint32_t transp_mask;
-   uint32_t flags;
-};
-
-struct mdp_blit_int_req_list {
-   uint32_t count;
-   struct mdp_blit_int_req req[];
 };
 
 struct mdp_img {
@@ -248,7 +232,10 @@ struct msmfb_overlay_3d {
 
 struct msmfb_overlay_blt {
 	uint32_t enable;
-	struct msmfb_data data;
+	uint32_t offset;
+	uint32_t width;
+	uint32_t height;
+	uint32_t bpp;
 };
 
 struct mdp_histogram {
@@ -262,6 +249,24 @@ struct mdp_histogram {
 struct mdp_page_protection {
 	uint32_t page_protection;
 };
+
+
+struct mdp_mixer_info {
+	int pndx;
+	int pnum;
+	int ptype;
+	int mixer_num;
+	int z_order;
+};
+
+#define MAX_PIPE_PER_MIXER  4
+
+struct msmfb_mixer_info_req {
+	int mixer_num;
+	int cnt;
+	struct mdp_mixer_info info[MAX_PIPE_PER_MIXER];
+};
+
 
 #ifdef __KERNEL__
 

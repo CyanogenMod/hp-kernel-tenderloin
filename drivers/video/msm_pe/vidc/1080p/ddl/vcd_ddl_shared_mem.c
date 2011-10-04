@@ -19,6 +19,8 @@
 #include "vcd_ddl_shared_mem.h"
 
 #define VIDC_SM_EXTENDED_DECODE_STATUS_ADDR    0x0000
+#define VIDC_SM_EXT_DEC_STATUS_RESOLUTION_CHANGE_BMSK 0x1
+#define VIDC_SM_EXT_DEC_STATUS_RESOLUTION_CHANGE_SHFT 0x0
 
 #define VIDC_SM_SET_FRAME_TAG_ADDR             0x0004
 #define VIDC_SM_GET_FRAME_TAG_TOP_ADDR         0x0008
@@ -52,6 +54,30 @@
 #define VIDC_SM_FREE_LUMA_DPB_ADDR                          0x00c4
 #define VIDC_SM_FREE_LUMA_DPB_BMSK                          0xffffffff
 #define VIDC_SM_FREE_LUMA_DPB_SHFT                          0
+
+#define VIDC_SM_DEC_ORDER_WIDTH_ADDR                        0x00e8
+#define VIDC_SM_DEC_ORDER_WIDTH_BMSK                        0xffffffff
+#define VIDC_SM_DEC_ORDER_WIDTH_SHFT                        0
+
+#define VIDC_SM_DEC_ORDER_HEIGHT_ADDR                       0x00ec
+#define VIDC_SM_DEC_ORDER_HEIGHT_BMSK                       0xffffffff
+#define VIDC_SM_DEC_ORDER_HEIGHT_SHFT                       0
+
+#define VIDC_SM_DEC_CROP_INFO1_ADDR                         0x00f4
+#define VIDC_SM_DEC_CROP_INFO1_RIGHT_OFFSET_BMSK            0xffff0000
+#define VIDC_SM_DEC_CROP_INFO1_RIGHT_OFFSET_SHFT            16
+#define VIDC_SM_DEC_CROP_INFO1_LEFT_OFFSET_BMSK             0x0000ffff
+#define VIDC_SM_DEC_CROP_INFO1_LEFT_OFFSET_SHFT             0
+
+#define VIDC_SM_DEC_CROP_INFO2_ADDR                         0x00f8
+#define VIDC_SM_DEC_CROP_INFO2_BOTTOM_OFFSET_BMSK           0xffff0000
+#define VIDC_SM_DEC_CROP_INFO2_BOTTOM_OFFSET_SHFT           16
+#define VIDC_SM_DEC_CROP_INFO2_TOP_OFFSET_BMSK              0x0000ffff
+#define VIDC_SM_DEC_CROP_INFO2_TOP_OFFSET_SHFT              0
+
+#define VIDC_SM_IDR_DECODING_ONLY_ADDR                      0x0108
+#define VIDC_SM_IDR_DECODING_ONLY_BMSK                      0x00000001
+#define VIDC_SM_IDR_DECODING_ONLY_SHIFT                     0
 
 #define VIDC_SM_ENC_EXT_CTRL_ADDR                    0x0028
 #define VIDC_SM_ENC_EXT_CTRL_VBV_BUFFER_SIZE_BMSK    0xffff0000
@@ -255,6 +281,38 @@ void vidc_sm_get_available_luma_dpb_address(struct ddl_buf_addr
 {
 	*pn_free_luma_dpb_address = DDL_MEM_READ_32(shared_mem,
 		VIDC_SM_FREE_LUMA_DPB_ADDR);
+}
+
+void vidc_sm_get_dec_order_resl(
+	struct ddl_buf_addr *shared_mem, u32 *width, u32 *height)
+{
+	*width = DDL_MEM_READ_32(shared_mem,
+			VIDC_SM_DEC_ORDER_WIDTH_ADDR);
+	*height = DDL_MEM_READ_32(shared_mem,
+			VIDC_SM_DEC_ORDER_HEIGHT_ADDR);
+}
+
+void vidc_sm_get_dec_order_crop_info(
+	struct ddl_buf_addr *shared_mem, u32 *left,
+	u32 *right, u32 *top, u32 *bottom)
+{
+	u32 crop_data;
+	crop_data = DDL_MEM_READ_32(shared_mem,
+		VIDC_SM_DEC_CROP_INFO1_ADDR);
+	*left = VIDC_GETFIELD(crop_data,
+		VIDC_SM_DEC_CROP_INFO1_LEFT_OFFSET_BMSK,
+		VIDC_SM_DEC_CROP_INFO1_LEFT_OFFSET_SHFT);
+	*right = VIDC_GETFIELD(crop_data,
+		VIDC_SM_DEC_CROP_INFO1_RIGHT_OFFSET_BMSK,
+		VIDC_SM_DEC_CROP_INFO1_RIGHT_OFFSET_SHFT);
+	crop_data = DDL_MEM_READ_32(shared_mem,
+		VIDC_SM_DEC_CROP_INFO2_ADDR);
+	*top = VIDC_GETFIELD(crop_data,
+		VIDC_SM_DEC_CROP_INFO2_TOP_OFFSET_BMSK,
+		VIDC_SM_DEC_CROP_INFO2_TOP_OFFSET_SHFT);
+	*bottom = VIDC_GETFIELD(crop_data,
+		VIDC_SM_DEC_CROP_INFO2_BOTTOM_OFFSET_BMSK,
+		VIDC_SM_DEC_CROP_INFO2_BOTTOM_OFFSET_SHFT);
 }
 
 void vidc_sm_set_extended_encoder_control(struct ddl_buf_addr

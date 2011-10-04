@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -254,11 +254,11 @@ u32 ddl_decoder_dpb_transact(struct ddl_decoder_data *decoder,
 
 void ddl_release_context_buffers(struct ddl_context *ddl_context)
 {
-	ddl_pmem_free(ddl_context->context_buf_addr);
-	ddl_pmem_free(ddl_context->db_line_buffer);
-	ddl_pmem_free(ddl_context->data_partition_tempbuf);
-	ddl_pmem_free(ddl_context->metadata_shared_input);
-	ddl_pmem_free(ddl_context->dbg_core_dump);
+	ddl_pmem_free(&ddl_context->context_buf_addr);
+	ddl_pmem_free(&ddl_context->db_line_buffer);
+	ddl_pmem_free(&ddl_context->data_partition_tempbuf);
+	ddl_pmem_free(&ddl_context->metadata_shared_input);
+	ddl_pmem_free(&ddl_context->dbg_core_dump);
 
 	vcd_fw_release();
 }
@@ -268,9 +268,9 @@ void ddl_release_client_internal_buffers(struct ddl_client_context *ddl)
 	if (ddl->decoding) {
 		struct ddl_decoder_data *decoder =
 		    &(ddl->codec_data.decoder);
-		ddl_pmem_free(decoder->h264Vsp_temp_buffer);
-		ddl_pmem_free(decoder->dpb_comv_buffer);
-		ddl_pmem_free(decoder->ref_buffer);
+		ddl_pmem_free(&decoder->h264Vsp_temp_buffer);
+		ddl_pmem_free(&decoder->dpb_comv_buffer);
+		ddl_pmem_free(&decoder->ref_buffer);
 		DDL_FREE(decoder->dp_buf.dec_pic_buffers);
 		ddl_decode_dynamic_property(ddl, false);
 		decoder->decode_config.sequence_header_len = 0;
@@ -283,8 +283,8 @@ void ddl_release_client_internal_buffers(struct ddl_client_context *ddl)
 	} else {
 		struct ddl_encoder_data *encoder =
 		    &(ddl->codec_data.encoder);
-		ddl_pmem_free(encoder->enc_dpb_addr);
-		ddl_pmem_free(encoder->seq_header);
+		ddl_pmem_free(&encoder->enc_dpb_addr);
+		ddl_pmem_free(&encoder->seq_header);
 		ddl_encode_dynamic_property(ddl, false);
 		encoder->dynamic_prop_change = 0;
 	}

@@ -28,7 +28,7 @@ u32 ddl_device_init(struct ddl_init_config *ddl_init_config,
 	struct ddl_context *ddl_context;
 	u32 status = VCD_S_SUCCESS;
 	void *ptr;
-	DDL_MSG_HIGH("ddl_device_init");
+	pr_info("enter ddl_device_init()");
 
 	if ((!ddl_init_config) || (!ddl_init_config->ddl_callback) ||
 		(!ddl_init_config->core_virtual_base_addr)) {
@@ -99,6 +99,7 @@ u32 ddl_device_init(struct ddl_init_config *ddl_init_config,
 		ddl_release_context_buffers(ddl_context);
 		DDL_IDLE(ddl_context);
 	}
+	pr_info("leave ddl_device_init()");
 	return status;
 }
 

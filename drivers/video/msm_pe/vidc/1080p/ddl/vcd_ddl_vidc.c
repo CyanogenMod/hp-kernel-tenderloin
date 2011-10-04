@@ -869,6 +869,8 @@ void ddl_vidc_decode_eos_run(struct ddl_client_context *ddl)
 	DDL_MSG_LOW("ddl_state_transition: %s ~~> DDL_CLIENT_WAIT_FOR_EOS_DONE",
 	ddl_get_state_string(ddl->client_state));
 	ddl->client_state = DDL_CLIENT_WAIT_FOR_EOS_DONE;
+	if (decoder->output_order == VCD_DEC_ORDER_DECODE)
+		decoder->dynamic_prop_change |= DDL_DEC_REQ_OUTPUT_FLUSH;
 	ddl_vidc_decode_dynamic_property(ddl, true);
 	ddl_decoder_dpb_transact(decoder, NULL, DDL_DPB_OP_SET_MASK);
 	decoder->dynmic_prop_change_req = true;

@@ -716,6 +716,7 @@ void mdp_hw_init(void)
 		 ((16 << 6) << 16) | (16) << 6);
 #endif
 
+	wmb();
 	/* MDP cmd block disable */
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
 }

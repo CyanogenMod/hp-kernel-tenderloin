@@ -297,6 +297,15 @@ enum vidc_1080p_encode_frame{
 
 };
 
+enum vidc_1080p_decode_idc_format {
+	VIDC_1080P_IDCFORMAT_MONOCHROME = 0,
+	VIDC_1080P_IDCFORMAT_420 = 1,
+	VIDC_1080P_IDCFORMAT_422 = 2,
+	VIDC_1080P_IDCFORMAT_444 = 3,
+	VIDC_1080P_IDCFORMAT_OTHERS = 4,
+	VIDC_1080P_IDCFORMAT_32BIT = 0x7FFFFFFF
+};
+
 #define VIDC_1080P_PROFILE_MPEG4_SIMPLE      0x00000000
 #define VIDC_1080P_PROFILE_MPEG4_ADV_SIMPLE  0x00000001
 
@@ -309,6 +318,8 @@ enum vidc_1080p_decode{
 	VIDC_1080P_DEC_TYPE_SEQ_HEADER       = 0x00010000,
 	VIDC_1080P_DEC_TYPE_FRAME_DATA       = 0x00020000,
 	VIDC_1080P_DEC_TYPE_LAST_FRAME_DATA  = 0x00030000,
+	VIDC_1080P_DEC_TYPE_INIT_BUFFERS     = 0x00040000,
+	VIDC_1080P_DEC_TYPE_FRAME_START_REALLOC = 0x00050000,
 	VIDC_1080P_DEC_TYPE_32BIT            = 0x7FFFFFFF
 };
 enum vidc_1080p_encode{
@@ -356,12 +367,15 @@ struct vidc_1080p_seq_hdr_info{
 	u32 min_chroma_dpb_size;
 	u32 profile;
 	u32 level;
-	u32 progressive;
-	u32 crop_exists;
+	u32 disp_progressive;
+	u32 disp_crop_exists;
+	u32 dec_progressive;
+	u32 dec_crop_exists;
 	u32 crop_right_offset;
 	u32 crop_left_offset;
 	u32 crop_bottom_offset;
 	u32 crop_top_offset;
+	u32 data_partition;
 };
 struct vidc_1080p_enc_seq_start_param{
 	u32 cmd_seq_num;
@@ -392,7 +406,8 @@ struct vidc_1080p_enc_frame_info{
 	u32 meta_data_exists;
 };
 struct vidc_1080p_dec_disp_info{
-	u32 resl_change;
+	u32 disp_resl_change;
+	u32 dec_resl_change;
 	u32 reconfig_flush_done;
 	u32 img_size_x;
 	u32 img_size_y;
@@ -405,7 +420,8 @@ struct vidc_1080p_dec_disp_info{
 	u32 tag_bottom;
 	u32 pic_time_bottom;
 	u32 metadata_exists;
-	u32 crop_exists;
+	u32 disp_crop_exists;
+	u32 dec_crop_exists;
 	u32 crop_right_offset;
 	u32 crop_left_offset;
 	u32 crop_bottom_offset;

@@ -374,6 +374,17 @@ static u32 ddl_set_dec_property(struct ddl_client_context *ddl,
 			vcd_status = VCD_S_SUCCESS;
 		}
 		break;
+	case VCD_I_OUTPUT_ORDER:
+		{
+			if (sizeof(u32) == property_hdr->sz &&
+				DDLCLIENT_STATE_IS(ddl, DDL_CLIENT_OPEN)) {
+					decoder->output_order =
+						*(u32 *)property_value;
+					vcd_status = VCD_S_SUCCESS;
+			}
+		}
+		break;
+
 	case VCD_I_METADATA_ENABLE:
 	case VCD_I_METADATA_HEADER:
 		DDL_MSG_ERROR("Meta Data Interface is Requested");
@@ -986,6 +997,14 @@ static u32 ddl_get_dec_property(struct ddl_client_context *ddl,
 			vcd_status = VCD_S_SUCCESS;
 		}
 		break;
+	case VCD_I_OUTPUT_ORDER:
+		{
+			if (sizeof(u32) == property_hdr->sz) {
+				*(u32 *)property_value = decoder->output_order;
+				vcd_status = VCD_S_SUCCESS;
+			}
+		}
+		break;
 	case VCD_I_METADATA_ENABLE:
 	case VCD_I_METADATA_HEADER:
 		DDL_MSG_ERROR("Meta Data Interface is Requested");
@@ -1393,6 +1412,7 @@ void ddl_set_default_dec_property(struct ddl_client_context *ddl)
 	decoder->client_frame_size.stride = VCD_DDL_TEST_DEFAULT_WIDTH;
 	decoder->client_frame_size.scan_lines = VCD_DDL_TEST_DEFAULT_HEIGHT;
 	decoder->progressive_only = 1;
+	decoder->output_order = VCD_DEC_ORDER_DISPLAY;
 	ddl_set_default_metadata_flag(ddl);
 	ddl_set_default_decoder_buffer_req(decoder, true);
 }

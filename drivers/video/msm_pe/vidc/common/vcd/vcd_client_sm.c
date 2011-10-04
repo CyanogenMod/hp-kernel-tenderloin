@@ -1205,14 +1205,14 @@ static void vcd_clnt_cb_in_stopping
 		}
 		if (frm_trans_end && !cctxt->status.frame_submitted) {
 				VCD_MSG_HIGH
-					("All pending frames recvd from DDL");
+				    ("All pending frames recvd from DDL");
 				vcd_flush_bframe_buffers(cctxt,
 							VCD_FLUSH_INPUT);
 				vcd_flush_output_buffers(cctxt);
 				cctxt->status.mask &= ~VCD_FLUSH_ALL;
 				vcd_release_all_clnt_frm_transc(cctxt);
 				VCD_MSG_HIGH
-				("All buffers flushed. Enqueuing stop cmd");
+				    ("All buffers flushed. Enqueuing stop cmd");
 				vcd_client_cmd_flush_and_en_q(cctxt,
 						VCD_CMD_CODEC_STOP);
 		}

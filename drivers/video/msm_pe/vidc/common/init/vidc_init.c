@@ -42,14 +42,14 @@
 #include "vcd_res_tracker_api.h"
 
 #if DEBUG
-#define DBG(x...) printk(KERN_DEBUG x)
+#define DBG(x...) printk(KERN_DEBUG "[VID] " x)
 #else
 #define DBG(x...)
 #endif
 
 #define VIDC_NAME "msm_vidc_reg"
 
-#define ERR(x...) printk(KERN_ERR x)
+#define ERR(x...) printk(KERN_ERR "[VID] " x)
 
 static struct vidc_dev *vidc_device_p;
 static dev_t vidc_dev_num;
@@ -71,7 +71,7 @@ static void vidc_timer_fn(unsigned long data)
 {
 	unsigned long flag;
 	struct vidc_timer *hw_timer = NULL;
-	DBG("%s() Timer expired\n", __func__);
+	pr_err("%s() Timer expired\n", __func__);
 	spin_lock_irqsave(&vidc_spin_lock, flag);
 	hw_timer = (struct vidc_timer *)data;
 	list_add_tail(&hw_timer->list, &vidc_device_p->vidc_timer_queue);
@@ -86,7 +86,7 @@ static void vidc_timer_handler(struct work_struct *work)
 	u32 islist_empty = 0;
 	struct vidc_timer *hw_timer = NULL;
 
-	DBG("%s() Timer expired\n", __func__);
+	pr_err("%s() Timer expired\n", __func__);
 	do {
 		spin_lock_irqsave(&vidc_spin_lock, flag);
 		islist_empty = list_empty(&vidc_device_p->vidc_timer_queue);
@@ -200,7 +200,7 @@ static void __exit vidc_exit(void)
 
 static irqreturn_t vidc_isr(int irq, void *dev)
 {
-	DBG("\n vidc_isr() %d ", irq);
+	DBG("vidc_isr() %d ", irq);
 	disable_irq_nosync(irq);
 	queue_work(vidc_wq, &vidc_work);
 	return IRQ_HANDLED;
@@ -540,12 +540,12 @@ u32 vidc_timer_create(void (*timer_handler)(void *),
 {
 	struct vidc_timer *hw_timer = NULL;
 	if (!timer_handler || !timer_handle) {
-		DBG("%s(): timer creation failed\n ", __func__);
+		DBG("%s(): timer creation failed\n", __func__);
 		return false;
 	}
 	hw_timer = kzalloc(sizeof(struct vidc_timer), GFP_KERNEL);
 	if (!hw_timer) {
-		DBG("%s(): timer creation failed in allocation\n ", __func__);
+		DBG("%s(): timer creation failed in allocation\n", __func__);
 		return false;
 	}
 	init_timer(&hw_timer->hw_timeout);
@@ -567,7 +567,7 @@ EXPORT_SYMBOL(vidc_timer_release);
 void  vidc_timer_start(void *timer_handle, u32 time_out)
 {
 	struct vidc_timer *hw_timer = (struct vidc_timer *)timer_handle;
-	DBG("%s(): start timer\n ", __func__);
+	DBG("%s(): start timer\n", __func__);
 	if (hw_timer) {
 		hw_timer->hw_timeout.expires = jiffies + 1*HZ;
 		add_timer(&hw_timer->hw_timeout);
@@ -578,7 +578,7 @@ EXPORT_SYMBOL(vidc_timer_start);
 void  vidc_timer_stop(void *timer_handle)
 {
 	struct vidc_timer *hw_timer = (struct vidc_timer *)timer_handle;
-	DBG("%s(): stop timer\n ", __func__);
+	DBG("%s(): stop timer", __func__);
 	if (hw_timer)
 		del_timer(&hw_timer->hw_timeout);
 }

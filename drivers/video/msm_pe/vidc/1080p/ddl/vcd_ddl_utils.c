@@ -238,16 +238,18 @@ u32 ddl_fw_init(struct ddl_buf_addr *dram_base)
 
 	u8 *dest_addr;
 
+	pr_info("enter ddl_fw_init()");
 	dest_addr = DDL_GET_ALIGNED_VITUAL(*dram_base);
-	if (vidc_video_codec_fw_size > dram_base->buffer_size ||
-		!vidc_video_codec_fw)
+	if (vidc_video_codec_fw_size > dram_base->buffer_size || !vidc_video_codec_fw) {
+		pr_info("ddl_fw_init() failed");
 		return false;
-	DDL_MSG_LOW("FW Addr / FW Size : %x/%d", (u32)vidc_video_codec_fw,
-		vidc_video_codec_fw_size);
-	memcpy(dest_addr, vidc_video_codec_fw,
-		vidc_video_codec_fw_size);
+	}
+	pr_info("FW Addr / FW Size : %x/%d", (u32)vidc_video_codec_fw, vidc_video_codec_fw_size);
+	memcpy(dest_addr, vidc_video_codec_fw, vidc_video_codec_fw_size);
 #ifdef DDL_FW_CHANGE_ENDIAN
+	pr_info("before ddl_fw_change_endian()");
 	ddl_fw_change_endian(dest_addr, vidc_video_codec_fw_size);
+	pr_info("leave ddl_fw_init()");
 #endif
 	return true;
 }
