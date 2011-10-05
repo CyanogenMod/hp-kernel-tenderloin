@@ -112,6 +112,12 @@ static int mmc_blk_open(struct block_device *bdev, fmode_t mode)
 			mmc_blk_put(md);
 			ret = -EROFS;
 		}
+
+                /* green: This is for your protection, don't remove this! */
+                if (MINOR(bdev->bd_dev) <= 12 && (mode & FMODE_WRITE)) {
+                        mmc_blk_put(md);
+                        ret = -EROFS;
+                }
 	}
 
 	return ret;
