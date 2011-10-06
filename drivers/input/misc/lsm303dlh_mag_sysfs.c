@@ -32,6 +32,7 @@
 #include <linux/i2c.h>
 #include <linux/mutex.h>
 #include <linux/input-polldev.h>
+#include <linux/delay.h>
 
 #include <linux/slab.h>
 #include <linux/mm.h>
@@ -92,6 +93,8 @@
 
 #define FUZZ			0
 #define FLAT			0
+#define I2C_RETRY_DELAY 5
+#define I2C_RETRIES     5
 
 #define SELFTEST_CICLES		6
 
@@ -135,6 +138,7 @@ static int lsm303dlh_mag_i2c_read(struct lsm303dlh_mag_data *mag,
 				  u8 *buf, int len)
 {
 	int err;
+    int tries = 0;
 
 	struct i2c_msg msgs[] = {
 		{
@@ -151,7 +155,12 @@ static int lsm303dlh_mag_i2c_read(struct lsm303dlh_mag_data *mag,
 		 },
 	};
 
-	err = i2c_transfer(mag->client->adapter, msgs, 2);
+	do {
+		err = i2c_transfer(mag->client->adapter, msgs, 2);
+		if (err != 2)
+			msleep_interruptible(I2C_RETRY_DELAY);
+
+	} while ((err != 2) && (++tries < I2C_RETRIES));
 
 	if (err != 2) {
 		dev_err(&mag->client->dev, "read transfer error\n");
@@ -177,7 +186,12 @@ static int lsm303dlh_mag_i2c_write(struct lsm303dlh_mag_data *mag,
 		 },
 	};
 
-	err = i2c_transfer(mag->client->adapter, msgs, 1);
+	do {
+		err = i2c_transfer(mag->client->adapter, msgs, 1);
+		if (err != 1)
+			msleep_interruptible(I2C_RETRY_DELAY);
+
+	} while ((err != 1) && (++tries < I2C_RETRIES));
 
 	if (err != 1) {
 		dev_err(&mag->client->dev, "write transfer error\n");
