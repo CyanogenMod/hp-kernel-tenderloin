@@ -483,16 +483,14 @@ struct a6_device_state {
 	
 	char *a2a_rd_buf, *a2a_wr_buf;
 	char *a2a_rp, *a2a_wp;
-};
 
-struct a6_ps_state {
-	struct device *i2c_dev;
-	struct mutex dev_mutex;
 	enum chg_type otg_chg_type;
 	struct delayed_work charge_work;
 	int stop_heartbeat;
 	int last_percent;
-} batt_state;
+};
+
+struct a6_device_state *batt_state;
 
 #ifdef A6_PQ
 int32_t a6_start_ai_dispatch_task(struct a6_device_state* state);
@@ -4187,21 +4185,17 @@ struct file_operations a6_pmem_fops = {
 	.release = a6_pmem_close,
 };
 
-static int a6_fish_battery_get_percent(void)
+static int a6_fish_battery_get_percent(struct device *dev)
 {
 	int temp_val = 0;
 	char *buf = NULL;
 
-	if (batt_state.i2c_dev){
-		if ( (buf = kzalloc (PAGE_SIZE, GFP_KERNEL)) == NULL){
-			return -ENOMEM;
-		}
-		a6_generic_show (batt_state.i2c_dev, &a6_register_desc_arr[9].dev_attr, buf);
-		sscanf (buf, "%d", &temp_val);
-		kfree (buf);
-	} else {
-		temp_val = 100;
+	if ( (buf = kzalloc (PAGE_SIZE, GFP_KERNEL)) == NULL){
+		return -ENOMEM;
 	}
+	a6_generic_show (dev, &a6_register_desc_arr[9].dev_attr, buf);
+	sscanf (buf, "%d", &temp_val);
+	kfree (buf);
 
 	return temp_val;
 }
@@ -4213,29 +4207,29 @@ static int a6_fish_power_get_property(struct power_supply *psy,
 	unsigned int temp_val = 0;
 	char *buf = NULL;
 
+	struct a6_device_state *state = (struct a6_device_state*)dev_get_drvdata(psy->dev->parent);
+
 	switch (psp) {
 	case POWER_SUPPLY_PROP_ONLINE:
-		if ( ((psy->type == POWER_SUPPLY_TYPE_MAINS &&
-				batt_state.otg_chg_type == USB_CHG_TYPE__WALLCHARGER) ||
+		if ( (buf = kzalloc (PAGE_SIZE, GFP_KERNEL)) == NULL){
+			return -ENOMEM;
+		}
+
+		a6_generic_show (psy->dev->parent, &a6_register_desc_arr[31].dev_attr, buf);
+		sscanf (buf, "%u", &temp_val);
+		kfree (buf);
+
+		if ( (((psy->type == POWER_SUPPLY_TYPE_MAINS &&
+				state->otg_chg_type == USB_CHG_TYPE__WALLCHARGER) ||
 				(psy->type == POWER_SUPPLY_TYPE_USB &&
-				batt_state.otg_chg_type == USB_CHG_TYPE__SDP)) &&
-				(batt_state.i2c_dev != NULL)){
-			if ( (buf = kzalloc (PAGE_SIZE, GFP_KERNEL)) == NULL){
-				return -ENOMEM;
-			}
-
-			a6_generic_show (batt_state.i2c_dev, &a6_register_desc_arr[31].dev_attr, buf);
-			sscanf (buf, "%u", &temp_val);
-			kfree (buf);
-
-			if ( (temp_val & TS2_I2C_FLAGS_2_WIRED_CHARGE) ||
-					(temp_val & TS2_I2C_FLAGS_2_PUCK_CHARGE)){
-				val->intval = 1;
-			} else {
-				val->intval = 0;
-			}
-		} else
+						state->otg_chg_type == USB_CHG_TYPE__SDP)) &&
+						(temp_val & TS2_I2C_FLAGS_2_WIRED_CHARGE)) ||
+						(psy->type == POWER_SUPPLY_TYPE_MAINS &&
+								(temp_val & TS2_I2C_FLAGS_2_PUCK_CHARGE))){
+			val->intval = 1;
+		} else {
 			val->intval = 0;
+		}
 		break;
 	default:
 		return -EINVAL;
@@ -4257,56 +4251,50 @@ static int a6_fish_battery_get_property(struct power_supply *psy,
 
 	switch (psp) {
 	case POWER_SUPPLY_PROP_STATUS:
-		if (batt_state.i2c_dev){
-			/* a6 "status" reg is actually semi-health, it always shows "charge-termination" even while charging */
-			if ( (buf = kzalloc (PAGE_SIZE, GFP_KERNEL)) == NULL){
-				return -ENOMEM;
-			}
-#if 0		//Current seems to go negative if the screen is on, even when plugged into the wall
-			a6_generic_show (batt_state.i2c_dev, &a6_register_desc_arr[14].dev_attr, buf);
-			sscanf (buf, "%d", &temp_val);
-
-			if ( temp_val > CHARGING_CURR_HYSTERESIS_MIN && 
-					temp_val < CHARGING_CURR_HYSTERESIS_MAX) {
-				val->intval = POWER_SUPPLY_STATUS_FULL;
-			} else if (temp_val > 0){
-				val->intval = POWER_SUPPLY_STATUS_CHARGING;
-			} else {
-				val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
-			}
-#else
-			memset (buf, 0, PAGE_SIZE);
-			a6_generic_show (batt_state.i2c_dev, &a6_register_desc_arr[31].dev_attr, buf);
-			sscanf (buf, "%u", &temp_val2);
-
-			if ( (temp_val2 & TS2_I2C_FLAGS_2_WIRED_CHARGE) ||
-					(temp_val2 & TS2_I2C_FLAGS_2_PUCK_CHARGE)){
-
-				temp_val = a6_fish_battery_get_percent();
-				if (temp_val == 100) {
-					val->intval = POWER_SUPPLY_STATUS_FULL;
-				} else {
-					val->intval = POWER_SUPPLY_STATUS_CHARGING;
-				}
-			} else {
-				val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
-			}
-#endif
-			kfree (buf);
-
-		} else {
-			val->intval = POWER_SUPPLY_STATUS_UNKNOWN;
+		/* a6 "status" reg is actually semi-health, it always shows "charge-termination" even while charging */
+		if ( (buf = kzalloc (PAGE_SIZE, GFP_KERNEL)) == NULL){
+			return -ENOMEM;
 		}
+#if 0		//Current seems to go negative if the screen is on, even when plugged into the wall
+		a6_generic_show (psy->dev, &a6_register_desc_arr[14].dev_attr, buf);
+		sscanf (buf, "%d", &temp_val);
+
+		if ( temp_val > CHARGING_CURR_HYSTERESIS_MIN &&
+				temp_val < CHARGING_CURR_HYSTERESIS_MAX) {
+			val->intval = POWER_SUPPLY_STATUS_FULL;
+		} else if (temp_val > 0){
+			val->intval = POWER_SUPPLY_STATUS_CHARGING;
+		} else {
+			val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
+		}
+#else
+		memset (buf, 0, PAGE_SIZE);
+		a6_generic_show (psy->dev->parent, &a6_register_desc_arr[31].dev_attr, buf);
+		sscanf (buf, "%u", &temp_val2);
+
+		if ( (temp_val2 & TS2_I2C_FLAGS_2_WIRED_CHARGE) ||
+				(temp_val2 & TS2_I2C_FLAGS_2_PUCK_CHARGE)){
+
+			temp_val = a6_fish_battery_get_percent(psy->dev->parent);
+			if (temp_val == 100) {
+				val->intval = POWER_SUPPLY_STATUS_FULL;
+			} else {
+				val->intval = POWER_SUPPLY_STATUS_CHARGING;
+			}
+		} else {
+			val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
+		}
+#endif
+		kfree (buf);
+
 		break;
 	case POWER_SUPPLY_PROP_HEALTH:
-		if (batt_state.i2c_dev){
-			if ( (buf = kzalloc (PAGE_SIZE, GFP_KERNEL)) == NULL){
-				return -ENOMEM;
-			}
-			a6_generic_show (batt_state.i2c_dev, &a6_register_desc_arr[8].dev_attr, buf);
-			kfree (buf);
-			// TODO: parse temps and set OVERHEAT, parse "age" and set DEAD */
+		if ( (buf = kzalloc (PAGE_SIZE, GFP_KERNEL)) == NULL){
+			return -ENOMEM;
 		}
+		a6_generic_show (psy->dev->parent, &a6_register_desc_arr[8].dev_attr, buf);
+		kfree (buf);
+		// TODO: parse temps and set OVERHEAT, parse "age" and set DEAD */
 
 		val->intval = POWER_SUPPLY_HEALTH_GOOD;
 		break;
@@ -4317,7 +4305,8 @@ static int a6_fish_battery_get_property(struct power_supply *psy,
 		val->intval = POWER_SUPPLY_TECHNOLOGY_LION;
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY:
-		val->intval = a6_fish_battery_get_percent();
+		val->intval = a6_fish_battery_get_percent(psy->dev->parent);
+
 		break;
 	default:
 		return -EINVAL;
@@ -4328,11 +4317,12 @@ static int a6_fish_battery_get_property(struct power_supply *psy,
 
 void a6_charger_event (int otg_chg_type)
 {
-	batt_state.otg_chg_type = otg_chg_type;
+	if (batt_state) {
+		batt_state->otg_chg_type = otg_chg_type;
 
-	power_supply_changed(&a6_fish_power_supplies[1]);
-	power_supply_changed(&a6_fish_power_supplies[2]);
-
+		power_supply_changed(&a6_fish_power_supplies[1]);
+		power_supply_changed(&a6_fish_power_supplies[2]);
+	}
 	return;
 }
 EXPORT_SYMBOL (a6_charger_event);
@@ -4342,48 +4332,84 @@ static void a6_battery_heartbeat(struct work_struct *a6_battery_work)
 {
 	int percent = 0;
 
-	if (batt_state.stop_heartbeat)
+	struct delayed_work *temp_charge_work =
+			container_of (a6_battery_work, struct delayed_work, work);
+	struct a6_device_state* state =
+			container_of(temp_charge_work, struct a6_device_state, charge_work);
+
+	if (state->stop_heartbeat)
 		return;
 
-	if (batt_state.i2c_dev &&
-			(percent = a6_fish_battery_get_percent()) != batt_state.last_percent){
+	if ( (percent = a6_fish_battery_get_percent(&state->i2c_dev->dev))
+			!= state->last_percent){
 
-		batt_state.last_percent = percent;
+		state->last_percent = percent;
 		power_supply_changed(&a6_fish_power_supplies[0]);
 	}
 
-	if (!batt_state.stop_heartbeat)
-		schedule_delayed_work(&batt_state.charge_work,
+	if (!state->stop_heartbeat)
+		schedule_delayed_work(&state->charge_work,
 						A6_BATT_HB_PERIOD);
 }
 
-static int a6_fish_battery_probe(struct platform_device *pdev)
+static int a6_fish_battery_probe(struct a6_device_state *state)
 {
 	int i;
-	int rc;
+	int rc = 0;
+	struct i2c_client *client = state->i2c_dev;
 
 	/* init power supplier framework */
 	for (i = 0; i < ARRAY_SIZE(a6_fish_power_supplies); i++) {
-		rc = power_supply_register(&pdev->dev, &a6_fish_power_supplies[i]);
+	
+		rc = power_supply_register(&client->dev, &a6_fish_power_supplies[i]);
 		if (rc)
 			pr_err("%s: Failed to register power supply (%d)\n",
 			       __func__, rc);
 	}
 
-	INIT_DELAYED_WORK(&batt_state.charge_work, a6_battery_heartbeat);
-	schedule_delayed_work(&batt_state.charge_work, A6_BATT_HB_PERIOD);
+	INIT_DELAYED_WORK(&state->charge_work, a6_battery_heartbeat);
+	schedule_delayed_work(&state->charge_work, A6_BATT_HB_PERIOD);
+
+	return rc;
+}
+
+static int a6_fish_battery_remove(struct a6_device_state *state)
+{
+	int i;
+
+	state->stop_heartbeat = true;
+	cancel_delayed_work_sync(&state->charge_work);
+
+	/* init power supplier framework */
+	for (i = 0; i < ARRAY_SIZE(a6_fish_power_supplies); i++) {
+		power_supply_unregister(&a6_fish_power_supplies[i]);
+	}
 
 	return 0;
 }
 
-static struct platform_driver a6_fish_battery_driver = {
-	.probe	= a6_fish_battery_probe,
-	.driver	= {
-		.name	= "a6_fish_battery",
-		.owner	= THIS_MODULE,
-	},
-};
+static int a6_fish_battery_suspend (struct a6_device_state *state)
+{
 
+	if (delayed_work_pending(&state->charge_work)) {
+		state->stop_heartbeat = true;
+		smp_mb();
+		cancel_delayed_work_sync(&state->charge_work);
+	}
+
+	return 0;
+}
+
+static int a6_fish_battery_resume (struct a6_device_state *state)
+{
+	state->stop_heartbeat = false;
+	schedule_delayed_work(&state->charge_work,
+			A6_BATT_HB_PERIOD);
+
+	power_supply_changed(&a6_fish_power_supplies[0]);
+
+	return 0;
+}
 
 /******************************************************************************
 * a6_i2c_probe()
@@ -4527,6 +4553,7 @@ static int a6_i2c_probe(struct i2c_client *client, const struct i2c_device_id *d
 		goto err5;
 	}
 
+#if 0
 	/* register as misc device */
 	memcpy(&state->fops, &a6_fops, sizeof(struct file_operations));
 	state->mdev.minor = MISC_DYNAMIC_MINOR;
@@ -4554,6 +4581,7 @@ static int a6_i2c_probe(struct i2c_client *client, const struct i2c_device_id *d
 	if (rc < 0) {
 		goto err6;
 	}
+#endif
 
 #ifdef A6_PQ
 	rc = a6_start_ai_dispatch_task(state);
@@ -4586,17 +4614,24 @@ static int a6_i2c_probe(struct i2c_client *client, const struct i2c_device_id *d
 #endif
 #endif
 
-	if (strncmp (dev_id->name, A6_DEVICE_0, strlen (A6_DEVICE_0)) == 0){
-		//TODO: lock
-		batt_state.i2c_dev = &client->dev;
+	if (plat_data->power_supply_connected == 1){
+		batt_state = state;
+
+		if ( (rc = a6_fish_battery_probe (state)) < 0) {
+			printk(KERN_ERR "%s: Failed to register power supplies, rc: %d.\n", 
+					A6_DRIVER, rc);
+			rc = 0;
+		}
 	}
 
 	printk(KERN_NOTICE "A6 driver initialized successfully!\n");
 	return 0;
 
 err7:
+#if 0
 	a6_remove_dev_files(state, &client->dev);
 err6:
+#endif
 	free_irq(gpio_to_irq(plat_data->pwr_gpio), state);
 err5:
 	gpio_free(plat_data->pwr_gpio);
@@ -4620,12 +4655,13 @@ static int a6_i2c_remove(struct i2c_client *client)
 {
 	struct a6_device_state* state = (struct a6_device_state*)i2c_get_clientdata(client);
 
-	if (&client->dev == batt_state.i2c_dev){
-		//TODO: lock
-		batt_state.i2c_dev = NULL;
+	if (state->plat_data->power_supply_connected == 1){
+		a6_fish_battery_remove (state);
 	}
 
+#if 0
 	a6_remove_dev_files(state, &client->dev);
+#endif
 
 	if (state->ka6d_workqueue) {
 		destroy_workqueue(state->ka6d_workqueue);
@@ -4654,6 +4690,8 @@ static int a6_i2c_suspend(struct i2c_client *dev, pm_message_t event)
 		enable_irq_wake(gpio_to_irq(state->plat_data->pwr_gpio));
 	}
 	
+	a6_fish_battery_suspend (state);
+
 	return 0;
 }
 
@@ -4674,7 +4712,7 @@ static int a6_i2c_resume (struct i2c_client *dev)
 		queue_work(state->ka6d_workqueue, &state->a6_irq_work);
 	}
 
-	power_supply_changed(&a6_fish_power_supplies[0]);
+	a6_fish_battery_resume (state);
 
 	return 0;
 }
@@ -4709,9 +4747,6 @@ static struct i2c_driver a6_i2c_driver = {
 ***********************************************************************************/
 static int __init a6_module_init(void)
 {
-	printk(KERN_INFO "Before a6 call to platform_driver_register.\n");
-	platform_driver_register(&a6_fish_battery_driver);
-
 	printk(KERN_INFO "Before a6 call to i2c_add_driver.\n");
 	return i2c_add_driver(&a6_i2c_driver);
 }
@@ -4722,7 +4757,6 @@ static int __init a6_module_init(void)
 static void __exit a6_module_exit(void)
 {
 	i2c_del_driver(&a6_i2c_driver);
-	platform_driver_unregister(&a6_fish_battery_driver);
 }
 
 module_init(a6_module_init);
