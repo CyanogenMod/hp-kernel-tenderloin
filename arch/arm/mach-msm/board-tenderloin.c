@@ -1531,6 +1531,8 @@ static struct a6_platform_data tenderloin_a6_0_platform_data = {
 
 	.sbw_init		= a6_sbw_init_imp,
 	.sbw_deinit		= a6_sbw_deinit_imp,
+
+	.power_supply_connected = 1,
 };
 
 static struct a6_platform_data tenderloin_a6_1_platform_data = {
@@ -1548,6 +1550,8 @@ static struct a6_platform_data tenderloin_a6_1_platform_data = {
 
 	.sbw_init		= a6_sbw_init_imp,
 	.sbw_deinit		= a6_sbw_deinit_imp,
+
+	.power_supply_connected = 0,
 };
 
 
@@ -3787,10 +3791,6 @@ static struct platform_device msm_wlan_pm_device = {
  * those two really should be registered from the A6 I2C probe function,
  * passing the A6 I2C device as platform data
  */
-static struct platform_device a6_fish_battery_device = {
-	.name = "a6_fish_battery",
-};
-
 static struct platform_device a6_dock_device = {
 	.name = "a6_dock",
 };
@@ -4643,6 +4643,7 @@ struct i2c_registry {
 };
 
 static struct i2c_registry msm8x60_i2c_devices[] __initdata = {
+#ifdef CONFIG_INPUT_LSM303DLH
     {
         I2C_TENDERLOIN,
         MSM_GSBI3_QUP_I2C_BUS_ID,
@@ -4655,6 +4656,7 @@ static struct i2c_registry msm8x60_i2c_devices[] __initdata = {
         &lsm303dlh_mag_i2c_board_info,
         ARRAY_SIZE(lsm303dlh_mag_i2c_board_info),
     },
+#endif
     {
         I2C_TENDERLOIN,
         MSM_GSBI3_QUP_I2C_BUS_ID,
@@ -6917,7 +6919,6 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
 
 #ifdef CONFIG_A6
 	tenderloin_init_a6();
-	platform_device_register (&a6_fish_battery_device);
 	platform_device_register (&a6_dock_device);
 #endif
 

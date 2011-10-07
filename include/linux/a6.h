@@ -47,6 +47,7 @@ struct a6_platform_data {
 	int	(*sbw_deinit)(struct a6_platform_data*);
 
 	int     pwr_gpio_wakeup_cap;  /* set if pwr_gpio is wakeup capable */
+	int power_supply_connected;	/* Set to 1 if this is the a6 connected to battery, etc */
 };
 
 struct a6_wake_ops {
