@@ -36,7 +36,7 @@
 #include <linux/gpio.h>
 #include <linux/cdev.h>
 #include <linux/debugfs.h>
-
+#include <linux/switch.h>
 #include <linux/power_supply.h>
 #include <mach/msm_hsusb.h>
 
@@ -491,6 +491,12 @@ struct a6_ps_state {
 	enum chg_type otg_chg_type;
 } batt_state;
 
+struct a6_dock_state {
+	struct device *i2c_dev;
+	struct switch_dev sdev;
+	bool sdev_registered;
+} dock_state;
+
 #ifdef A6_PQ
 int32_t a6_start_ai_dispatch_task(struct a6_device_state* state);
 int32_t a6_stop_ai_dispatch_task(struct a6_device_state* state);
@@ -557,6 +563,8 @@ static ssize_t a6_diag_show(struct device *dev, struct device_attribute *dev_att
 static ssize_t a6_diag_store(struct device *dev, struct device_attribute *dev_attr, const char *buf,
 			     size_t count);
 static ssize_t a6_val_cksum_show(struct device *dev, struct device_attribute *attr, char *buf);
+
+static void a6_dock_update_state(void);
 
 void a6_force_wake_timer_callback(ulong data);
 /*
@@ -3693,6 +3701,7 @@ void a6_irq_work_handler(struct work_struct *work)
 			container_of(work, struct a6_device_state, a6_irq_work);
 	struct a6_register_desc *reg_desc_status3, *reg_desc_status2;
 	uint8_t vals[id_size], reg_val_status3 = 0, reg_val_status2 = 0;
+	bool update_dock = false;
 	int32_t ret = 0;
 	char *envp[] = {
 		[0] = "A6_ACTION=EMERGENCY_RESET_NOTIFY",
@@ -3853,6 +3862,7 @@ void a6_irq_work_handler(struct work_struct *work)
 			//sysfs_notify_dirent(state->notify_nodes[DIRENT_CHG_SRC_NOTIFY]);
 			/* Send uevent */
 			kobject_uevent_env(&state->i2c_dev->dev.kobj, KOBJ_CHANGE, &envp[4]);
+			update_dock = true;
 		}
 
 		/* log threshold change? */
@@ -3928,6 +3938,11 @@ err0:
 		state->busy_count--;
 	if (!state->busy_count)
 		clear_bit(DEVICE_BUSY_BIT, state->flags);
+
+	if (update_dock) {
+		a6_dock_update_state();
+	}
+
 	A6_DPRINTK(A6_DEBUG_VERBOSE, KERN_ERR, "%s: Visited\n", __func__);
 }
 
@@ -4349,6 +4364,62 @@ static struct platform_driver a6_fish_battery_driver = {
 	},
 };
 
+static ssize_t a6_dock_print_name(struct switch_dev *sdev, char *buf)
+{
+	bool docked = switch_get_state(sdev) != 0;
+	return sprintf(buf, docked ? "DESK\n" : "None\n");
+}
+
+static void a6_dock_update_state(void)
+{
+	char buf[1024];
+	unsigned int value;
+
+	if (!dock_state.i2c_dev || !dock_state.sdev_registered) {
+		return;
+	}
+
+	a6_generic_show (batt_state.i2c_dev, &a6_register_desc_arr[31].dev_attr, buf);
+	sscanf (buf, "%u", &value);
+
+	if (value & TS2_I2C_FLAGS_2_PUCK) {
+		switch_set_state(&dock_state.sdev, 1);
+	} else {
+		switch_set_state(&dock_state.sdev, 0);
+	}
+}
+
+static int a6_dock_probe(struct platform_device *pdev)
+{
+	int ret;
+
+	dock_state.sdev.name = "dock";
+	dock_state.sdev.print_name = a6_dock_print_name;
+	ret = switch_dev_register(&dock_state.sdev);
+	if (ret < 0) {
+		return ret;
+	}
+
+	dock_state.sdev_registered = true;
+	a6_dock_update_state();
+
+	return 0;
+}
+
+static int a6_dock_remove(struct platform_device *pdev)
+{
+	dock_state.sdev_registered = false;
+	switch_dev_unregister(&dock_state.sdev);
+}
+
+static struct platform_driver a6_dock_driver = {
+	.probe  = a6_dock_probe,
+	.remove = a6_dock_remove,
+	.driver = {
+		.name  = "a6_dock",
+		.owner = THIS_MODULE,
+	},
+};
 
 /******************************************************************************
 * a6_i2c_probe()
@@ -4554,6 +4625,8 @@ static int a6_i2c_probe(struct i2c_client *client, const struct i2c_device_id *d
 	if (strncmp (dev_id->name, A6_DEVICE_0, strlen (A6_DEVICE_0)) == 0){
 		//TODO: lock
 		batt_state.i2c_dev = &client->dev;
+		dock_state.i2c_dev = &client->dev;
+		a6_dock_update_state();
 	}
 
 	printk(KERN_NOTICE "A6 driver initialized successfully!\n");
@@ -4588,6 +4661,9 @@ static int a6_i2c_remove(struct i2c_client *client)
 	if (&client->dev == batt_state.i2c_dev){
 		//TODO: lock
 		batt_state.i2c_dev = NULL;
+	}
+	if (&client->dev == dock_state.i2c_dev) {
+		dock_state.i2c_dev = NULL;
 	}
 
 	a6_remove_dev_files(state, &client->dev);
@@ -4673,8 +4749,12 @@ static struct i2c_driver a6_i2c_driver = {
 ***********************************************************************************/
 static int __init a6_module_init(void)
 {
+	memset(&batt_state, 0, sizeof(batt_state));
+	memset(&dock_state, 0, sizeof(dock_state));
+
 	printk(KERN_INFO "Before a6 call to platform_driver_register.\n");
 	platform_driver_register(&a6_fish_battery_driver);
+	platform_driver_register(&a6_dock_driver);
 
 	printk(KERN_INFO "Before a6 call to i2c_add_driver.\n");
 	return i2c_add_driver(&a6_i2c_driver);
@@ -4686,6 +4766,7 @@ static int __init a6_module_init(void)
 static void __exit a6_module_exit(void)
 {
 	i2c_del_driver(&a6_i2c_driver);
+	platform_driver_unregister(&a6_dock_driver);
 	platform_driver_unregister(&a6_fish_battery_driver);
 }
 

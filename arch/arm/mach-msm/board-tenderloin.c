@@ -3783,8 +3783,16 @@ static struct platform_device msm_wlan_pm_device = {
 	.id = -1,
 };
 
+/* FIXME:
+ * those two really should be registered from the A6 I2C probe function,
+ * passing the A6 I2C device as platform data
+ */
 static struct platform_device a6_fish_battery_device = {
 	.name = "a6_fish_battery",
+};
+
+static struct platform_device a6_dock_device = {
+	.name = "a6_dock",
 };
 
 
@@ -6910,6 +6918,7 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
 #ifdef CONFIG_A6
 	tenderloin_init_a6();
 	platform_device_register (&a6_fish_battery_device);
+	platform_device_register (&a6_dock_device);
 #endif
 
 #ifdef CONFIG_MSM8X60_AUDIO
