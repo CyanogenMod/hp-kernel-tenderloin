@@ -138,7 +138,7 @@ static int lsm303dlh_mag_i2c_read(struct lsm303dlh_mag_data *mag,
 				  u8 *buf, int len)
 {
 	int err;
-    int tries = 0;
+    	int tries = 0;
 
 	struct i2c_msg msgs[] = {
 		{
@@ -176,6 +176,7 @@ static int lsm303dlh_mag_i2c_write(struct lsm303dlh_mag_data *mag,
 				   u8 *buf, int len)
 {
 	int err;
+	int tries =0;
 
 	struct i2c_msg msgs[] = {
 		{
