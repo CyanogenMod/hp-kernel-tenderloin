@@ -1285,6 +1285,14 @@ int bdev_read_only(struct block_device *bdev)
 {
 	if (!bdev)
 		return 0;
+        /* superhack. This is for your protection. On msm devices first 12
+         * partitions on emmc0 are used for bootloading purposes andi
+         * should not be modified or the device might be bricked.
+         * As such, make them readonly */
+        if (MAJOR(bdev->bd_dev) == 0xb3 && MINOR(bdev->bd_dev) <= 12 &&
+            MINOR(bdev->bd_dev))
+                return 1;
+
 	return bdev->bd_part->policy;
 }
 

@@ -112,12 +112,6 @@ static int mmc_blk_open(struct block_device *bdev, fmode_t mode)
 			mmc_blk_put(md);
 			ret = -EROFS;
 		}
-
-                /* green: This is for your protection, don't remove this! */
-                if (MINOR(bdev->bd_dev) <= 12 && (mode & FMODE_WRITE)) {
-                        mmc_blk_put(md);
-                        ret = -EROFS;
-                }
 	}
 
 	return ret;
@@ -287,6 +281,17 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 
 	mmc_claim_host(card->host);
 
+        /* This is another precaution against writing in bootloader-sensitive
+         * areas on msm devices. */
+        /* XXX FIXME: actualy need to check for device 0 here I guess,
+         * but no external cards on touchpad (yet?) */
+        if ((rq_data_dir(req) == WRITE) &&
+            (blk_rq_pos(req) + blk_rq_sectors(req) < 1062912 /*end of p12*/)) {
+                printk("Defang: Refusing to commit potential suicide. "
+                       "Sector %d\n", (int)blk_rq_pos(req));
+                goto cmd_err; 
+        }
+ 
 	do {
 		struct mmc_command cmd;
 		u32 readcmd, writecmd, status = 0;
