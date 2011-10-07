@@ -551,6 +551,13 @@ void mdp4_overlay_vg_setup(struct mdp4_overlay_pipe *pipe)
 
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
 
+#ifdef CONFIG_FB_MSM_FLIP_LR
+	pipe->op_mode |= MDP4_OP_FLIP_LR;
+#endif
+#ifdef CONFIG_FB_MSM_FLIP_UD
+	pipe->op_mode |= MDP4_OP_FLIP_UD;
+#endif
+
 	outpdw(vg_base + 0x0000, src_size);	/* MDP_RGB_SRC_SIZE */
 	outpdw(vg_base + 0x0004, src_xy);	/* MDP_RGB_SRC_XY */
 	outpdw(vg_base + 0x0008, dst_size);	/* MDP_RGB_DST_SIZE */
