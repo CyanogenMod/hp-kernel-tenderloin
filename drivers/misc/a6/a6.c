@@ -4391,7 +4391,8 @@ static int a6_fish_battery_remove(struct a6_device_state *state)
 static int a6_fish_battery_suspend (struct a6_device_state *state)
 {
 
-	if (delayed_work_pending(&state->charge_work)) {
+	if (state->plat_data->power_supply_connected == 1 &&
+			delayed_work_pending(&state->charge_work)) {
 		state->stop_heartbeat = true;
 		smp_mb();
 		cancel_delayed_work_sync(&state->charge_work);
@@ -4402,11 +4403,13 @@ static int a6_fish_battery_suspend (struct a6_device_state *state)
 
 static int a6_fish_battery_resume (struct a6_device_state *state)
 {
-	state->stop_heartbeat = false;
-	schedule_delayed_work(&state->charge_work,
-			A6_BATT_HB_PERIOD);
+	if (state->plat_data->power_supply_connected == 1) {
+		state->stop_heartbeat = false;
+		schedule_delayed_work(&state->charge_work,
+				A6_BATT_HB_PERIOD);
 
-	power_supply_changed(&a6_fish_power_supplies[0]);
+		power_supply_changed(&a6_fish_power_supplies[0]);
+	}
 
 	return 0;
 }
