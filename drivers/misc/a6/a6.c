@@ -3691,7 +3691,8 @@ static irqreturn_t a6_irq(int irq, void *dev_id)
 		queue_work(state->ka6d_workqueue, &state->a6_irq_work);
 	}
 	
-	power_supply_changed(&a6_fish_power_supplies[0]);
+	if (state->plat_data->power_supply_connected == 1)
+		power_supply_changed(&a6_fish_power_supplies[0]);
 
 	return IRQ_HANDLED;
 }
