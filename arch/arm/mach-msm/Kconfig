@@ -1357,4 +1357,9 @@ config MSM_SCHED_FAST_CPU_ONLINE
 	help
 		Bypass scheduler domain reconstruction when onlining the second
 		CPU on 8X60 to speed up operation.
+
+config MSM_FORCE_FAST_CPU_TABLE
+    bool "Enable CPU table with higher clock rates"
+    depends on ARCH_MSM8X60
+    default n
 endif

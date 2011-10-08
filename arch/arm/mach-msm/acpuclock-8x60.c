@@ -899,20 +899,21 @@ static unsigned int __init select_freq_plan(void)
 
 	pte_efuse = readl(QFPROM_PTE_EFUSE_ADDR);
 
-
+#ifndef CONFIG_MSM_FORCE_FAST_CPU_TABLE
 	speed_bin = pte_efuse & 0xF;
 	if (speed_bin == 0xF)
 		speed_bin = (pte_efuse >> 4) & 0xF;
 
 	if (speed_bin == 0x1) {
-
+#endif
 		max_khz = 1512000;
-
+#ifndef CONFIG_MSM_FORCE_FAST_CPU_TABLE
 		pvs = (pte_efuse >> 10) & 0x7;
 		if (pvs == 0x7)
 			pvs = (pte_efuse >> 13) & 0x7;
-
+#else
         pvs = 0x3;
+#endif
 		switch (pvs) {
 		case 0x0:
 		case 0x7:
@@ -932,11 +933,12 @@ static unsigned int __init select_freq_plan(void)
 			pr_warn("ACPU PVS: Unknown. Defaulting to slow.\n");
 			break;
 		}
+#ifndef CONFIG_MSM_FORCE_FAST_CPU_TABLE
 	} else {
 		max_khz = 1188000;
 		acpu_freq_tbl = acpu_freq_tbl_1188mhz;
 	}
-
+#endif
 	/* Truncate the table based to max_khz. */
 	for (f = acpu_freq_tbl; f->acpuclk_khz != 0; f++) {
 		if (f->acpuclk_khz > max_khz) {
