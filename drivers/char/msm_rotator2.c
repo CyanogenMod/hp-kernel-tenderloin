@@ -707,13 +707,13 @@ static int msm_rotator_do_rotate(unsigned long arg)
 	int use_imem = 0;
 	int s;
 
-	printk("%s+++++\n",__func__);
+//	printk("%s+++++\n",__func__);
 
 	if (copy_from_user(&info, (void __user *)arg, sizeof(info)))
 		return -EFAULT;
 
 
-	printk("%s copied\n",__func__);
+//	printk("%s copied\n",__func__);
 	rc = get_img(info.src.memory_id, (unsigned long *)&in_paddr,
 			(unsigned long *)&len, &src_file);
 	if (rc) {
@@ -722,7 +722,7 @@ static int msm_rotator_do_rotate(unsigned long arg)
 		return rc;
 	}
 
-	printk("%s, Src 0x%8.8X, 0x%8.8X, 0x%8.8X\n", __func__, in_paddr, info.src.offset, len);
+//	printk("%s, Src 0x%8.8X, 0x%8.8X, 0x%8.8X\n", __func__, in_paddr, info.src.offset, len);
 
 	in_paddr += info.src.offset;
 
@@ -735,7 +735,7 @@ static int msm_rotator_do_rotate(unsigned long arg)
 	}
 	out_paddr += info.dst.offset;
 
-	printk("%s, Dst 0x%8.8X, 0x%8.8X, 0x%8.8X\n", __func__, out_paddr, info.dst.offset, len);
+//	printk("%s, Dst 0x%8.8X, 0x%8.8X, 0x%8.8X\n", __func__, out_paddr, info.dst.offset, len);
 
 	mutex_lock(&msm_rotator_dev->rotator_lock);
 	for (s = 0; s < MAX_SESSIONS; s++)
@@ -903,6 +903,7 @@ static int msm_rotator_start(unsigned long arg)
 		((info.dst_y + info.src_rect.h) > info.dst.height)))
 		return -EINVAL;
 
+#if 0
 	printk("%s, SH: 0x%8.8X SW: 0x%8.8X DH: 0x%8.8X DW: 0x%8.8X\n", __func__,
 			info.src.height, info.src.width, info.dst.height, info.dst.width);
 
@@ -913,6 +914,7 @@ static int msm_rotator_start(unsigned long arg)
 	printk("%s, SRX: 0x%8.8X SRY: 0x%8.8X SRH: 0x%8.8X SRW: 0x%8.8X\n", __func__,
 			info.src_rect.x,info.src_rect.y,info.src_rect.h,info.		src_rect.w);
 
+#endif
 	switch (info.src.format) {
 	case MDP_RGB_565:
 	case MDP_BGR_565:
