@@ -3691,7 +3691,8 @@ static irqreturn_t a6_irq(int irq, void *dev_id)
 		queue_work(state->ka6d_workqueue, &state->a6_irq_work);
 	}
 	
-	if (state->plat_data->power_supply_connected == 1)
+	if (state->plat_data->power_supply_connected == 1 &&
+			batt_state != NULL)
 		power_supply_changed(&a6_fish_power_supplies[0]);
 
 	return IRQ_HANDLED;
@@ -4693,13 +4694,13 @@ static int a6_i2c_probe(struct i2c_client *client, const struct i2c_device_id *d
 		dock_state.i2c_dev = &client->dev;
 		a6_dock_update_state();
 
-		batt_state = state;
-
 		if ( (rc = a6_fish_battery_probe (state)) < 0) {
-			printk(KERN_ERR "%s: Failed to register power supplies, rc: %d.\n", 
+			printk(KERN_ERR "%s: Failed to register power supplies, rc: %d.\n",
 					A6_DRIVER, rc);
 			rc = 0;
 		}
+
+		batt_state = state;
 	}
 
 	printk(KERN_NOTICE "A6 driver initialized successfully!\n");
