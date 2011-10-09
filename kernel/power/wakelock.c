@@ -317,9 +317,10 @@ static int power_suspend_late(struct device *dev)
 #ifdef CONFIG_WAKELOCK_STAT
 	wait_for_wakeup = 1;
 #endif
-	if (debug_mask & DEBUG_SUSPEND)
-		pr_info("power_suspend_late return %d\n", ret);
-	return ret;
+/*jonpry *HACK* Removes this whole late suspend wakelock feature as there appears to be nothing
+	purposefully using it and it totally blows up the WOW feature on emmc based wlan's */
+	printk("power_suspend_late return %d\n", ret);
+	return 0;
 }
 
 static struct dev_pm_ops power_driver_pm_ops = {
