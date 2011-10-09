@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Linux kernel version: 2.6.35-palm
-# Sat Oct  8 04:12:38 2011
+# Sun Oct  9 04:41:06 2011
 #
 CONFIG_ARM=y
 CONFIG_SYS_SUPPORTS_APM_EMULATION=y
@@ -516,6 +516,7 @@ CONFIG_VIRT_TO_BUS=y
 # CONFIG_KSM is not set
 CONFIG_DEFAULT_MMAP_MIN_ADDR=4096
 CONFIG_ALIGNMENT_TRAP=y
+CONFIG_ALLOW_CPU_ALIGNMENT=y
 # CONFIG_UACCESS_WITH_MEMCPY is not set
 CONFIG_CP_ACCESS=m
 
