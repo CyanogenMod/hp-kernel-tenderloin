@@ -842,7 +842,7 @@ static struct platform_device usb_mass_storage_device = {
 
 static struct android_usb_platform_data android_usb_pdata = {
 	.vendor_id	= 0x0BB4,
-	.product_id	= 0x0ffc,
+	.product_id	= 0x0C02,
 	.version	= 0x0100,
 	.product_name		= "Android Tablet",
 	.manufacturer_name	= "HP",
