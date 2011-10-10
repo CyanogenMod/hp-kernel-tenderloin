@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Linux kernel version: 2.6.35-palm
-# Sun Oct  9 04:41:06 2011
+# Sun Oct  9 21:20:56 2011
 #
 CONFIG_ARM=y
 CONFIG_SYS_SUPPORTS_APM_EMULATION=y
@@ -1857,7 +1857,7 @@ CONFIG_FB_CFB_IMAGEBLIT=y
 # CONFIG_FB_MB862XX is not set
 CONFIG_FB_MSM=y
 # CONFIG_FB_MSM_BACKLIGHT is not set
-# CONFIG_FB_MSM_LOGO is not set
+CONFIG_FB_MSM_LOGO=y
 CONFIG_FB_MSM_LCDC_HW=y
 # CONFIG_FB_MSM_MDP22 is not set
 # CONFIG_FB_MSM_MDP30 is not set
