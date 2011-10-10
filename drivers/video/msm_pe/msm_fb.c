@@ -1305,10 +1305,21 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 	return ret;
 }
 
+/*jonpry: *HACK* something is trying to open us early. Probably v4l or some console remnant. 
+		Since it quickly decides to close us. This results in shutdown of the lcd
+		and boot anim, and ugly blankness on the screen. To fix this we simply fail
+		on the first open. Would be nice to just not be opened instead */
+static int first=1;
 static int msm_fb_open(struct fb_info *info, int user)
 {
 	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)info->par;
 	int result;
+
+	if(first)
+	{
+		first = 0;
+		return -1;
+	}
 
 	result = pm_runtime_get_sync(info->dev);
 
