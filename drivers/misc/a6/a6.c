@@ -488,6 +488,9 @@ struct a6_device_state {
 	int stop_heartbeat;
 	int last_percent;
 
+	/* used for the various generic_show calls, to be removed later */
+	char *print_buffer;
+
 	struct switch_dev *dock_switch;
 };
 
@@ -3664,7 +3667,6 @@ struct file_operations a6_fops = {
 static irqreturn_t a6_irq(int irq, void *dev_id)
 {
 	struct a6_device_state* state = (struct a6_device_state *)dev_id;
-	int rc;
 
 	a6_tp_irq_count++;
 #if defined PROFILE_USAGE
@@ -4200,14 +4202,11 @@ struct file_operations a6_pmem_fops = {
 static int a6_fish_battery_get_percent(struct device *dev)
 {
 	int temp_val = 0;
-	char *buf = NULL;
+	struct a6_device_state *state = (struct a6_device_state*) dev_get_drvdata(dev);
 
-	if ( (buf = kzalloc (PAGE_SIZE, GFP_KERNEL)) == NULL){
-		return -ENOMEM;
-	}
-	a6_generic_show (dev, &a6_register_desc_arr[9].dev_attr, buf);
-	sscanf (buf, "%d", &temp_val);
-	kfree (buf);
+	state->print_buffer[0] = '\0';
+	a6_generic_show (dev, &a6_register_desc_arr[9].dev_attr, state->print_buffer);
+	sscanf (state->print_buffer, "%d", &temp_val);
 
 	return temp_val;
 }
@@ -4217,19 +4216,13 @@ static int a6_fish_power_get_property(struct power_supply *psy,
 				   union power_supply_propval *val)
 {
 	unsigned int temp_val = 0;
-	char *buf = NULL;
-
 	struct a6_device_state *state = (struct a6_device_state*)dev_get_drvdata(psy->dev->parent);
 
 	switch (psp) {
 	case POWER_SUPPLY_PROP_ONLINE:
-		if ( (buf = kzalloc (PAGE_SIZE, GFP_KERNEL)) == NULL){
-			return -ENOMEM;
-		}
-
-		a6_generic_show (psy->dev->parent, &a6_register_desc_arr[31].dev_attr, buf);
-		sscanf (buf, "%u", &temp_val);
-		kfree (buf);
+		state->print_buffer[0] = '\0';
+		a6_generic_show (psy->dev->parent, &a6_register_desc_arr[31].dev_attr, state->print_buffer);
+		sscanf (state->print_buffer, "%u", &temp_val);
 
 		if ( (((psy->type == POWER_SUPPLY_TYPE_MAINS &&
 				state->otg_chg_type == USB_CHG_TYPE__WALLCHARGER) ||
@@ -4258,18 +4251,16 @@ static int a6_fish_battery_get_property(struct power_supply *psy,
 				     union power_supply_propval *val)
 {
 	int temp_val = 0;
-	char *buf = NULL;
 	unsigned int temp_val2 = 0;
+	struct a6_device_state *state = (struct a6_device_state*)dev_get_drvdata(psy->dev->parent);
 
 	switch (psp) {
 	case POWER_SUPPLY_PROP_STATUS:
 		/* a6 "status" reg is actually semi-health, it always shows "charge-termination" even while charging */
-		if ( (buf = kzalloc (PAGE_SIZE, GFP_KERNEL)) == NULL){
-			return -ENOMEM;
-		}
 #if 0		//Current seems to go negative if the screen is on, even when plugged into the wall
-		a6_generic_show (psy->dev->parent, &a6_register_desc_arr[14].dev_attr, buf);
-		sscanf (buf, "%d", &temp_val);
+		state->print_buffer[0] = '\0';
+		a6_generic_show (psy->dev->parent, &a6_register_desc_arr[14].dev_attr, state->print_buffer);
+		sscanf (state->print_buffer, "%d", &temp_val);
 
 		if ( temp_val > CHARGING_CURR_HYSTERESIS_MIN &&
 				temp_val < CHARGING_CURR_HYSTERESIS_MAX) {
@@ -4280,9 +4271,9 @@ static int a6_fish_battery_get_property(struct power_supply *psy,
 			val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
 		}
 #else
-		memset (buf, 0, PAGE_SIZE);
-		a6_generic_show (psy->dev->parent, &a6_register_desc_arr[31].dev_attr, buf);
-		sscanf (buf, "%u", &temp_val2);
+		state->print_buffer[0] = '\0';
+		a6_generic_show (psy->dev->parent, &a6_register_desc_arr[31].dev_attr, state->print_buffer);
+		sscanf (state->print_buffer, "%u", &temp_val2);
 
 		if ( (temp_val2 & TS2_I2C_FLAGS_2_WIRED_CHARGE) ||
 				(temp_val2 & TS2_I2C_FLAGS_2_PUCK_CHARGE)){
@@ -4297,15 +4288,13 @@ static int a6_fish_battery_get_property(struct power_supply *psy,
 			val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
 		}
 #endif
-		kfree (buf);
 
 		break;
 	case POWER_SUPPLY_PROP_HEALTH:
-		if ( (buf = kzalloc (PAGE_SIZE, GFP_KERNEL)) == NULL){
-			return -ENOMEM;
-		}
-		a6_generic_show (psy->dev->parent, &a6_register_desc_arr[8].dev_attr, buf);
-		kfree (buf);
+#if 0
+		state->print_buffer[0] = '\0';
+		a6_generic_show (psy->dev->parent, &a6_register_desc_arr[8].dev_attr, state->print_buffer);
+#endif
 		// TODO: parse temps and set OVERHEAT, parse "age" and set DEAD */
 
 		val->intval = POWER_SUPPLY_HEALTH_GOOD;
@@ -4433,15 +4422,15 @@ static ssize_t a6_dock_print_name(struct switch_dev *sdev, char *buf)
 
 static void a6_dock_update_state(struct a6_device_state *state)
 {
-	char buf[1024];
 	unsigned int value, dock;
 
 	if (state->dock_switch == NULL) {
 		return;
 	}
 
-	a6_generic_show (&state->i2c_dev->dev, &a6_register_desc_arr[31].dev_attr, buf);
-	sscanf (buf, "%u", &value);
+	state->print_buffer[0] = '\0';
+	a6_generic_show (&state->i2c_dev->dev, &a6_register_desc_arr[31].dev_attr, state->print_buffer);
+	sscanf (state->print_buffer, "%u", &value);
 
 	dock = value & TS2_I2C_FLAGS_2_PUCK ? 1 : 0;
 	switch_set_state(state->dock_switch, dock);
@@ -4483,31 +4472,35 @@ static void a6_dock_remove(struct a6_device_state *state)
 ******************************************************************************/
 static int a6_i2c_probe(struct i2c_client *client, const struct i2c_device_id *dev_id)
 {
-	int32_t rc;
+	int rc = 0;
 	struct a6_device_state* state = NULL;
 	struct a6_platform_data* plat_data = client->dev.platform_data;
 	struct a6_wake_ops *wake_ops = (struct a6_wake_ops *) plat_data->wake_ops;
 
 	if (plat_data == NULL) {
-		rc = (-ENODEV);
-		goto err0;
+		return ENODEV;
 	}
 
 	state = kzalloc(sizeof(struct a6_device_state), GFP_KERNEL);
 	if(!state) {
-		rc = (-ENOMEM);
-		goto err0;
+		return ENOMEM;
 	}
 
 	state->a2a_rd_buf = kzalloc(A2A_RD_BUFF_SIZE, GFP_KERNEL);
 	if(!state->a2a_rd_buf) {
-		rc = (-ENOMEM);
+		rc = -ENOMEM;
 		goto err0;
 	}
 	state->a2a_wr_buf = kzalloc(A2A_WR_BUFF_SIZE, GFP_KERNEL);
 	if(!state->a2a_wr_buf) {
-		rc = (-ENOMEM);
-		goto err0;
+		rc = -ENOMEM;
+		goto err1;
+	}
+
+	state->print_buffer = kzalloc(PAGE_SIZE, GFP_KERNEL);
+	if (!state->print_buffer) {
+		rc = -ENOMEM;
+		goto err2;
 	}
 
 	// store i2c client device in state
@@ -4536,14 +4529,14 @@ static int a6_i2c_probe(struct i2c_client *client, const struct i2c_device_id *d
 	state->ka6d_workqueue = create_workqueue("ka6d");
 	if (!state->ka6d_workqueue) {
 		printk(KERN_ERR "%s: Failed to create ka6d workqueue.\n", A6_DRIVER);
-		goto err0;
+		goto err3;
 	}
 
 	// separate wq for handling force wake timer expiry...
 	state->ka6d_fw_workqueue  = create_workqueue("ka6d_fwd");
 	if (!state->ka6d_fw_workqueue) {
 		printk(KERN_ERR "%s: Failed to create ka6d_fwd workqueue.\n", A6_DRIVER);
-		goto err0;
+		goto err4;
 	}
 
 	init_waitqueue_head(&state->dev_busyq);
@@ -4563,14 +4556,14 @@ static int a6_i2c_probe(struct i2c_client *client, const struct i2c_device_id *d
 	if (rc != 0) {
 		printk(KERN_ERR "%s: request failed for sbw_tck gpio, val: %d.\n",
 		       A6_DRIVER, plat_data->sbw_tck_gpio);
-		goto err1;
+		goto err5;
 	}
 
 	rc = gpio_direction_output(plat_data->sbw_tck_gpio, 0);
 	if (rc != 0) {
 		printk(KERN_ERR "%s: set direction output failed for sbw_tck gpio, val: %d.\n",
 		       A6_DRIVER, plat_data->sbw_tck_gpio);
-		goto err1;
+		goto err6;
 	}
 
 	// configure sbw_wkup (this is the app -> a6 wakeup used in the JTAG handshaking)
@@ -4578,14 +4571,14 @@ static int a6_i2c_probe(struct i2c_client *client, const struct i2c_device_id *d
 	if (rc != 0) {
 		printk(KERN_ERR "%s: request failed for sbw_wkup gpio, val: %d.\n",
 		       A6_DRIVER, plat_data->sbw_wkup_gpio);
-		goto err2;
+		goto err6;
 	}
 
 	rc = gpio_direction_output(plat_data->sbw_wkup_gpio, 0);
 	if (rc != 0) {
 		printk(KERN_ERR "%s: set direction output failed for sbw_wkup gpio, val: %d.\n",
 		       A6_DRIVER, plat_data->sbw_wkup_gpio);
-		goto err2;
+		goto err7;
 	}
 
 	// configure sbw_tdio (initially configured as output and the re-configured on use)
@@ -4593,14 +4586,14 @@ static int a6_i2c_probe(struct i2c_client *client, const struct i2c_device_id *d
 	if (rc != 0) {
 		printk(KERN_ERR "%s: request failed for sbw_tdio gpio, val: %d.\n",
 		       A6_DRIVER, plat_data->sbw_tdio_gpio);
-		goto err3;
+		goto err7;
 	}
 
 	rc = gpio_direction_output(plat_data->sbw_tdio_gpio, 1);
 	if (rc != 0) {
 		printk(KERN_ERR "%s: set direction output failed for sbw_tdio gpio, val: %d.\n",
 		       A6_DRIVER, plat_data->sbw_tdio_gpio);
-		goto err3;
+		goto err8;
 	}
 
 	// configure pwr interrupt (a6 -> app)...
@@ -4608,7 +4601,7 @@ static int a6_i2c_probe(struct i2c_client *client, const struct i2c_device_id *d
 	if (rc != 0) {
 		printk(KERN_ERR "%s: request failed for pwr gpio, val: %d., err: %d\n",
 		       A6_DRIVER, plat_data->pwr_gpio, rc);
-		goto err4;
+		goto err8;
 	}
 
 	rc = request_irq(gpio_to_irq(plat_data->pwr_gpio), a6_irq,
@@ -4617,7 +4610,7 @@ static int a6_i2c_probe(struct i2c_client *client, const struct i2c_device_id *d
 	if (rc != 0) {
 		printk(KERN_ERR "%s: request irq failed for pwr_gpio: val: %d, err: %d\n", A6_DRIVER,
 		       plat_data->pwr_gpio, rc);
-		goto err5;
+		goto err9;
 	}
 
 #if 0
@@ -4629,7 +4622,7 @@ static int a6_i2c_probe(struct i2c_client *client, const struct i2c_device_id *d
 	rc = misc_register(&state->mdev);
 	if (rc < 0) {
 		printk(KERN_ERR "%s: Failed to register as misc device\n", A6_DRIVER);
-		goto err6;
+		goto err10;
 	}
 
 	memcpy(&state->pmem_fops, &a6_pmem_fops, sizeof(struct file_operations));
@@ -4641,19 +4634,19 @@ static int a6_i2c_probe(struct i2c_client *client, const struct i2c_device_id *d
 	rc = misc_register(&state->pmem_mdev);
 	if (rc < 0) {
 		printk(KERN_ERR "%s: Failed to register as a6 pmem misc device\n", A6_DRIVER);
-		goto err6;
+		goto err11;
 	}
 
 	rc = a6_create_dev_files(state, &client->dev);
 	if (rc < 0) {
-		goto err6;
+		goto err12;
 	}
 #endif
 
 #ifdef A6_PQ
 	rc = a6_start_ai_dispatch_task(state);
 	if (rc < 0) {
-		goto err7;
+		goto err13;
 	}
 #endif // A6_PQ
 
@@ -4700,25 +4693,38 @@ static int a6_i2c_probe(struct i2c_client *client, const struct i2c_device_id *d
 	printk(KERN_NOTICE "A6 driver initialized successfully!\n");
 	return 0;
 
-err7:
+err13:
 #if 0
 	a6_remove_dev_files(state, &client->dev);
-err6:
+err12:
+	 misc_register(&state->pmem_mdev);
+err11:
+	misc_unregister(&state->mdev);
+err10:
 #endif
 	free_irq(gpio_to_irq(plat_data->pwr_gpio), state);
-err5:
+err9:
 	gpio_free(plat_data->pwr_gpio);
-err4:
+err8:
 	gpio_free(plat_data->sbw_tdio_gpio);
-err3:
+err7:
 	gpio_free(plat_data->sbw_wkup_gpio);
-err2:
+err6:
 	gpio_free(plat_data->sbw_tck_gpio);
+err5:
+	destroy_workqueue(state->ka6d_fw_workqueue);
+err4:
+	destroy_workqueue(state->ka6d_workqueue);
+err3:
+	kfree(state->print_buffer);
+err2:
+	kfree(state->a2a_wr_buf);
 err1:
-	kfree(state);
+	kfree(state->a2a_rd_buf);
 err0:
 	kfree(state);
-	return -ENODEV;
+
+	return rc;
 }
 
 /******************************************************************************
@@ -4745,6 +4751,18 @@ static int a6_i2c_remove(struct i2c_client *client)
 
 	if (state->ka6d_fw_workqueue) {
 		destroy_workqueue(state->ka6d_fw_workqueue);
+	}
+
+	if (state->a2a_rd_buf) {
+		kfree(state->a2a_rd_buf);
+	}
+
+	if (state->a2a_wr_buf) {
+		kfree(state->a2a_wr_buf);
+	}
+
+	if (state->print_buffer) {
+		kfree(state->print_buffer);
 	}
 
 	return 0;
