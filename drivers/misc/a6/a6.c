@@ -3688,10 +3688,6 @@ static irqreturn_t a6_irq(int irq, void *dev_id)
 		queue_work(state->ka6d_workqueue, &state->a6_irq_work);
 	}
 	
-	if (state->plat_data->power_supply_connected == 1 &&
-			batt_state != NULL)
-		power_supply_changed(&a6_fish_power_supplies[0]);
-
 	return IRQ_HANDLED;
 }
 
@@ -4804,6 +4800,10 @@ static int a6_i2c_resume (struct i2c_client *dev)
 	clear_bit(IS_SUSPENDED, state->flags);
 	if (test_and_clear_bit(INT_PENDING, state->flags)) {
 		queue_work(state->ka6d_workqueue, &state->a6_irq_work);
+
+		if (state->plat_data->power_supply_connected == 1 &&
+				batt_state != NULL)
+			power_supply_changed(&a6_fish_power_supplies[0]);
 	}
 
 	a6_fish_battery_resume (state);
