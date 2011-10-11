@@ -257,7 +257,10 @@ struct msm_cam_device *g_pmsm;
 
 void msm_empty_frame_q()
 {
-	msm_queue_drain(&g_pmsm->sync->frame_q, list_frame);
+	if(!g_pmsm || !g_pmsm->sync)
+		printk("%s: Something bad was null!!! 0x%8.8X\n",__func__,g_pmsm);
+	else
+		msm_queue_drain(&g_pmsm->sync->frame_q, list_frame);
 } 
 
 static int check_overlap(struct hlist_head *ptype,
