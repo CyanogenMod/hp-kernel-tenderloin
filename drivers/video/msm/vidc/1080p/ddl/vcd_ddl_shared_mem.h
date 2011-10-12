@@ -63,7 +63,12 @@
 #define VIDC_SM_LEVEL_VC1_ADV_3  (3)
 #define VIDC_SM_LEVEL_VC1_ADV_4  (4)
 
+<<<<<<< HEAD
 enum VIDC_SM_frame_skip{
+=======
+#define VIDC_SM_RECOVERY_POINT_SEI  (1)
+enum VIDC_SM_frame_skip {
+>>>>>>> ad90a0e... vidc: 1080p: Recovery point SEI support for ISDB-Tmm
 	VIDC_SM_FRAME_SKIP_DISABLE      = 0,
 	VIDC_SM_FRAME_SKIP_ENABLE_LEVEL = 1,
 	VIDC_SM_FRAME_SKIP_ENABLE_VBV   = 2
@@ -152,5 +157,20 @@ void vidc_sm_set_encoder_new_i_period(struct ddl_buf_addr *shared_mem,
 	u32 new_i_period);
 void vidc_sm_set_encoder_init_rc_value(struct ddl_buf_addr *shared_mem,
 	u32 new_rc_value);
+<<<<<<< HEAD
 
+=======
+void vidc_sm_set_idr_decode_only(struct ddl_buf_addr *shared_mem,
+	u32 enable);
+void vidc_sm_set_concealment_color(struct ddl_buf_addr *shared_mem,
+	u32 conceal_ycolor, u32 conceal_ccolor);
+void vidc_sm_set_chroma_addr_change(struct ddl_buf_addr *shared_mem,
+	u32 addr_change);
+void vidc_sm_set_mpeg4_profile_override(struct ddl_buf_addr *shared_mem,
+	enum vidc_sm_mpeg4_profileinfo profile_info);
+void vidc_sm_set_decoder_sei_enable(struct ddl_buf_addr *shared_mem,
+	u32 sei_enable);
+void vidc_sm_get_decoder_sei_enable(struct ddl_buf_addr *shared_mem,
+	u32 *sei_enable);
+>>>>>>> ad90a0e... vidc: 1080p: Recovery point SEI support for ISDB-Tmm
 #endif
