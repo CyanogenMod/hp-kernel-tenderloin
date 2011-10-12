@@ -3697,7 +3697,8 @@ void a6_irq_work_handler(struct work_struct *work)
 			container_of(work, struct a6_device_state, a6_irq_work);
 	struct a6_register_desc *reg_desc_status3, *reg_desc_status2;
 	uint8_t vals[id_size], reg_val_status3 = 0, reg_val_status2 = 0;
-	bool update_dock = false;
+	bool charge_source_changed = false;
+	bool battery_changed = false;
 	int32_t ret = 0;
 	char *envp[] = {
 		[0] = "A6_ACTION=EMERGENCY_RESET_NOTIFY",
@@ -3858,7 +3859,7 @@ void a6_irq_work_handler(struct work_struct *work)
 			//sysfs_notify_dirent(state->notify_nodes[DIRENT_CHG_SRC_NOTIFY]);
 			/* Send uevent */
 			kobject_uevent_env(&state->i2c_dev->dev.kobj, KOBJ_CHANGE, &envp[4]);
-			update_dock = true;
+			charge_source_changed = true;
 		}
 
 		/* log threshold change? */
@@ -3880,6 +3881,7 @@ void a6_irq_work_handler(struct work_struct *work)
 
 			/* Send uevent */
 			kobject_uevent_env(&state->i2c_dev->dev.kobj, KOBJ_CHANGE, &envp[10]);
+			battery_changed = true;
 		}
 
 		/* battery voltage low critical? */
@@ -3889,6 +3891,7 @@ void a6_irq_work_handler(struct work_struct *work)
 
 			/* Send uevent */
 			kobject_uevent_env(&state->i2c_dev->dev.kobj, KOBJ_CHANGE, &envp[12]);
+			battery_changed = true;
 		}
 
 		/* battery temp high critical? */
@@ -3916,6 +3919,7 @@ void a6_irq_work_handler(struct work_struct *work)
 
 			/* Send uevent */
 			kobject_uevent_env(&state->i2c_dev->dev.kobj, KOBJ_CHANGE, &envp[8]);
+			battery_changed = true;
 		}
 
 		/* battery low percent warn1? */
@@ -3925,6 +3929,7 @@ void a6_irq_work_handler(struct work_struct *work)
 
 			/* Send uevent */
 			kobject_uevent_env(&state->i2c_dev->dev.kobj, KOBJ_CHANGE, &envp[6]);
+			battery_changed = true;
 		}
 	}
 
@@ -3935,8 +3940,17 @@ err0:
 	if (!state->busy_count)
 		clear_bit(DEVICE_BUSY_BIT, state->flags);
 
-	if (update_dock) {
+	if (charge_source_changed) {
 		a6_dock_update_state(state);
+	}
+	if (state->plat_data->power_supply_connected == 1 && batt_state != NULL) {
+		if (battery_changed) {
+			power_supply_changed(&a6_fish_power_supplies[0]);
+		}
+		if (charge_source_changed) {
+			power_supply_changed(&a6_fish_power_supplies[1]);
+			power_supply_changed(&a6_fish_power_supplies[2]);
+		}
 	}
 
 	A6_DPRINTK(A6_DEBUG_VERBOSE, KERN_ERR, "%s: Visited\n", __func__);
@@ -4800,10 +4814,6 @@ static int a6_i2c_resume (struct i2c_client *dev)
 	clear_bit(IS_SUSPENDED, state->flags);
 	if (test_and_clear_bit(INT_PENDING, state->flags)) {
 		queue_work(state->ka6d_workqueue, &state->a6_irq_work);
-
-		if (state->plat_data->power_supply_connected == 1 &&
-				batt_state != NULL)
-			power_supply_changed(&a6_fish_power_supplies[0]);
 	}
 
 	a6_fish_battery_resume (state);
