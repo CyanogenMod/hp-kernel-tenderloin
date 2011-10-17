@@ -1750,6 +1750,10 @@ static int lm8502_i2c_remove(struct i2c_client *client)
 
     cancel_work_sync(&state->notify_work);
 
+    cancel_work_sync(&state->work);
+    hrtimer_cancel(&state->vib_timer);
+    timed_output_dev_unregister(&state->timed_dev);
+
     device_remove_file(state->flash_class_dev, &dev_attr_flash_or_torch_start);
     device_remove_file(state->flash_class_dev, &dev_attr_torch_current);
     device_remove_file(state->flash_class_dev, &dev_attr_flash_duration);
@@ -1807,6 +1811,9 @@ static int lm8502_i2c_suspend(struct i2c_client *client, pm_message_t pm_state)
     /* cancel any pending work */
     cancel_work_sync(&state->notify_work);
 
+    hrtimer_cancel(&state->vib_timer);
+    cancel_work_sync(&state->work);
+
     if (pdata) {
         leds = pdata->leds;
         for (i = 0; i < pdata->nleds; i++)
@@ -1827,10 +1834,6 @@ static int lm8502_i2c_suspend(struct i2c_client *client, pm_message_t pm_state)
         lm8502_i2c_read_reg(state->i2c_dev, ENGINE_CNTRL1, &enable_reg);
         lm8502_i2c_write_reg(state->i2c_dev, ENGINE_CNTRL1, 0);
     }
-
-    hrtimer_cancel(&state->vib_timer);
-    cancel_work_sync(&state->work);
-    lm8502_vib_set(state, 0);
 
     state->suspended = 1;
 
