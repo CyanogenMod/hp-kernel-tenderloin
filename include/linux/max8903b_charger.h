@@ -30,5 +30,6 @@ struct max8903b_platform_data {
 	void (*suspend_gpio_config)(void);
 };
 
-void chg_vbus_draw_8903b (unsigned ma);
+void max8903b_set_charge_ma (unsigned ma);
+void max8903b_disable_charge (void);
 

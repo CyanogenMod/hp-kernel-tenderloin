@@ -206,26 +206,13 @@ static ssize_t store_currentlimit(struct device *dev, struct device_attribute *a
 	return count;
 }
 
-/* 
- * Callback for msm72k_otg to notify charge supplied by phy.
- * Current draw defaults to 500mA. WebOS seems to use the sysfs to
- * set current_limit on usb plugin.
- */
-//TODO: move usb/ac ps here, but then puck charger status won't show up.
-void chg_vbus_draw_8903b (unsigned ma)
+void max8903b_set_charge_ma (unsigned ma)
 {
 	enum max8903b_current value;
-	//printk(KERN_INFO "store_currentlimit! \n");
 
 	switch (ma){
-#if 0
-		/* We get 4 CURRENT_ZERO notifications before the correct one 
-		 * during usb connects. usb doesn't send CURRENT_ZERO  notifications
-		 * during unplug anyway
-		 */
 		case 0:
 			value = CURRENT_ZERO; break;
-#endif
 		case 100:
 			value =  CURRENT_100MA; break;
 		case 500:
@@ -243,15 +230,21 @@ void chg_vbus_draw_8903b (unsigned ma)
 		case 2000:
 			value = CURRENT_2000MA; break;
 		default:
-			printk(KERN_INFO "Invalid charging command, ma: %d\n", ma);
+			printk(KERN_INFO "%s: Invalid value: %d\n", __func__, ma);
 			return;
 	}
 
-	max8903b_current_setup(value);
+	if (current_limit != value) max8903b_current_setup(value);
 
 	return;
 }
-EXPORT_SYMBOL (chg_vbus_draw_8903b);
+EXPORT_SYMBOL (max8903b_set_charge_ma);
+
+void max8903b_disable_charge()
+{
+	max8903b_current_setup(CHARGE_DISABLE);
+}
+EXPORT_SYMBOL (max8903b_disable_charge);
 
 
 /* /sys/power/charger/chargerstatus */

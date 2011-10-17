@@ -132,6 +132,11 @@
 #include <mach/htc_usb.h>
 
 
+#ifdef CONFIG_MAX8903B_CHARGER
+static unsigned max8903b_ps_connected = 0;
+static unsigned max8903b_vbus_draw_ma = 0;
+void max8903b_set_vbus_draw (unsigned ma);
+#endif
 
 #define MSM_SHARED_RAM_PHYS 0x40000000
 
@@ -1226,7 +1231,7 @@ static struct msm_otg_platform_data msm_otg_pdata = {
 #if defined(CONFIG_BATTERY_MSM8X60)
 	.chg_vbus_draw = msm_charger_vbus_draw,
 #elif defined (CONFIG_MAX8903B_CHARGER)
-	.chg_vbus_draw = chg_vbus_draw_8903b,
+	.chg_vbus_draw = max8903b_set_vbus_draw,
 #endif
 #ifdef CONFIG_A6
 	.chg_connected = a6_charger_event,
@@ -1437,6 +1442,33 @@ void max8903b_suspend_gpio_config(void)
 
 	gpio_set_value(MAX8903B_GPIO_CHG_D_ISET_1, 0);
 	gpio_set_value(MAX8903B_GPIO_CHG_D_ISET_2, 0);
+}
+
+void max8903b_set_connected_ps (unsigned connected)
+{
+	max8903b_ps_connected = connected;
+
+	if (!connected) {
+		max8903b_disable_charge();
+	} else if (connected & MAX8903B_CONNECTED_PS_DOCK) {
+		max8903b_set_charge_ma(MAX8903B_DOCK_DRAW_MA);
+	} else {
+		max8903b_set_charge_ma(max8903b_vbus_draw_ma);
+	}
+}
+EXPORT_SYMBOL (max8903b_set_connected_ps);
+
+/* Callback for msm72k_otg to notify charge supplied by phy.
+ * Current draw defaults to 500mA. WebOS seems to use the sysfs to
+ * set current_limit on usb plugin.
+ */
+void max8903b_set_vbus_draw (unsigned ma)
+{
+	max8903b_vbus_draw_ma = ma;
+
+	if (!(max8903b_ps_connected & MAX8903B_CONNECTED_PS_DOCK)) {
+		max8903b_set_charge_ma(ma);
+	}
 }
 #endif  /* CONFIG_MAX8903B_CHARGER */
 

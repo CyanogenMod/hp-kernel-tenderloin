@@ -30,4 +30,11 @@ config A6_I2C_SINGLE_BYTE_WRITE
 	help
 	 Say Y to enable single byte i2c write for A6 driver.
 
+config A6_ENABLE_DOCK_PS
+	tristate "Select A6 enable dock as separate power supply"
+	depends on I2C && A6
+	default n
+	help
+	 Say Y to enable dock showing as separate power supply with A6 driver.
+
 endif # POWER_SUPPLY

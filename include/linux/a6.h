@@ -23,6 +23,10 @@
 
 #define  A6_DEVICE     A6_DEVICE_0
 
+#define MAX8903B_CONNECTED_PS_AC	(1U << 1)
+#define MAX8903B_CONNECTED_PS_USB	(1U << 2)
+#define MAX8903B_CONNECTED_PS_DOCK	(1U << 3)
+#define MAX8903B_DOCK_DRAW_MA		1400
 
 /* IOCTLs */
 #define A6_IOCTL_SET_FW_DATA		_IOW('c', 0x01, int)

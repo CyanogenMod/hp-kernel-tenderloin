@@ -39,8 +39,11 @@
 #include <linux/switch.h>
 #include <linux/power_supply.h>
 #include <mach/msm_hsusb.h>
+#include <linux/max8903b_charger.h>
 
 #include "high_level_funcs.h"
+
+void max8903b_set_connected_ps(unsigned connected);
 
 #define A2A_RD_BUFF_SIZE (4 * 1024)
 #define A2A_WR_BUFF_SIZE (4 * 1024)
@@ -485,6 +488,7 @@ struct a6_device_state {
 
 	enum chg_type otg_chg_type;
 	struct delayed_work charge_work;
+	struct delayed_work init_connected_ps_work;
 	int stop_heartbeat;
 	int last_percent;
 
@@ -564,6 +568,8 @@ static ssize_t a6_diag_store(struct device *dev, struct device_attribute *dev_at
 static ssize_t a6_val_cksum_show(struct device *dev, struct device_attribute *attr, char *buf);
 
 static void a6_dock_update_state(struct a6_device_state *state);
+
+static void a6_update_connected_ps(void);
 
 void a6_force_wake_timer_callback(ulong data);
 /*
@@ -1216,6 +1222,17 @@ static struct power_supply a6_fish_power_supplies[] = {
 		.num_properties = ARRAY_SIZE(a6_fish_power_properties),
 		.get_property = a6_fish_power_get_property,
 	},
+#ifdef CONFIG_A6_ENABLE_DOCK_PS
+	{
+		.name = "dock",
+		.type = POWER_SUPPLY_TYPE_MAINS,
+		.supplied_to = supply_list,
+		.num_supplicants = ARRAY_SIZE(supply_list),
+		.properties = a6_fish_power_properties,
+		.num_properties = ARRAY_SIZE(a6_fish_power_properties),
+		.get_property = a6_fish_power_get_property,
+	},
+#endif
 };
 
 #ifdef A6_PQ
@@ -3950,6 +3967,10 @@ err0:
 		if (charge_source_changed) {
 			power_supply_changed(&a6_fish_power_supplies[1]);
 			power_supply_changed(&a6_fish_power_supplies[2]);
+#ifdef CONFIG_A6_ENABLE_DOCK_PS
+			power_supply_changed(&a6_fish_power_supplies[3]);
+#endif
+			a6_update_connected_ps();
 		}
 	}
 
@@ -4221,26 +4242,82 @@ static int a6_fish_battery_get_percent(struct device *dev)
 	return temp_val;
 }
 
+static unsigned a6_calc_connected_ps(void)
+{
+	struct power_supply *psy;
+	struct a6_device_state *state;
+	unsigned int temp_val = 0;
+	unsigned connected = 0;
+
+	psy = &a6_fish_power_supplies[1];
+
+	state = (struct a6_device_state*)dev_get_drvdata(psy->dev->parent);
+	state->print_buffer[0] = '\0';
+
+	a6_generic_show (psy->dev->parent,
+			&a6_register_desc_arr[31].dev_attr, state->print_buffer);
+
+	sscanf (state->print_buffer, "%u", &temp_val);
+
+	if (state->otg_chg_type == USB_CHG_TYPE__WALLCHARGER) {
+		connected |= MAX8903B_CONNECTED_PS_AC;
+	}
+
+	if (state->otg_chg_type == USB_CHG_TYPE__SDP
+			&& (temp_val & TS2_I2C_FLAGS_2_WIRED_CHARGE)) {
+		/* NOTE: USB will not show as connected if DOCK is connected */
+		connected |= MAX8903B_CONNECTED_PS_USB;
+	}
+
+	if(temp_val & TS2_I2C_FLAGS_2_PUCK_CHARGE) {
+		connected |= MAX8903B_CONNECTED_PS_DOCK;
+	}
+
+	return connected;
+}
+
+static void a6_update_connected_ps()
+{
+	unsigned connected = a6_calc_connected_ps();
+
+	printk(KERN_INFO "%s: ac=%d usb=%d dock=%d\n", __func__,
+			(connected & MAX8903B_CONNECTED_PS_AC) ? 1 : 0,
+			(connected & MAX8903B_CONNECTED_PS_USB) ? 1 : 0,
+			(connected & MAX8903B_CONNECTED_PS_DOCK) ? 1 : 0);
+
+	max8903b_set_connected_ps(connected);
+}
+
 static int a6_fish_power_get_property(struct power_supply *psy,
 				   enum power_supply_property psp,
 				   union power_supply_propval *val)
 {
-	unsigned int temp_val = 0;
-	struct a6_device_state *state = (struct a6_device_state*)dev_get_drvdata(psy->dev->parent);
+	unsigned connected;
 
 	switch (psp) {
 	case POWER_SUPPLY_PROP_ONLINE:
-		state->print_buffer[0] = '\0';
-		a6_generic_show (psy->dev->parent, &a6_register_desc_arr[31].dev_attr, state->print_buffer);
-		sscanf (state->print_buffer, "%u", &temp_val);
+		connected = a6_calc_connected_ps();
 
-		if ( (((psy->type == POWER_SUPPLY_TYPE_MAINS &&
-				state->otg_chg_type == USB_CHG_TYPE__WALLCHARGER) ||
-				(psy->type == POWER_SUPPLY_TYPE_USB &&
-						state->otg_chg_type == USB_CHG_TYPE__SDP)) &&
-						(temp_val & TS2_I2C_FLAGS_2_WIRED_CHARGE)) ||
-						(psy->type == POWER_SUPPLY_TYPE_MAINS &&
-								(temp_val & TS2_I2C_FLAGS_2_PUCK_CHARGE))){
+		if (
+				(psy->type == POWER_SUPPLY_TYPE_MAINS
+					&& (connected & MAX8903B_CONNECTED_PS_AC)
+#ifdef CONFIG_A6_ENABLE_DOCK_PS
+					&& !(connected & MAX8903B_CONNECTED_PS_DOCK)
+					&& !strcmp(psy->name, "ac")
+#endif
+					)
+						||
+				(psy->type == POWER_SUPPLY_TYPE_MAINS
+				 	&& (connected & MAX8903B_CONNECTED_PS_DOCK)
+#ifdef CONFIG_A6_ENABLE_DOCK_PS
+					&& !strcmp(psy->name, "dock")
+#endif
+					)
+						||
+				(psy->type == POWER_SUPPLY_TYPE_USB 
+				 	&& (connected & MAX8903B_CONNECTED_PS_USB)
+					)
+				) {
 			val->intval = 1;
 		} else {
 			val->intval = 0;
@@ -4333,12 +4410,17 @@ void a6_charger_event (int otg_chg_type)
 
 		power_supply_changed(&a6_fish_power_supplies[1]);
 		power_supply_changed(&a6_fish_power_supplies[2]);
+#ifdef CONFIG_A6_ENABLE_DOCK_PS
+		power_supply_changed(&a6_fish_power_supplies[3]);
+#endif
+		a6_update_connected_ps();
 	}
 	return;
 }
 EXPORT_SYMBOL (a6_charger_event);
 
 #define A6_BATT_HB_PERIOD (msecs_to_jiffies (5*60*1000))
+#define A6_INIT_CONNECTED_PS_DELAY (msecs_to_jiffies (30*1000))
 static void a6_battery_heartbeat(struct work_struct *a6_battery_work)
 {
 	int percent = 0;
@@ -4363,6 +4445,11 @@ static void a6_battery_heartbeat(struct work_struct *a6_battery_work)
 						A6_BATT_HB_PERIOD);
 }
 
+static void a6_init_connected_ps(struct work_struct *work)
+{
+	a6_update_connected_ps();
+}
+
 static int a6_fish_battery_probe(struct a6_device_state *state)
 {
 	int i;
@@ -4381,8 +4468,12 @@ static int a6_fish_battery_probe(struct a6_device_state *state)
 	INIT_DELAYED_WORK(&state->charge_work, a6_battery_heartbeat);
 	schedule_delayed_work(&state->charge_work, A6_BATT_HB_PERIOD);
 
+	INIT_DELAYED_WORK(&state->init_connected_ps_work, a6_init_connected_ps);
+	schedule_delayed_work(&state->init_connected_ps_work, A6_INIT_CONNECTED_PS_DELAY);
+
 	return rc;
 }
+
 
 static int a6_fish_battery_remove(struct a6_device_state *state)
 {
