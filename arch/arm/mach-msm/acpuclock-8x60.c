@@ -226,6 +226,13 @@ static struct clkctl_acpu_speed acpu_freq_tbl_1188mhz[] = {
   { {1, 1}, 1080000,  ACPU_SCPLL, 0, 0, 1, 0x14, L2(13), 1137500, 0x03006000},
   { {1, 1}, 1134000,  ACPU_SCPLL, 0, 0, 1, 0x15, L2(14), 1162500, 0x03006000},
   { {1, 1}, 1188000,  ACPU_SCPLL, 0, 0, 1, 0x16, L2(15), 1187500, 0x03006000},
+  { {1, 1}, 1242000,  ACPU_SCPLL, 0, 0, 1, 0x17, L2(16), 1200000, 0x03006000},
+  { {1, 1}, 1404000,  ACPU_SCPLL, 0, 0, 1, 0x1A, L2(19), 1225000, 0x03006000},
+  { {1, 1}, 1512000,  ACPU_SCPLL, 0, 0, 1, 0x1C, L2(19), 1250000, 0x03006000},
+  { {1, 1}, 1620000,  ACPU_SCPLL, 0, 0, 1, 0x1E, L2(20), 1275000, 0x03006000},
+  { {1, 1}, 1728000,  ACPU_SCPLL, 0, 0, 1, 0x20, L2(20), 1300000, 0x03006000},
+  { {1, 1}, 1782000,  ACPU_SCPLL, 0, 0, 1, 0x21, L2(20), 1350000, 0x03006000},
+
   { {0, 0}, 0 },
 };
 
@@ -942,7 +949,7 @@ static unsigned int __init select_freq_plan(void)
 		}
 #ifndef CONFIG_MSM_FORCE_FAST_CPU_TABLE
 	} else {
-		max_khz = 1188000;
+		max_khz = 1782000;
 		acpu_freq_tbl = acpu_freq_tbl_1188mhz;
 	}
 #endif
