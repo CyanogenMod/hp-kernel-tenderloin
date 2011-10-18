@@ -25,7 +25,7 @@ struct max8903b_platform_data {
 	int DOK_N_out;
 	int CHG_N_out;
 	int FLT_N_out;
-	void (*set_DC_CHG_Mode_current)(enum max8903b_current value);
+	int (*set_DC_CHG_Mode_current)(enum max8903b_current value);
 	int  (*request_release_gpios)(int request);
 	void (*suspend_gpio_config)(void);
 };

@@ -1327,7 +1327,7 @@ static int max8903b_control_index(enum max8903b_current value)
 	return index;
 }
 
-void max8903b_set_DC_CHG_Mode_current(enum max8903b_current value)
+int max8903b_set_DC_CHG_Mode_current(enum max8903b_current value)
 {
 	int index;
 
@@ -1355,8 +1355,10 @@ void max8903b_set_DC_CHG_Mode_current(enum max8903b_current value)
 			break;
 		default:
 			printk(KERN_INFO "%s: Invalid current setting, not supported in HW rev.\n", __func__);
+			return -1;
 			break;
 	}
+	return 0;
 };
 
 int max8903b_request_release_gpios(int request);

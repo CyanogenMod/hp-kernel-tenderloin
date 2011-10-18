@@ -43,6 +43,8 @@ static int max8903b_current_setup(enum max8903b_current value)
 {
 	int rc = 0;
 
+	enum max8903b_current old_current_limit = current_limit;
+
 	current_limit = value;
 
 	switch (value)	{
@@ -78,12 +80,18 @@ static int max8903b_current_setup(enum max8903b_current value)
 		case CURRENT_1500MA:
 		case CURRENT_2000MA:
 			gpio_set_value(pdevice_resource->DCM_in, pdevice_resource->DCM_in_polarity ? 0 : 1); /* DC mode */
-			if (pdevice_resource->set_DC_CHG_Mode_current)
-				pdevice_resource->set_DC_CHG_Mode_current(value);
+			if (pdevice_resource->set_DC_CHG_Mode_current) {
+				if (pdevice_resource->set_DC_CHG_Mode_current(value) != 0) {
+						current_limit = old_current_limit;
+				}
+			} else {
+				printk(KERN_NOTICE "%s: set_DC_CHG_Mode_current is NULL\n", __func__);
+			}
 			gpio_set_value(pdevice_resource->CEN_N_in, pdevice_resource->CEN_N_in_polarity ? 1 : 0);  /* charger enable */
 			printk(KERN_INFO "%s: CURRENT_750(4), 900(5), 1000(6), 1400(7), 2000MA(9): %d\n", __func__, value);
 			break;
 		default:
+			current_limit = old_current_limit;
 			printk(KERN_INFO "%s: Not supported current setting\n", __func__);
 			rc = -EINVAL;
 			break;
