@@ -77,7 +77,7 @@
 /* Max voc packet size */
 #define MVS_MAX_VOC_PKT_SIZE 320
 
-#define VOIP_MAX_Q_LEN 20
+#define VOIP_MAX_Q_LEN 8
 #define MVS_MAX_Q_LEN  8
 #define RPC_TYPE_REQUEST 0
 #define RPC_TYPE_REPLY 1
@@ -320,6 +320,8 @@ struct audio_mvs_info_type {
 
 struct audio_voip_info_type {
 	enum audio_mvs_state_type state;
+	enum audio_mvs_state_type playback_state;
+	enum audio_mvs_state_type capture_state;
 
 	unsigned int pcm_playback_size;
 	unsigned int pcm_count;
@@ -348,6 +350,7 @@ struct audio_voip_info_type {
 	struct mutex lock;
 	struct mutex prepare_lock;
 
+	spinlock_t write_dsp_lock;
 	struct wake_lock suspend_lock;
 	struct wake_lock idle_lock;
 	int playback_start;

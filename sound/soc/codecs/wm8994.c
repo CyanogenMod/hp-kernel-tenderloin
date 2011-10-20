@@ -1637,7 +1637,7 @@ static int wm8994_get_force_route(struct snd_kcontrol *kcontrol, struct snd_ctl_
 	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
 	struct wm8994_priv *wm8994 = snd_soc_codec_get_drvdata(codec);
 
-	ucontrol->value.integer.value[0] = wm8994->force_route;
+	ucontrol->value.integer.value[0] = wm8994->pdata->force_route;
 	return 0;
 }
 
@@ -1647,17 +1647,13 @@ static int wm8994_set_force_route(struct snd_kcontrol *kcontrol, struct snd_ctl_
 	struct wm8994_priv *wm8994 = snd_soc_codec_get_drvdata(codec);
 	struct snd_soc_dai *codec_dai = &codec->dai[0];
 
-	if (wm8994->force_route == ucontrol->value.integer.value[0])
+	if (wm8994->pdata->force_route == ucontrol->value.integer.value[0])
 		return 0;
 
 	if (ucontrol->value.integer.value[0]) {
 		pr_info("Forcing audio route\n");
 
-		wm8994->force_route = 1;
-
-		snd_soc_dapm_stream_event(codec,
-					  codec_dai->playback.stream_name,
-					  SND_SOC_DAPM_STREAM_START);
+		wm8994->pdata->force_route = 1;
 
 		snd_soc_dapm_stream_event(codec,
 					  codec_dai->capture.stream_name,
@@ -1665,6 +1661,12 @@ static int wm8994_set_force_route(struct snd_kcontrol *kcontrol, struct snd_ctl_
 
 		snd_soc_update_bits(codec, WM8994_AIF1_DAC1_FILTERS_1, WM8994_AIF1DAC1_MUTE, 0);
 		snd_soc_update_bits(codec, WM8994_AIF2_DAC_FILTERS_1, WM8994_AIF1DAC1_MUTE, 0);
+
+		snd_soc_dapm_stream_event(codec,
+					  codec_dai->playback.stream_name,
+					  SND_SOC_DAPM_STREAM_START);
+
+		snd_soc_update_bits(codec, WM8994_AIF1_DAC1_FILTERS_1, WM8994_AIF1DAC1_MUTE, 0);
 	} else {
 		pr_info("Unforce audio route\n");
 		snd_soc_dapm_stream_event(codec,
@@ -1675,7 +1677,7 @@ static int wm8994_set_force_route(struct snd_kcontrol *kcontrol, struct snd_ctl_
 					  codec_dai->capture.stream_name,
 					  SND_SOC_DAPM_STREAM_STOP);
 
-		wm8994->force_route = 0;
+		wm8994->pdata->force_route = 0;
 	}
 
 	return 0;
@@ -3892,7 +3894,7 @@ static int wm8994_aif_mute(struct snd_soc_dai *codec_dai, int mute)
 	int mute_reg;
 	int reg;
 
-	if (wm8994->force_route) {
+	if (wm8994->pdata->force_route) {
 		pr_info("WM8994 forced route, ingnore mute\n");
 		return 0;
 	}
@@ -4042,11 +4044,36 @@ static int wm8994_suspend(struct platform_device *pdev, pm_message_t state)
 	struct snd_soc_device *socdev = platform_get_drvdata(pdev);
 	struct snd_soc_codec *codec = socdev->card->codec;
 	struct wm8994_priv *wm8994 = snd_soc_codec_get_drvdata(codec);
+	if (wm8994 && !wm8994->pdata->force_route && !wm8994->pdata->jack_is_mic) {
+		unsigned int val = 0, new_val = 0;
 
-	if (wm8994)
+		wm8994_set_bias_level(codec, SND_SOC_BIAS_OFF);
 		wm8994->suspended = true;
 
-	dev_dbg(codec->dev, "FINISH SUSPEND\n");
+		/* Palm: Ensure clocks are disabled and stored in cache
+		* some registers do not take values written to them
+		* when clocking is enabled */
+		val = wm8994_read(codec, WM8994_AIF1_CLOCKING_1);
+		dev_err(codec->dev, "AIF1_CLOCKING_1 value 0x%x", val);
+		new_val = val & ~WM8994_AIF1CLK_ENA;
+		if (new_val != val)
+			wm8994_write(codec, WM8994_AIF1_CLOCKING_1, new_val);
+
+		val = wm8994_read(codec, WM8994_AIF2_CLOCKING_1);
+		dev_err(codec->dev, "AIF2_CLOCKING_1 value 0x%x", val);
+		new_val = val & ~WM8994_AIF2CLK_ENA;
+		if (new_val != val)
+			wm8994_write(codec, WM8994_AIF2_CLOCKING_1, new_val);
+
+		/* Make sure we will reload the DSP firmware again */
+		wm8994->cur_fw = NULL;
+		
+	} else {
+		dev_err(codec->dev, "  We didn't turn off power\n");
+		wm8994->suspended = false;
+	}
+
+	dev_err(codec->dev, "- MEOW %s\n", __FUNCTION__);
 	return 0;
 }
 
@@ -4059,7 +4086,11 @@ static int wm8994_resume(struct platform_device *pdev)
 	int i, ret;
 
 	unsigned int val, mask;
+	wm8994->suspended = false;
 
+	if (wm8994 && wm8994->pdata->force_route && !wm8994->pdata->jack_is_mic){
+		return 0;
+	}
 	if (wm8994->revision < 4) {
 		/* force a HW read */
 		val = wm8994_reg_read(codec->control_data,
@@ -4107,7 +4138,17 @@ static int wm8994_resume(struct platform_device *pdev)
 			dev_warn(codec->dev, "Failed to restore FLL%d: %d\n",
 				 i + 1, ret);
 	}
+	
+	if(wm8994->defer_mic_det) {
+		dev_err(codec->dev, "  About to enable defered mic detection\n");
+		snd_soc_dapm_force_enable_pin( codec, "MICBIAS2");
+		wm8958_mic_detect( codec, wm8994->soc_jack, NULL, NULL);
+		wm8994->defer_mic_det = false;
+		snd_soc_dapm_sync(codec);
+	}
 
+
+	dev_err(codec->dev, "- MEOW %s\n", __FUNCTION__);
 	return 0;
 }
 #else
@@ -4508,15 +4549,15 @@ static void wm8958_default_micdet(u16 status, void *data)
 	/* If nothing present then clear our statuses */
 	if (!(status & WM8958_MICD_STS)) {
 		wm8994->jack_is_video = false;
-		wm8994->jack_is_mic = false;
+		wm8994->pdata->jack_is_mic = false;
 		goto done;
 	}
 
 	/* Assume anything over 475 ohms is a microphone and remember
 	 * that we've seen one (since buttons override it) */
 	if (status & 0x600)
-		wm8994->jack_is_mic = true;
-	if (wm8994->jack_is_mic)
+		wm8994->pdata->jack_is_mic = true;
+	if (wm8994->pdata->jack_is_mic)
 		report |= SND_JACK_MICROPHONE;
 
 	/* Video has an impedence of approximately 75 ohms; assume
@@ -4566,14 +4607,15 @@ static void wm8958_hp_micdet(u16 status, void *data)
 	int oldtype = 0;
 
 	oldtype = wm8994->micdet[0].jack->jack->type;
-	if(0x203 == status && !(wm8994->jack_is_mic) ){
+	if(0x203 == status && !(wm8994->pdata->jack_is_mic) ){
 		dev_err(codec->dev, "  Reporting Headset inserted\n");
-		wm8994->jack_is_mic = true;
+
+		wm8994->pdata->jack_is_mic = true;
 		wm8994->micdet[0].jack->jack->type = SND_JACK_MICROPHONE;
 		input_report_switch(wm8994->micdet[0].jack->jack->input_dev,
 						    SW_MICROPHONE_INSERT,
 					        1);		
-	}else if(7 == status && wm8994->jack_is_mic == false) { 
+	}else if(7 == status && wm8994->pdata->jack_is_mic == false) { 
 		dev_err(codec->dev, "  Reporting headphones inserted\n");
 		input_report_switch(wm8994->micdet[0].jack->jack->input_dev,
 							    SW_HEADPHONE_INSERT,
@@ -4585,20 +4627,20 @@ static void wm8958_hp_micdet(u16 status, void *data)
 
 	} else {
 
-		if(0x7 == status && wm8994->jack_is_mic){
+		if(0x7 == status && wm8994->pdata->jack_is_mic){
 			dev_err(codec->dev, "  Reporting button press down\n");
 			wm8994->micdet[0].jack->jack->type = SND_JACK_BTN_0;
 			input_report_key(wm8994->micdet[0].jack->jack->input_dev, KEY_PLAYPAUSE,
 					 1);
 
-		}else if(0x203 == status && wm8994->jack_is_mic){
+		}else if(0x203 == status && wm8994->pdata->jack_is_mic){
 			dev_err(codec->dev, "  Reporting button press up\n");
 			wm8994->micdet[0].jack->jack->type = SND_JACK_BTN_0;
 			input_report_key(wm8994->micdet[0].jack->jack->input_dev, KEY_PLAYPAUSE,
 					 0);
 		}else if(0x402 == status){
 			dev_err(codec->dev, "  Reporting headset removed\n");
-			wm8994->jack_is_mic = false;
+			wm8994->pdata->jack_is_mic = false;
 			wm8994->micdet[0].jack->jack->type = SND_JACK_MICROPHONE;
 			input_report_switch(wm8994->micdet[0].jack->jack->input_dev,
 							    SW_MICROPHONE_INSERT,
@@ -4636,7 +4678,7 @@ int wm8958_mic_detect(struct snd_soc_codec *codec, struct snd_soc_jack *jack,
 
 	if (jack) {
 		if (!cb) {
-			dev_dbg(codec->dev, "Using default micdet callback\n");
+			dev_dbg(codec->dev, "Using hp micdet callback\n");
 			//cb = wm8958_default_micdet;
 			cb = wm8958_hp_micdet;
 			cb_data = codec;
@@ -4653,22 +4695,16 @@ int wm8958_mic_detect(struct snd_soc_codec *codec, struct snd_soc_jack *jack,
 							2 | WM8958_MICD_ENA,
 							2 | WM8958_MICD_ENA);
 
-		if (wm8994->suspended) {
-			dev_dbg(codec->dev, "Do detection from suspend\n");
-			msleep(100);
-			snd_soc_update_bits(codec,
-								WM8958_MIC_DETECT_1,
-								WM8958_MICD_ENA, 0);
-			msleep(100);
-			snd_soc_update_bits(codec,
-								WM8958_MIC_DETECT_1,
-								2 | WM8958_MICD_ENA,
-								2 | WM8958_MICD_ENA);
-			wm8994->suspended = false;
-		} else {
-			dev_dbg(codec->dev, "Do detection from power on state\n");
-		}
-
+		dev_dbg(codec->dev, "Do detection from suspend\n");
+			
+		snd_soc_update_bits(codec,
+					WM8958_MIC_DETECT_1,
+					WM8958_MICD_ENA, 0);
+		msleep(100);
+		snd_soc_update_bits(codec,
+					WM8958_MIC_DETECT_1,
+					2 | WM8958_MICD_ENA,
+					2 | WM8958_MICD_ENA);
 	} else {
 		//Disable mic detection
 		snd_soc_update_bits(codec,
@@ -4731,7 +4767,7 @@ static irqreturn_t wm8958_mic_irq(int irq, void *data)
 	}
 */
 	// Need to call detect to find outif this is a headset with mic inserted or removed 
-    if(wm8994->soc_jack->status||(!wm8994->soc_jack->status && wm8994->jack_is_mic)){
+    	if(wm8994->soc_jack->status||(!wm8994->soc_jack->status && wm8994->pdata->jack_is_mic)){
 		// Jack is inserted, we need to find out if we have a mic or button pressed.
 		if (wm8994->jack_cb)
 			wm8994->jack_cb(reg, wm8994->jack_cb_data);
@@ -4788,7 +4824,7 @@ static int wm8994_codec_probe(struct platform_device *pdev)
 	codec->dev = &pdev->dev;
 
 	wm8994->pdata = pdev->dev.parent->platform_data;
-
+	wm8994->defer_mic_det = false;
 	if (wm8994->pdata && wm8994->pdata->micdet_irq)
  		wm8994->micdet_irq = wm8994->pdata->micdet_irq;
  	else if (wm8994->pdata && wm8994->pdata->irq_base)

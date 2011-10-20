@@ -902,8 +902,6 @@ static int soc_suspend(struct device *dev)
 	if (codec_dev && pdev)
 		codec_dev->suspend(pdev, PMSG_SUSPEND);
 
-	return 0;
-
 	/* If the initialization of this soc device failed, there is no codec
 	 * associated with it. Just bail out in this case.
 	 */
@@ -1110,9 +1108,6 @@ static int soc_resume(struct device *dev)
 	struct snd_soc_device *socdev = platform_get_drvdata(pdev);
 	struct snd_soc_card *card = socdev->card;
 	struct snd_soc_dai *cpu_dai = card->dai_link[0].cpu_dai;
-
-	// BODGE: We didn't suspend
-	return 0;
 
 	/* If the initialization of this soc device failed, there is no codec
 	 * associated with it. Just bail out in this case.

@@ -277,7 +277,11 @@ static const char *wm8958_main_supplies[] = {
 static int wm8994_device_suspend(struct device *dev)
 {
 	struct wm8994 *wm8994 = dev_get_drvdata(dev);
+	struct wm8994_pdata *pdata = wm8994->dev->platform_data;
 	int ret;
+	if (pdata && pdata->force_route) {
+		return 0;
+	}
 
 	/* GPIO configuration state is saved here since we may be configuring
 	 * the GPIO alternate functions even if we're not using the gpiolib
@@ -292,38 +296,28 @@ static int wm8994_device_suspend(struct device *dev)
 	ret = wm8994_read(wm8994, WM8994_LDO_1, WM8994_NUM_LDO_REGS * 2,
 			  &wm8994->ldo_regs);
 	if (ret < 0)
-		dev_err(dev, "Failed to save LDO registers: %d\n", ret);
+		dev_err(dev, "  Failed to save LDO registers: %d\n", ret);
 
-//#if defined(CONFIG_MACH_MSM8X60_TOPAZ)
+	if (pdata->wm8994_shutdown && !pdata->jack_is_mic)
+		pdata->wm8994_shutdown();
 
-#if 0
-    //comment out for palm
-	ret = regulator_bulk_disable(wm8994->num_supplies,
-				     wm8994->supplies);
-	if (ret != 0) {
-		dev_err(dev, "Failed to disable supplies: %d\n", ret);
-		return ret;
-	}
-#endif
+	dev_err(dev, "- MEOW %s\n", __FUNCTION__);
 	return 0;
 }
 
 static int wm8994_device_resume(struct device *dev)
 {
 	struct wm8994 *wm8994 = dev_get_drvdata(dev);
+	struct wm8994_pdata *pdata = wm8994->dev->platform_data;
 	int i;
 
-//#if defined(CONFIG_MACH_MSM8X60_TOPAZ)
-
-#if 0
-    //comment out for palm
-	ret = regulator_bulk_enable(wm8994->num_supplies,
-				    wm8994->supplies);
-	if (ret != 0) {
-		dev_err(dev, "Failed to enable supplies: %d\n", ret);
-		return ret;
+	if (pdata && pdata->force_route) {
+		return 0;
 	}
-#endif
+
+	if (pdata->wm8994_setup && !pdata->jack_is_mic)
+		pdata->wm8994_setup();
+
 	for (i = 0; i < WM8994_NUM_IRQ_REGS; i++) {
 		wm8994_set_bits(wm8994, WM8994_INTERRUPT_STATUS_1_MASK + i,
 							0xffff,

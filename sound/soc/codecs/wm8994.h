@@ -138,7 +138,7 @@ struct wm8994_priv {
 
 	wm8958_micdet_cb jack_cb;
 	void *jack_cb_data;
-	bool jack_is_mic;
+//	bool jack_is_mic;
 	bool jack_is_video;
 	int micdet_irq;
 
@@ -151,8 +151,6 @@ struct wm8994_priv {
 	unsigned int aif1clk_disable:1;
 	unsigned int aif2clk_disable:1;
 
-	unsigned int force_route:1;
-
 	int dsp_active;
 	const struct firmware *cur_fw;
 	const struct firmware *mbc;
@@ -161,6 +159,7 @@ struct wm8994_priv {
 	
 	struct snd_soc_jack	*soc_jack;
 	bool suspended;
+	bool defer_mic_det; 
 };
 
 #endif

@@ -872,13 +872,15 @@ static int msm_pcm_new(struct snd_card *card,
 		return -ENODEV;
 	}
 
-
+#ifndef CONFIG_MFD_WM8994
 	ret = snd_pcm_new_stream(pcm, SNDRV_PCM_STREAM_PLAYBACK, 1);
 	if (ret)
 		return ret;
 	ret = snd_pcm_new_stream(pcm, SNDRV_PCM_STREAM_CAPTURE, 1);
 	if (ret)
 		return ret;
+#endif
+
 	snd_pcm_set_ops(pcm, SNDRV_PCM_STREAM_PLAYBACK, &msm_mvs_pcm_ops);
 	snd_pcm_set_ops(pcm, SNDRV_PCM_STREAM_CAPTURE, &msm_mvs_pcm_ops);
 

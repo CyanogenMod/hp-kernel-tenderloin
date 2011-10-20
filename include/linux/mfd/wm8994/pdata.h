@@ -179,6 +179,9 @@ struct wm8994_pdata {
 
 	unsigned int (*wm8994_setup)(void);
 	void (*wm8994_shutdown)(void);
+
+	unsigned int force_route:1;
+	unsigned int jack_is_mic:1;
 };
 
 #endif

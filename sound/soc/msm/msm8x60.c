@@ -35,12 +35,17 @@
 #include <asm/mach-types.h>
 #include <mach/qdsp6v2/audio_dev_ctl.h>
 #include <mach/qdsp6v2/q6afe.h>
+#include <mach/qdsp6v2/q6voice.h>
 
 #define LOOPBACK_ENABLE         0x1
 #define LOOPBACK_DISABLE        0x0
 
 #include "msm8x60-pcm.h"
+#include "msm_audio_mvs.h"
 
+extern struct snd_soc_platform msm_soc_platform;
+
+#if defined(CONFIG_MFD_WM8994)
 #include "../codecs/wm8994.h"
 #include <sound/jack.h>
 #include <linux/gpio.h>
@@ -48,6 +53,7 @@
 #include <linux/irq.h>
 #include <linux/delay.h>
 #include <linux/mfd/wm8994/registers.h>
+#include <linux/mfd/wm8994/pdata.h>
 #include <linux/input.h>
 #include <sound/pcm_params.h>
 
@@ -58,6 +64,7 @@
 #define WM_BCLK (WM_FS * WM_CHANNELS * WM_BITS) /* 1.536MHZ */
 #define WM_FLL (WM_FLL_MULT * WM_BCLK) /* 12.288 MHZ */
 #define WM_FLL_MIN_RATE 4096000 /* The minimum clk rate required for AIF's */
+#endif
 
 static struct platform_device *msm_audio_snd_device;
 struct audio_locks the_locks;
@@ -1142,7 +1149,63 @@ static int msm_new_mixer(struct snd_card *card)
 	return 0;
 }
 
-#ifdef CONFIG_MFD_WM8994
+static int voc_path;
+
+#define MVS_AMR_MODE_UNDEF	17
+
+/* New mixer control for ALSA VOIP driver */
+static int msm_voice_path_info(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_info *uinfo)
+{
+	uinfo->type = SNDRV_CTL_ELEM_TYPE_INTEGER;
+	uinfo->count = 1;
+	uinfo->value.integer.min = 0;
+	uinfo->value.integer.max = 1;
+	return 0;
+}
+
+static int msm_voice_path_get(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	ucontrol->value.integer.value[0] = voc_path; /* Default modem */
+	return 0;
+}
+
+static int msm_voice_path_put(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	voc_path = ucontrol->value.integer.value[0];
+	pr_debug("%s:Setting vcoder path -> %d\n", __func__, voc_path);
+
+	voice_set_voc_path_full(voc_path);
+	/* MVS_AMR_MODE_UNDEF = 17 */
+	voice_config_vocoder(VSS_MEDIA_ID_PCM_NB, MVS_AMR_MODE_UNDEF,
+				VSS_NETWORK_ID_VOIP_NB);
+	return 0;
+}
+
+struct snd_kcontrol_new snd_msm_mvs_controls[] = {
+	MSM_EXT("VocPath", msm_voice_path_info,
+		msm_voice_path_get, msm_voice_path_put, 0),
+};
+
+
+static int msm_mvs_dai_init(struct snd_soc_codec *codec)
+{
+	unsigned int idx;
+	int err = 0;
+	struct snd_card *card = codec->card;
+
+	for (idx = 0; idx < ARRAY_SIZE(snd_msm_mvs_controls); idx++) {
+		err = snd_ctl_add(card,	snd_ctl_new1(&snd_msm_mvs_controls[idx],
+					NULL));
+		if (err < 0)
+			pr_err("%s:ERR adding ctl\n", __func__);
+	}
+	return err;
+}
+
+#if defined(CONFIG_MFD_WM8994)
 
 static struct snd_soc_jack hp_jack;
 static struct notifier_block	jack_notifier;
@@ -1228,16 +1291,16 @@ static int jack_notifier_event(struct notifier_block *nb, unsigned long event, v
 			// This will disable mic detection on 8958
 			wm8958_mic_detect( codec, NULL, NULL, NULL);
 
-			if( wm8994->jack_is_mic) {
+			if( wm8994->pdata->jack_is_mic) {
 				dev_err(codec->dev, "  Reporting headset removed\n");
-				wm8994->jack_is_mic = false;
+				wm8994->pdata->jack_is_mic = false;
 				wm8994->micdet[0].jack->jack->type = SND_JACK_MICROPHONE;
 				input_report_switch(wm8994->micdet[0].jack->jack->input_dev,
 							    SW_MICROPHONE_INSERT,
 						        0);
 			} else { 
 				dev_err(codec->dev, "  Reporting headphone removed\n");
-                input_report_switch(wm8994->micdet[0].jack->jack->input_dev,
+                		input_report_switch(wm8994->micdet[0].jack->jack->input_dev,
 							    SW_HEADPHONE_INSERT,
 						        0);
 			}
@@ -1253,7 +1316,6 @@ static int jack_notifier_event(struct notifier_block *nb, unsigned long event, v
 
 static int msm_soc_dai_init(struct snd_soc_codec *codec)
 {
-
 	int ret = 0;
 	struct snd_soc_card *card = codec->socdev->card;
 	struct wm8994_priv *wm8994;
@@ -1329,86 +1391,105 @@ static int msm_soc_dai_init(struct snd_soc_codec *codec)
 static int tendorloin_hw_params(struct snd_pcm_substream *substream,
                            struct snd_pcm_hw_params *params)
 {
-    struct snd_soc_pcm_runtime *rtd = substream->private_data;
-    struct snd_soc_dai *codec_dai = rtd->dai->codec_dai;
-    int ret;
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_dai *codec_dai = rtd->dai->codec_dai;
+	int ret;
 
-    ret = snd_soc_dai_set_fmt(codec_dai, SND_SOC_DAIFMT_CBS_CFS |
-        SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF);
+	ret = snd_soc_dai_set_fmt(codec_dai, SND_SOC_DAIFMT_CBS_CFS |
+		SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF);
 
-    if (ret != 0) {
-        pr_err("Failed to set DAI format: %d\n", ret);
-        return ret;
-    }
+	if (ret != 0) {
+		pr_err("Failed to set DAI format: %d\n", ret);
+		return ret;
+	}
 
-    return 0;
+	return 0;
 }
 
 
 
 static struct snd_soc_ops tenderloin_ops = {
-    .hw_params = tendorloin_hw_params,
+	.hw_params = tendorloin_hw_params,
 };
 
 
 static struct snd_soc_dai_link msm_dai[] = {
 {
-        .name = "Playback",
-        .stream_name = "AIF1",
-        .codec_dai = &wm8994_dai[0],
-        .cpu_dai = &msm_dais[1],
-        .init   = msm_soc_dai_init,
-    	.ops = &tenderloin_ops,
+	.name = "Media Playback",
+	.stream_name = "Media Playback",
+	.codec_dai = &wm8994_dai[0],
+	.cpu_dai = &msm_dais[1],
+	.init   = msm_soc_dai_init,
 },
 {
-        .name = "Record",
-        .stream_name = "AIF2",
-        .codec_dai = &wm8994_dai[1],
-        .cpu_dai = &msm_dais[1],
-    	.ops = &tenderloin_ops,
+	.name = "Media Capture",
+	.stream_name = "Media Capture",
+	.codec_dai = &wm8994_dai[1],
+	.cpu_dai = &msm_dais[1],
+},
+{
+	.name = "MVS Playback",
+	.stream_name = "MVS Playback",
+	.codec_dai = &wm8994_dai[0],
+	.cpu_dai = &msm_mvs_dais[1],
+	.init	= msm_mvs_dai_init,
+},
+{
+	.name = "MVS Capture",
+	.stream_name = "MVS Capture",
+	.codec_dai = &wm8994_dai[1],
+	.cpu_dai = &msm_mvs_dais[1],
 },
 };
 
 
 struct snd_soc_card snd_soc_card_msm = {
-        .name           = "msm-audio",
-        .dai_link       = &msm_dai[0],
-        .num_links = ARRAY_SIZE(msm_dai),
-        .platform = &msm_soc_platform,
+	.name = "msm-audio",
+	.dai_link = msm_dai,
+	.num_links = ARRAY_SIZE(msm_dai),
+	.platform = &msm_soc_platform,
 };
 
 /* msm_audio audio subsystem */
 static struct snd_soc_device msm_audio_snd_devdata = {
-        .card = &snd_soc_card_msm,
-        .codec_dev = &soc_codec_dev_wm8994,
+	.card = &snd_soc_card_msm,
+	.codec_dev = &soc_codec_dev_wm8994,
 };
-
 
 #else
 
 static int msm_soc_dai_init(struct snd_soc_codec *codec)
 {
 
-        int ret = 0;
-        ret = msm_new_mixer(codec->card);
-        if (ret < 0)
-                pr_err("msm_soc: ALSA MSM Mixer Fail\n");
+	int ret = 0;
+	ret = msm_new_mixer(codec->card);
+	if (ret < 0)
+		pr_err("%s: ALSA MSM Mixer Fail\n", __func__);
 
-        return ret;
+	return ret;
 }
 
-static struct snd_soc_dai_link msm_dai = {
+static struct snd_soc_dai_link msm_dai[] = {
+{
 	.name = "ASOC",
 	.stream_name = "ASOC",
 	.codec_dai = &msm_dais[0],
 	.cpu_dai = &msm_dais[1],
 	.init	= msm_soc_dai_init,
+},
+{
+	.name = "ASOC_MVS",
+	.stream_name = "ASOC_MVS",
+	.codec_dai = &msm_mvs_dais[0],
+	.cpu_dai = &msm_mvs_dais[1],
+	.init	= msm_mvs_dai_init,
+},
 };
 
 struct snd_soc_card snd_soc_card_msm = {
 	.name = "msm-audio",
-	.dai_link	= &msm_dai,
-	.num_links = 1,
+	.dai_link = msm_dai,
+	.num_links = ARRAY_SIZE(msm_dai),
 	.platform = &msm_soc_platform,
 };
 
@@ -1417,7 +1498,6 @@ static struct snd_soc_device msm_audio_snd_devdata = {
 	.card = &snd_soc_card_msm,
 	.codec_dev = &soc_codec_dev_msm,
 };
-
 
 #endif
 

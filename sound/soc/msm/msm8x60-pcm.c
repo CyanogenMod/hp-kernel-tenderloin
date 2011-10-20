@@ -1,19 +1,18 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
- * All source code in this file is licensed under the following license except
- * where indicated.
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License version 2 as published
- * by the Free Software Foundation.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- * See the GNU General Public License for more details.
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, you can find it at http://www.fsf.org.
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301, USA.
  */
 
 #include <linux/init.h>
@@ -43,8 +42,8 @@ struct snd_msm {
 	struct snd_pcm *pcm;
 };
 
-static struct snd_pcm_hardware msm_pcm_hardware = {
-	.info =                 (SNDRV_PCM_INFO_MMAP |
+static struct snd_pcm_hardware msm_dsp_hardware = {
+	.info =		 (SNDRV_PCM_INFO_MMAP |
 				SNDRV_PCM_INFO_BLOCK_TRANSFER |
 				SNDRV_PCM_INFO_MMAP_VALID |
 				SNDRV_PCM_INFO_INTERLEAVED |
@@ -153,8 +152,6 @@ static void event_handler(uint32_t opcode,
 	struct snd_pcm_substream *substream = prtd->substream;
 	uint32_t *ptrmem = (uint32_t *)payload;
 	int i = 0;
-	uint32_t idx = 0;
-	uint32_t size = 0;
 
 	pr_debug("%s\n", __func__);
 	switch (opcode) {
@@ -241,7 +238,7 @@ static void event_handler(uint32_t opcode,
 	}
 }
 
-static int msm_pcm_playback_prepare(struct snd_pcm_substream *substream)
+int msm_dsp_playback_prepare(struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct msm_audio *prtd = runtime->private_data;
@@ -282,7 +279,7 @@ static int msm_pcm_playback_prepare(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static int msm_pcm_capture_prepare(struct snd_pcm_substream *substream)
+int msm_dsp_capture_prepare(struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct msm_audio *prtd = runtime->private_data;
@@ -328,7 +325,7 @@ static int msm_pcm_capture_prepare(struct snd_pcm_substream *substream)
 	return ret;
 }
 
-static int msm_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
+int msm_dsp_trigger(struct snd_pcm_substream *substream, int cmd)
 {
 	int ret = 0;
 	struct snd_pcm_runtime *runtime = substream->runtime;
@@ -364,7 +361,7 @@ static int msm_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 	return ret;
 }
 
-static int msm_pcm_open(struct snd_pcm_substream *substream)
+int msm_dsp_open(struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct msm_audio *prtd;
@@ -376,7 +373,7 @@ static int msm_pcm_open(struct snd_pcm_substream *substream)
 		pr_err("Failed to allocate memory for msm_audio\n");
 		return -ENOMEM;
 	}
-	runtime->hw = msm_pcm_hardware;
+	runtime->hw = msm_dsp_hardware;
 	prtd->substream = substream;
 	prtd->audio_client = q6asm_audio_client_alloc(
 				(app_cb)event_handler, prtd);
@@ -459,7 +456,7 @@ static int msm_pcm_open(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static int msm_pcm_playback_copy(struct snd_pcm_substream *substream, int a,
+int msm_dsp_playback_copy(struct snd_pcm_substream *substream, int a,
 	snd_pcm_uframes_t hwoff, void __user *buf, snd_pcm_uframes_t frames)
 {
 	int ret = 0;
@@ -517,7 +514,7 @@ fail:
 	return  ret;
 }
 
-static int msm_pcm_playback_close(struct snd_pcm_substream *substream)
+int msm_dsp_playback_close(struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct msm_audio *prtd = runtime->private_data;
@@ -546,7 +543,7 @@ static int msm_pcm_playback_close(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static int msm_pcm_capture_copy(struct snd_pcm_substream *substream,
+int msm_dsp_capture_copy(struct snd_pcm_substream *substream,
 		 int channel, snd_pcm_uframes_t hwoff, void __user *buf,
 						 snd_pcm_uframes_t frames)
 {
@@ -620,7 +617,7 @@ fail:
 	return ret;
 }
 
-static int msm_pcm_capture_close(struct snd_pcm_substream *substream)
+static int msm_dsp_capture_close(struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct msm_audio *prtd = runtime->private_data;
@@ -639,40 +636,41 @@ static int msm_pcm_capture_close(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static int msm_pcm_copy(struct snd_pcm_substream *substream, int a,
+int msm_dsp_copy(struct snd_pcm_substream *substream, int a,
 	 snd_pcm_uframes_t hwoff, void __user *buf, snd_pcm_uframes_t frames)
 {
 	int ret = 0;
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
-		ret = msm_pcm_playback_copy(substream, a, hwoff, buf, frames);
+		ret = msm_dsp_playback_copy(substream, a, hwoff, buf, frames);
 	else if (substream->stream == SNDRV_PCM_STREAM_CAPTURE)
-		ret = msm_pcm_capture_copy(substream, a, hwoff, buf, frames);
+		ret = msm_dsp_capture_copy(substream, a, hwoff, buf, frames);
 	return ret;
 }
 
-static int msm_pcm_close(struct snd_pcm_substream *substream)
+int msm_dsp_close(struct snd_pcm_substream *substream)
 {
 	int ret = 0;
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
-		ret = msm_pcm_playback_close(substream);
+		ret = msm_dsp_playback_close(substream);
 	else if (substream->stream == SNDRV_PCM_STREAM_CAPTURE)
-		ret = msm_pcm_capture_close(substream);
+		ret = msm_dsp_capture_close(substream);
 	return ret;
 }
-static int msm_pcm_prepare(struct snd_pcm_substream *substream)
+
+int msm_dsp_prepare(struct snd_pcm_substream *substream)
 {
 	int ret = 0;
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
-		ret = msm_pcm_playback_prepare(substream);
+		ret = msm_dsp_playback_prepare(substream);
 	else if (substream->stream == SNDRV_PCM_STREAM_CAPTURE)
-		ret = msm_pcm_capture_prepare(substream);
+		ret = msm_dsp_capture_prepare(substream);
 	return ret;
 }
 
-static snd_pcm_uframes_t msm_pcm_pointer(struct snd_pcm_substream *substream)
+snd_pcm_uframes_t msm_dsp_pointer(struct snd_pcm_substream *substream)
 {
 
 	struct snd_pcm_runtime *runtime = substream->runtime;
@@ -684,7 +682,7 @@ static snd_pcm_uframes_t msm_pcm_pointer(struct snd_pcm_substream *substream)
 	return bytes_to_frames(runtime, (prtd->pcm_irq_pos));
 }
 
-int msm_pcm_mmap(struct snd_pcm_substream *substream,
+int msm_dsp_mmap(struct snd_pcm_substream *substream,
 				struct vm_area_struct *vma)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
@@ -699,7 +697,7 @@ int msm_pcm_mmap(struct snd_pcm_substream *substream,
 	return 0;
 }
 
-int msm_pcm_hw_params(struct snd_pcm_substream *substream,
+int msm_dsp_hw_params(struct snd_pcm_substream *substream,
 				struct snd_pcm_hw_params *params)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
@@ -738,59 +736,23 @@ int msm_pcm_hw_params(struct snd_pcm_substream *substream,
 	return 0;
 }
 
-static struct snd_pcm_ops msm_pcm_ops = {
-	.open           = msm_pcm_open,
-	.copy		= msm_pcm_copy,
-	.hw_params	= msm_pcm_hw_params,
-	.close          = msm_pcm_close,
-	.ioctl          = snd_pcm_lib_ioctl,
-	.prepare        = msm_pcm_prepare,
-	.trigger        = msm_pcm_trigger,
-	.pointer        = msm_pcm_pointer,
-	.mmap		= msm_pcm_mmap,
-};
-
-
-
-static int msm_pcm_remove(struct platform_device *devptr)
-{
-	struct snd_soc_device *socdev = platform_get_drvdata(devptr);
-	snd_soc_free_pcms(socdev);
-	kfree(socdev->card->codec);
-	platform_set_drvdata(devptr, NULL);
-	return 0;
-}
-
-static int msm_pcm_new(struct snd_card *card,
-			struct snd_soc_dai *codec_dai,
-			struct snd_pcm *pcm)
+int msm_dsp_new(struct snd_card *card,
+		       struct snd_soc_dai *codec_dai,
+		       struct snd_pcm *pcm)
 {
 	int ret = 0;
+	pr_debug("%s\n", __func__);
+
+#ifndef CONFIG_MFD_WM8994
+	ret = snd_pcm_new_stream(pcm, SNDRV_PCM_STREAM_PLAYBACK, 2);
+	if (ret)
+		return ret;
+	ret = snd_pcm_new_stream(pcm, SNDRV_PCM_STREAM_CAPTURE, 1);
+	if (ret)
+		return ret;
+#endif
 
 	if (!card->dev->coherent_dma_mask)
 		card->dev->coherent_dma_mask = DMA_BIT_MASK(32);
 	return ret;
 }
-
-struct snd_soc_platform msm_soc_platform = {
-	.name		= "msm-audio",
-	.remove		= msm_pcm_remove,
-	.pcm_ops	= &msm_pcm_ops,
-	.pcm_new	= msm_pcm_new,
-};
-EXPORT_SYMBOL(msm_soc_platform);
-
-static int __init msm_soc_platform_init(void)
-{
-	return snd_soc_register_platform(&msm_soc_platform);
-}
-module_init(msm_soc_platform_init);
-
-static void __exit msm_soc_platform_exit(void)
-{
-	snd_soc_unregister_platform(&msm_soc_platform);
-}
-module_exit(msm_soc_platform_exit);
-
-MODULE_DESCRIPTION("PCM module platform driver");
-MODULE_LICENSE("GPL v2");

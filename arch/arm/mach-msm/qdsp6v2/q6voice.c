@@ -31,6 +31,7 @@
 #include <mach/dal.h>
 #include <mach/qdsp6v2/q6voice.h>
 #include "audio_acdb.h"
+#include <linux/msm_audio_mvs.h>
 
 #define TIMEOUT_MS 3000
 #define SNDDEV_CAP_TTY 0x20
@@ -2050,7 +2051,7 @@ static int32_t modem_cvs_callback(struct apr_client_data *data, void *priv)
 		if (data->payload_size) {
 			ptr = data->payload;
 
-			pr_info("%x %x\n", ptr[0], ptr[1]);
+			pr_debug("%x %x\n", ptr[0], ptr[1]);
 			/*response from modem CVS */
 			if (ptr[0] ==
 			VSS_ISTREAM_CMD_CREATE_PASSIVE_CONTROL_SESSION ||
@@ -2130,7 +2131,7 @@ static int32_t modem_cvs_callback(struct apr_client_data *data, void *priv)
 					  pkt_len,
 					  v->mvs_info.private_data);
 			} else {
-				pr_err("%s: voc_pkt is 0x%x ul_cb is 0x%x\n",
+				pr_debug("%s: voc_pkt is 0x%x ul_cb is 0x%x\n",
 				       __func__, (unsigned int)voc_pkt,
 				       (unsigned int) v->mvs_info.ul_cb);
 			}
@@ -2169,7 +2170,7 @@ static int32_t modem_cvs_callback(struct apr_client_data *data, void *priv)
 				goto fail;
 			}
 		} else {
-			pr_err("%s: ul_cb is NULL\n", __func__);
+			pr_debug("%s: ul_cb is NULL\n", __func__);
 		}
 	} else {
 		pr_debug("%s: Unknown opcode 0x%x\n", __func__, data->opcode);
@@ -2253,7 +2254,7 @@ static int __init voice_init(void)
 	v->dev_tx.mute = v->default_mute_val;
 
 	v->voc_state = VOC_INIT;
-	v->voc_path = VOC_PATH_PASSIVE;
+	v->voc_path = VOC_PATH_FULL;
 	init_waitqueue_head(&v->mvm_wait);
 	init_waitqueue_head(&v->cvs_wait);
 	init_waitqueue_head(&v->cvp_wait);
@@ -2278,7 +2279,9 @@ static int __init voice_init(void)
 
 	/* Initialize MVS info. */
 	memset(&v->mvs_info, 0, sizeof(v->mvs_info));
-	v->mvs_info.network_type = VSS_NETWORK_ID_DEFAULT;
+	v->mvs_info.media_type = VSS_MEDIA_ID_PCM_NB;
+	v->mvs_info.rate = MVS_AMR_MODE_UNDEF;
+	v->mvs_info.network_type = VSS_NETWORK_ID_VOIP_NB;
 
 	v->device_events = AUDDEV_EVT_DEV_CHG_VOICE |
 			AUDDEV_EVT_DEV_RDY |
