@@ -205,6 +205,8 @@ void kgsl_ptpool_destroy(struct kgsl_ptpool *pool);
 
 int kgsl_ptpool_init(struct kgsl_ptpool *pool, int ptsize, int entries);
 
+int kgsl_get_ptname_from_ptbase(unsigned int pt_base);
+
 #else
 static inline int kgsl_mmu_map(struct kgsl_pagetable *pagetable,
 		 unsigned int address,
@@ -228,6 +230,8 @@ static inline int kgsl_ptpool_init(struct kgsl_ptpool *pool, int ptsize,
 }
 
 static inline void kgsl_ptpool_free(struct kgsl_ptpool *pool) { }
+
+static inline int kgsl_get_ptname_from_ptbase(unsigned int pt_base) { }
 
 #endif
 

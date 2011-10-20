@@ -461,6 +461,25 @@ void kgsl_mh_intrcallback(struct kgsl_device *device)
 	KGSL_MEM_VDBG("return\n");
 }
 
+int
+kgsl_get_ptname_from_ptbase(unsigned int pt_base)
+{
+	struct kgsl_pagetable *pt;
+	int ptid = -1;
+
+	mutex_lock(&kgsl_driver.pt_mutex);
+
+	list_for_each_entry(pt, &kgsl_driver.pagetable_list, list) {
+		if (pt_base == pt->base.gpuaddr) {
+			ptid = (int) pt->name;
+			break;
+		}
+	}
+	mutex_unlock(&kgsl_driver.pt_mutex);
+
+	return ptid;
+}
+
 static struct kgsl_pagetable *kgsl_mmu_createpagetableobject(
 				struct kgsl_mmu *mmu,
 				unsigned int name)
