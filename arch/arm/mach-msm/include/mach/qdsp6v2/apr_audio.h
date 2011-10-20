@@ -955,6 +955,13 @@ struct asm_data_event_read_done{
 	u32            id;
 } __attribute__((packed));
 
+#define ASM_DATA_EVENT_SR_CM_CHANGE_NOTIFY               0x00010C65
+struct asm_data_event_sr_cm_change_notify {
+	u32            sample_rate;
+	u16	           no_of_channels;
+	u16            reserved;
+	u8             channel_map[8];
+} __packed;
 
 /* service level events */
 

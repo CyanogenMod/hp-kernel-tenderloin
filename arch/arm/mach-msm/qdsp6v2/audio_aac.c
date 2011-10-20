@@ -407,6 +407,17 @@ static int audaac_flush(struct q6audio *audio)
 	return 0;
 }
 
+static int audaac_outport_flush(struct q6audio *audio)
+{
+	int rc;
+
+	rc = q6asm_cmd(audio->ac, CMD_OUT_FLUSH);
+	if (rc < 0)
+		pr_err("%s: output port flush cmd failed rc=%d\n", __func__,
+			rc);
+	return rc;
+}
+
 static void audaac_async_read(struct q6audio *audio,
 		struct audaac_buffer_node *buf_node)
 {
@@ -549,6 +560,7 @@ static void q6_audaac_cb(uint32_t opcode, uint32_t token,
 		uint32_t *payload, void *priv)
 {
 	struct q6audio *audio = (struct q6audio *)priv;
+	union msm_audio_event_payload e_payload;
 
 	switch (opcode) {
 	case ASM_DATA_EVENT_WRITE_DONE:
@@ -580,6 +592,23 @@ static void q6_audaac_cb(uint32_t opcode, uint32_t token,
 	case ASM_STREAM_CMD_SET_ENCDEC_PARAM:
 		pr_debug("%s:payload0[%x] payloa1d[%x]opcode= 0x%x\n",
 			 __func__, payload[0], payload[1], opcode);
+		break;
+
+	case ASM_DATA_EVENT_SR_CM_CHANGE_NOTIFY:
+		pr_debug("%s: ASM_DATA_EVENT_SR_CM_CHANGE_NOTIFY, "
+				"payload[0]-sr = %d, payload[1]-chl = %d, "
+				"payload[2] = %d, payload[3] = %d\n", __func__,
+				payload[0], payload[1], payload[2],
+				payload[3]);
+		pr_debug("%s: ASM_DATA_EVENT_SR_CM_CHANGE_NOTIFY, "
+				"sr(prev) = %d, chl(prev) = %d,",
+				__func__, audio->pcm_cfg.sample_rate,
+				audio->pcm_cfg.channel_count);
+		audio->pcm_cfg.sample_rate = payload[0];
+		audio->pcm_cfg.channel_count = payload[1] & 0xFFFF;
+		e_payload.stream_info.chan_info = audio->pcm_cfg.channel_count;
+		e_payload.stream_info.sample_rate = audio->pcm_cfg.sample_rate;
+		audaac_post_event(audio, AUDIO_EVENT_STREAM_INFO, e_payload);
 		break;
 	default:
 		pr_debug("%s:Unhandled event = 0x%8x\n", __func__, opcode);
@@ -1151,10 +1180,10 @@ static long audio_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		rc = q6asm_enable_sbrps(audio->ac, sbr_ps);
 		if (rc < 0)
 			pr_err("sbr-ps enable failed\n");
-		if (audio->aac_config.sbr_on_flag)
-			aac_cfg.aot = AAC_ENC_MODE_AAC_P;
-		else if (audio->aac_config.sbr_ps_on_flag)
+		if (audio->aac_config.sbr_ps_on_flag)
 			aac_cfg.aot = AAC_ENC_MODE_EAAC_P;
+		else if (audio->aac_config.sbr_on_flag)
+			aac_cfg.aot = AAC_ENC_MODE_AAC_P;
 		else
 			aac_cfg.aot = AAC_ENC_MODE_AAC_LC;
 
@@ -1257,6 +1286,15 @@ static long audio_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		} else {
 			audio->rflush = 0;
 			audio->wflush = 0;
+		}
+		break;
+	}
+	case AUDIO_OUTPORT_FLUSH: {
+		pr_debug("AUDIO_OUTPORT_FLUSH\n");
+		rc = audaac_outport_flush(audio);
+		if (rc < 0) {
+			pr_err("%s: AUDIO_OUTPORT_FLUSH failed\n", __func__);
+			rc = -EINTR;
 		}
 		break;
 	}

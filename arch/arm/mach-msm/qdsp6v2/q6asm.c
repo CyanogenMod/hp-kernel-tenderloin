@@ -546,6 +546,7 @@ static int32_t q6asm_callback(struct apr_client_data *data, void *priv)
 		case ASM_STREAM_CMD_FLUSH:
 		case ASM_SESSION_CMD_RUN:
 		case ASM_SESSION_CMD_REGISTER_FOR_TX_OVERFLOW_EVENTS:
+		case ASM_STREAM_CMD_FLUSH_READBUFS:
 		pr_debug("%s:Payload = [0x%x]\n", __func__, payload[0]);
 		if (token != ac->session) {
 			pr_err("%s:Invalid session[%d] rxed expected[%d]",
@@ -670,6 +671,13 @@ static int32_t q6asm_callback(struct apr_client_data *data, void *priv)
 			atomic_set(&ac->time_flag, 0);
 			wake_up(&ac->time_wait);
 		}
+		break;
+	case ASM_DATA_EVENT_SR_CM_CHANGE_NOTIFY:
+		pr_debug("%s: ASM_DATA_EVENT_SR_CM_CHANGE_NOTIFY, "
+				"payload[0] = %d, payload[1] = %d, "
+				"payload[2] = %d, payload[3] = %d\n", __func__,
+				payload[0], payload[1], payload[2],
+				payload[3]);
 		break;
 	}
 	if (ac->cb)
@@ -933,7 +941,8 @@ int q6asm_open_read_write(struct audio_client *ac,
 	q6asm_add_hdr(ac, &open.hdr, sizeof(open), TRUE);
 	open.hdr.opcode = ASM_STREAM_CMD_OPEN_READWRITE;
 
-	open.uMode = BUFFER_META_ENABLE | STREAM_PRIORITY_NORMAL;
+	open.uMode = BUFFER_META_ENABLE | STREAM_PRIORITY_NORMAL |
+		SR_CM_NOTIFY_ENABLE;
 	/* source endpoint : matrix */
 	open.post_proc_top = DEFAULT_POPP_TOPOLOGY;
 	switch (wr_format) {
@@ -1106,6 +1115,7 @@ int q6asm_enc_cfg_blk_pcm(struct audio_client *ac,
 	int rc = 0;
 
 	pr_debug("%s: Session %d\n", __func__, ac->session);
+
 
 	q6asm_add_hdr(ac, &enc_cfg.hdr, sizeof(enc_cfg), TRUE);
 
@@ -2310,6 +2320,11 @@ int q6asm_cmd(struct audio_client *ac, int cmd)
 	case CMD_FLUSH:
 		pr_debug("%s:CMD_FLUSH\n", __func__);
 		hdr.opcode = ASM_STREAM_CMD_FLUSH;
+		state = &ac->cmd_state;
+		break;
+	case CMD_OUT_FLUSH:
+		pr_debug("%s:CMD_OUT_FLUSH\n", __func__);
+		hdr.opcode = ASM_STREAM_CMD_FLUSH_READBUFS;
 		state = &ac->cmd_state;
 		break;
 	case CMD_EOS:
