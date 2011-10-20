@@ -316,6 +316,7 @@ mdp_hist_stop_err:
 static int mdp_do_histogram(struct fb_info *info, struct mdp_histogram *hist)
 {
 	int ret = 0;
+	unsigned long tout = 0;
 
 	if (!hist->frame_cnt || (hist->bin_cnt == 0) ||
 				 (hist->bin_cnt > MDP_HIST_MAX_BIN))
@@ -336,7 +337,16 @@ static int mdp_do_histogram(struct fb_info *info, struct mdp_histogram *hist)
 	mdp_hist.g = (hist->g) ? mdp_hist_g : 0;
 	mdp_hist.b = (hist->b) ? mdp_hist_b : 0;
 
-	wait_for_completion_killable(&mdp_hist_comp);
+	tout = wait_for_completion_killable_timeout(&mdp_hist_comp,
+						    msecs_to_jiffies(200));
+	/* tout is set to 1 for timeout */
+	if ( tout < 2 ) {
+		printk(KERN_ERR
+		       "%s wait_for_completion_killable_timeout failed %lu.\n",
+		       __func__, tout);
+		ret = -EINTR;
+		goto hist_err;
+	}
 
 	if (hist->r) {
 		ret = copy_to_user(hist->r, mdp_hist.r, hist->bin_cnt*4);

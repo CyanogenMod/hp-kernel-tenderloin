@@ -457,6 +457,35 @@ static void ddl_vidc_encode_set_profile_level(
 	vidc_1080p_set_encode_profile_level(encode_profile, level);
 }
 
+static void ddl_vidc_encode_set_multi_slice_info(
+	struct ddl_encoder_data *encoder)
+{
+	enum vidc_1080p_MSlice_selection m_slice_sel;
+	u32 i_multi_slice_size = 0, i_multi_slice_byte = 0;
+
+	if (!encoder) {
+		DDL_MSG_ERROR("Invalid Parameter");
+		return;
+	}
+
+	switch (encoder->multi_slice.m_slice_sel) {
+	default:
+	case VCD_MSLICE_OFF:
+		m_slice_sel = VIDC_1080P_MSLICE_DISABLE;
+	break;
+	case VCD_MSLICE_BY_MB_COUNT:
+		m_slice_sel = VIDC_1080P_MSLICE_BY_MB_COUNT;
+		i_multi_slice_size = encoder->multi_slice.m_slice_size;
+	break;
+	case VCD_MSLICE_BY_BYTE_COUNT:
+		m_slice_sel = VIDC_1080P_MSLICE_BY_BYTE_COUNT;
+		i_multi_slice_byte = encoder->multi_slice.m_slice_size;
+	break;
+	}
+	vidc_1080p_set_encode_multi_slice_control(m_slice_sel,
+		i_multi_slice_size, i_multi_slice_byte);
+}
+
 void ddl_vidc_encode_init_codec(struct ddl_client_context *ddl)
 {
 	struct ddl_context *ddl_context = ddl->ddl_context;
@@ -465,10 +494,8 @@ void ddl_vidc_encode_init_codec(struct ddl_client_context *ddl)
 	struct vidc_1080p_enc_seq_start_param seq_start_param;
 	enum vidc_1080p_memory_access_method mem_access_method;
 	enum vidc_1080p_DBConfig db_config;
-	enum vidc_1080p_MSlice_selection m_slice_sel;
 	enum VIDC_SM_frame_skip r_cframe_skip =
 		VIDC_SM_FRAME_SKIP_DISABLE;
-	u32 i_multi_slice_size = 0, i_multi_slice_byte = 0;
 	u32 index, luma[4], chroma[4], hdr_ext_control = false;
 	const u32 recon_bufs = 4;
 
@@ -554,22 +581,7 @@ void ddl_vidc_encode_init_codec(struct ddl_client_context *ddl)
 		encoder->i_period.b_frames);
 	vidc_1080p_set_encode_circular_intra_refresh(
 		encoder->intra_refresh.cir_mb_number);
-	switch (encoder->multi_slice.m_slice_sel) {
-	default:
-	case VCD_MSLICE_OFF:
-		m_slice_sel = VIDC_1080P_MSLICE_DISABLE;
-	break;
-	case VCD_MSLICE_BY_MB_COUNT:
-		m_slice_sel = VIDC_1080P_MSLICE_BY_MB_COUNT;
-		i_multi_slice_size = encoder->multi_slice.m_slice_size;
-	break;
-	case VCD_MSLICE_BY_BYTE_COUNT:
-		m_slice_sel = VIDC_1080P_MSLICE_BY_BYTE_COUNT;
-		i_multi_slice_byte = encoder->multi_slice.m_slice_size;
-	break;
-	}
-	vidc_1080p_set_encode_multi_slice_control(m_slice_sel,
-		i_multi_slice_size, i_multi_slice_byte);
+	ddl_vidc_encode_set_multi_slice_info(encoder);
 	ddl_vidc_metadata_enable(ddl);
 	if (encoder->meta_data_enable_flag)
 		vidc_sm_set_metadata_start_address(&ddl->shared_mem
@@ -699,6 +711,10 @@ void ddl_vidc_encode_frame_run(struct ddl_client_context *ddl)
 		encoder->dynmic_prop_change_req = true;
 		ddl_vidc_encode_dynamic_property(ddl, true);
 	}
+
+	vidc_1080p_set_encode_circular_intra_refresh(
+		encoder->intra_refresh.cir_mb_number);
+	ddl_vidc_encode_set_multi_slice_info(encoder);
 	enc_param.cmd_seq_num = ++ddl_context->cmd_seq_num;
 	enc_param.inst_id = ddl->instance_id;
 	enc_param.shared_mem_addr_offset = DDL_ADDR_OFFSET(
