@@ -859,11 +859,6 @@ phci_hcd_submit_async(phci_hcd * hcd,
 	struct hcd_dev *dev;
 	int epnum;
 
-#ifndef THREAD_BASED
-	unsigned long flags;
-#endif
-
-	
 	struct ehci_qh *qh = 0;
 
 	urb_priv_t *urb_priv = urb->hcpriv;
@@ -888,9 +883,6 @@ phci_hcd_submit_async(phci_hcd * hcd,
 	 * Also, hold this lock	when talking to	HC registers or
 	 * when	updating hw_* fields in	shared qh/qtd/... structures.
 	 */
-#ifndef THREAD_BASED
-	spin_lock_irqsave(&hcd->lock, flags);
-#endif
 
 	spin_lock(&hcd_data_lock);
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24)
@@ -921,9 +913,6 @@ phci_hcd_submit_async(phci_hcd * hcd,
 		phci_hcd_qtd_list_free(hcd, urb, &qh->qtd_list);
 		spin_unlock(&hcd_data_lock);
 		
-#ifndef THREAD_BASED			
-		spin_unlock_irqrestore(&hcd->lock, flags);
-#endif
 		*status	= -ENODEV;
 		return 0;
 	}
@@ -937,11 +926,7 @@ phci_hcd_submit_async(phci_hcd * hcd,
 	cleanup:
 	spin_unlock(&hcd_data_lock);
 
-#ifndef THREAD_BASED			
-	/* free	it from	lock systme can	sleep now */
-	spin_unlock_irqrestore(&hcd->lock, flags);
-#endif
-	
+
 	/* could not get the QH	terminate and clean. */
 	if (unlikely(qh	== 0) || *status < 0) {
 		phci_hcd_qtd_list_free(hcd, urb, qtd_list);
@@ -1052,13 +1037,10 @@ phci_hcd_submit_interrupt(phci_hcd * hcd,
 	struct ehci_qtd	*qtd;
 	struct _hcd_dev	*dev;
 	int epnum;
-	unsigned long flags;
 	struct ehci_qh *qh = 0;
 	urb_priv_t *urb_priv = (urb_priv_t *) urb->hcpriv;
 
 	qtd = list_entry(qtd_list->next, struct	ehci_qtd, qtd_list);
-
-	spin_lock_irqsave(&hcd->lock, flags);
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24)
 	dev = (struct hcd_dev *) urb->hcpriv;
@@ -1132,7 +1114,6 @@ phci_hcd_submit_interrupt(phci_hcd * hcd,
 
 	done:
 	/* free	it from	lock systme can	sleep now */
-	spin_unlock_irqrestore(&hcd->lock, flags);
 	/* could not get the QH	terminate and clean. */
 	if (unlikely(qh	== 0) || *status < 0) {
 		phci_hcd_qtd_list_free(hcd, urb, qtd_list);

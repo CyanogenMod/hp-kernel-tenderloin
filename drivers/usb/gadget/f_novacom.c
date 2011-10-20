@@ -229,7 +229,7 @@ static struct usb_gadget_strings *novacom_strings[] = {
 /* SYNCHRONOUS ENDPOINT OPERATIONS (bulk/intr/iso)
  */
 
-static int
+int
 novacom_enable_ep (struct novacom_ep *nep)
 {
 	struct usb_ep *ep = nep->ep;
@@ -243,7 +243,7 @@ novacom_enable_ep (struct novacom_ep *nep)
 	return 0;
 }
 
-static void
+void
 novacom_disable_ep (struct novacom_ep *nep)
 {
 	if (nep->state == STATE_EP_ENABLED) {
@@ -252,7 +252,7 @@ novacom_disable_ep (struct novacom_ep *nep)
 	}
 }
 
-static void
+void
 novacom_epio_complete_in (struct usb_ep *ep, struct usb_request *req)
 {
 	struct f_novacom	*novacom = the_novacom;
@@ -272,7 +272,7 @@ novacom_epio_complete_in (struct usb_ep *ep, struct usb_request *req)
 	complete ((struct completion *)req->context);
 }
 
-static void
+void
 novacom_epio_complete_out (struct usb_ep *ep, struct usb_request *req)
 {
 	struct f_novacom	*novacom = the_novacom;
@@ -295,7 +295,7 @@ novacom_epio_complete_out (struct usb_ep *ep, struct usb_request *req)
 /* tasklock endpoint, returning when it's connected.
  * still need dev->lock to use novacom_ep->ep.
  */
-static int
+int
 novacom_get_ready_ep (unsigned f_flags, struct novacom_ep *nep)
 {
 	int	val;
@@ -328,7 +328,7 @@ nonblock:
 	return val;
 }
 
-static ssize_t
+ssize_t
 novacom_ep_io (struct novacom_ep *nep, void *buf, unsigned len, int dir)
 {
 	DECLARE_COMPLETION_ONSTACK (done);
@@ -385,7 +385,7 @@ novacom_ep_io (struct novacom_ep *nep, void *buf, unsigned len, int dir)
 
 
 /* handle a synchronous OUT bulk/intr/iso transfer */
-static ssize_t
+ssize_t
 novacom_ep_read (struct file *fd, char __user *buf, size_t len, loff_t *ptr)
 {
 	struct novacom_ep	*nep = fd->private_data;
@@ -437,7 +437,7 @@ free1:
 }
 
 /* handle a synchronous IN bulk/intr/iso transfer */
-static ssize_t
+ssize_t
 novacom_ep_write (struct file *fd, const char __user *buf, size_t len, loff_t *ptr)
 {
 	struct novacom_ep	*nep = fd->private_data;
@@ -488,9 +488,9 @@ free1:
 	return value;
 }
 
-static void novacom_disable_ep (struct novacom_ep *nep);
+void novacom_disable_ep (struct novacom_ep *nep);
 
-static int
+int
 novacom_ep_release (struct inode *inode, struct file *fd)
 {
 	struct novacom_ep	*nep = fd->private_data;
@@ -501,7 +501,7 @@ novacom_ep_release (struct inode *inode, struct file *fd)
 	return 0;
 }
 
-static int
+int
 novacom_ep_open (struct inode *inode, struct file *fd, int dir)
 {
 	struct f_novacom	*novacom = the_novacom;
@@ -530,12 +530,12 @@ novacom_ep_open (struct inode *inode, struct file *fd, int dir)
 	return value;
 }
 
-static int novacom_ep_in_open (struct inode *inode, struct file *fd)
+int novacom_ep_in_open (struct inode *inode, struct file *fd)
 {
 	return novacom_ep_open(inode, fd, USB_DIR_IN);
 }
 
-static int novacom_ep_out_open (struct inode *inode, struct file *fd)
+int novacom_ep_out_open (struct inode *inode, struct file *fd)
 {
 	return novacom_ep_open(inode, fd, USB_DIR_OUT);
 }
@@ -574,7 +574,7 @@ static struct miscdevice novacom_ep_out_device = {
 
 /*----------------------------------------------------------------------*/
 
-static struct usb_gadgetfs_event *
+struct usb_gadgetfs_event *
 novacom_next_event (struct f_novacom *novacom, enum usb_gadgetfs_event_type type)
 {
 	struct usb_gadgetfs_event	*event;
@@ -615,7 +615,7 @@ novacom_next_event (struct f_novacom *novacom, enum usb_gadgetfs_event_type type
 	return event;
 }
 
-static inline void
+inline void
 novacom_ep0_send_event (struct f_novacom *novacom, int value)
 {
 	struct usb_gadgetfs_event	*event;
@@ -635,7 +635,7 @@ novacom_ep0_send_event (struct f_novacom *novacom, int value)
 	kill_fasync (&novacom->fasync, SIGIO, POLL_IN);
 }
 
-static ssize_t
+ssize_t
 novacom_ep0_read (struct file *fd, char __user *buf, size_t len, loff_t *ptr)
 {
 	struct f_novacom	*novacom = the_novacom;
@@ -717,7 +717,7 @@ done:
 	return retval;
 }
 
-static int
+int
 novacom_ep0_fasync (int f, struct file *fd, int on)
 {
 	struct f_novacom	*novacom = the_novacom;
@@ -731,7 +731,7 @@ novacom_ep0_fasync (int f, struct file *fd, int on)
 	return fasync_helper (f, fd, on, &novacom->fasync);
 }
 
-static int
+int
 novacom_ep0_open (struct inode *inode, struct file *fd)
 {
 	struct f_novacom	*novacom = the_novacom;
@@ -768,7 +768,7 @@ fail:
 	return value;
 }
 
-static int
+int
 novacom_ep0_release (struct inode *inode, struct file *fd)
 {
 	struct f_novacom	*novacom = the_novacom;
@@ -797,7 +797,7 @@ novacom_ep0_release (struct inode *inode, struct file *fd)
 	return 0;
 }
 
-static unsigned int
+unsigned int
 novacom_ep0_poll (struct file *fd, poll_table *wait)
 {
 	struct f_novacom	*novacom = the_novacom;
@@ -842,7 +842,7 @@ static struct miscdevice novacom_ep0_device = {
 
 /*----------------------------------------------------------------------*/
 
-static int novacom_connect(struct f_novacom *novacom)
+int novacom_connect(struct f_novacom *novacom)
 {
 	int status;
 
@@ -867,7 +867,7 @@ static int novacom_connect(struct f_novacom *novacom)
 	return 0;
 }
 
-static void novacom_disconnect(struct f_novacom *novacom)
+void novacom_disconnect(struct f_novacom *novacom)
 {
 	VDBG(novacom->cdev, "novacom: %s: enter\n", __func__);
 
@@ -886,7 +886,7 @@ static void novacom_disconnect(struct f_novacom *novacom)
 
 /*----------------------------------------------------------------------*/
 
-static int __init
+int __init
 novacom_bind(struct usb_configuration *c, struct usb_function *f)
 {
 	struct usb_composite_dev *cdev = c->cdev;
@@ -989,7 +989,7 @@ fail:
 	return status;
 }
 
-static void
+void
 novacom_unbind(struct usb_configuration *c, struct usb_function *f)
 {
 	struct f_novacom		*novacom = func_to_novacom(f);
@@ -1023,7 +1023,7 @@ novacom_unbind(struct usb_configuration *c, struct usb_function *f)
 
 /*----------------------------------------------------------------------*/
 
-static int novacom_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
+int novacom_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 {
 	struct f_novacom	*novacom = func_to_novacom(f);
 	struct usb_composite_dev *cdev = f->config->cdev;
@@ -1065,7 +1065,7 @@ static int novacom_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 	return 0;
 }
 
-static void novacom_disable(struct usb_function *f)
+void novacom_disable(struct usb_function *f)
 {
 	struct f_novacom	*novacom = func_to_novacom(f);
 	struct usb_composite_dev *cdev = f->config->cdev;

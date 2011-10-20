@@ -350,7 +350,6 @@ pehci_hcd_handshake(phci_hcd * hcd, u32	ptr, u32 mask, u32 done, int usec)
 static void
 pehci_hcd_td_ptd_submit_urb(phci_hcd * hcd, struct ehci_qh *qh,	u8 bufftype)
 {
-	unsigned long flags=0;
 	struct ehci_qtd	*qtd = 0;
 	struct urb *urb	= 0;
 	struct _isp1763_qha *qha = 0;
@@ -369,7 +368,6 @@ pehci_hcd_td_ptd_submit_urb(phci_hcd * hcd, struct ehci_qh *qh,	u8 bufftype)
 	pehci_entry("++	%s: Entered\n",	__FUNCTION__);
 	pehci_print("Buuffer type %d\n", bufftype);
 
-	spin_lock_irqsave(&hcd->lock, flags);
 	ptd_map_buff = &td_ptd_map_buff[bufftype];
 
 	qha = &hcd->qha;
@@ -415,7 +413,6 @@ pehci_hcd_td_ptd_submit_urb(phci_hcd * hcd, struct ehci_qh *qh,	u8 bufftype)
 	if (!(qh->qh_state & QH_STATE_TAKE_NEXT)) {
 		pehci_check("qh	will schdule from interrupt routine,map	%x\n",
 			    td_ptd_map->ptd_bitmap);
-		spin_unlock_irqrestore(&hcd->lock, flags);
 		return;
 	}
 	head = &qh->qtd_list;
@@ -424,7 +421,6 @@ pehci_hcd_td_ptd_submit_urb(phci_hcd * hcd, struct ehci_qh *qh,	u8 bufftype)
 	/*already scheduled, may be from interrupt */
 	if (!(qtd->state & QTD_STATE_NEW)) {
 		pehci_check("qtd already in, state %x\n", qtd->state);
-		spin_unlock_irqrestore(&hcd->lock, flags);
 		return;
 	}
 
@@ -534,7 +530,6 @@ pehci_hcd_td_ptd_submit_urb(phci_hcd * hcd, struct ehci_qh *qh,	u8 bufftype)
 				    buffstatus | ISO_BUFFER);
 		break;
 	}
-	spin_unlock_irqrestore(&hcd->lock, flags);
 	pehci_entry("--	%s: Exit\n", __FUNCTION__);
 	return;
 
@@ -4754,15 +4749,25 @@ if (unlikely(atomic_read(&urb->reject)))
 			}
 		}
 		/*keep a copy of this */
-		urb->hcpriv = urb_priv;
 #ifdef CONFIG_ISO_SUPPORT
 	}
 #endif
 
 	switch (temp) {
 	case PIPE_INTERRUPT:
-		phci_hcd_make_qtd(pehci_hcd, &urb_priv->qtd_list,	urb, &status);
+		spin_lock_irqsave(&pehci_hcd->lock, flags);
+		if (unlikely(atomic_read(&urb->reject))) {
+			pr_info("---%s rejected in int\n", __func__);
+			phci_hcd_urb_free_priv(pehci_hcd, urb_priv, NULL);
+			kfree(urb_priv);
+			spin_unlock_irqrestore(&pehci_hcd->lock, flags);
+			return -EPERM;
+		}
+		urb->hcpriv = urb_priv;
+		phci_hcd_make_qtd(pehci_hcd, &urb_priv->qtd_list, urb, &status);
 		if (status < 0)	{
+			pr_info("---%s make_qtd fail in int\n", __func__);
+			spin_unlock_irqrestore(&pehci_hcd->lock, flags);
 			return status;
 		}
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24)
@@ -4772,18 +4777,32 @@ if (unlikely(atomic_read(&urb->reject)))
 		qh = phci_hcd_submit_interrupt(pehci_hcd, &urb_priv->qtd_list, urb,
 			&status);
 #endif
-		if (status < 0)
+		if (status < 0) {
+			pr_info("---%s submit_interrupt error\n", __func__);
+			spin_unlock_irqrestore(&pehci_hcd->lock, flags);
 			return status;
+		}
+#if (!defined(MSEC_INT_BASED) && !defined(MSEC_INT_BASED))
+		pehci_hcd_td_ptd_submit_urb(pehci_hcd, qh, qh->type);
+#endif
+		spin_unlock_irqrestore(&pehci_hcd->lock, flags);
 		break;
 
 	case PIPE_CONTROL:
 	case PIPE_BULK:
-
-#ifdef THREAD_BASED
-	spin_lock_irqsave (&pehci_hcd->lock, flags);
-#endif
+		spin_lock_irqsave(&pehci_hcd->lock, flags);
+		if (unlikely(atomic_read(&urb->reject))) {
+			pr_info("---%s rejected in blk and ctl\n", __func__);
+			phci_hcd_urb_free_priv(pehci_hcd, urb_priv, NULL);
+			kfree(urb_priv);
+			spin_unlock_irqrestore(&pehci_hcd->lock, flags);
+			return -EPERM;
+		}
+		urb->hcpriv = urb_priv;
 		phci_hcd_make_qtd(pehci_hcd, &qtd_list,	urb, &status);
 		if (status < 0) {
+			pr_info("---%s make_qtd fail in blk/ctl\n", __func__);
+			spin_unlock_irqrestore(&pehci_hcd->lock, flags);
 			return status;
 		}
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24)
@@ -4792,14 +4811,16 @@ if (unlikely(atomic_read(&urb->reject)))
 #else
 		qh = phci_hcd_submit_async(pehci_hcd, &qtd_list, urb, &status);
 #endif
-
-#ifdef THREAD_BASED
-	spin_unlock_irqrestore (&pehci_hcd->lock, flags);
-#endif
-
 		if (status < 0) {
+			pr_info("---%s submit_async error\n", __func__);
+			spin_unlock_irqrestore(&pehci_hcd->lock, flags);
 			return status;
 		}
+#if (!defined(MSEC_INT_BASED) && !defined(MSEC_INT_BASED))
+		pehci_hcd_td_ptd_submit_urb(pehci_hcd, qh, qh->type);
+#endif
+		spin_unlock_irqrestore(&pehci_hcd->lock, flags);
+
 		break;
 #ifdef CONFIG_ISO_SUPPORT
 	case PIPE_ISOCHRONOUS:
@@ -4866,10 +4887,6 @@ if (unlikely(atomic_read(&urb->reject)))
 	}
 	pehci_entry("-- %s: Exit\n",__FUNCTION__);
     return 0;
-#else
-	/*submit tds but iso */
-    if (temp != PIPE_ISOCHRONOUS)
-	pehci_hcd_td_ptd_submit_urb(pehci_hcd, qh, qh->type);
 #endif
 	pehci_entry("--	%s: Exit\n", __FUNCTION__);
 	return 0;
@@ -5128,6 +5145,8 @@ pehci_hcd_urb_dequeue(struct usb_hcd *usb_hcd, struct urb *urb, int status)
 		if (td_ptd_map->state == TD_PTD_NEW) {
 			break;
 		}
+
+
 /* patch added for stopping Full speed PTD */
 /* patch starts	ere */
 		if (urb->dev->speed != USB_SPEED_HIGH) {
@@ -5294,7 +5313,9 @@ pehci_hcd_urb_dequeue(struct usb_hcd *usb_hcd, struct urb *urb, int status)
 
 		/*urb is already been removed */
 		if (td_ptd_map->state == TD_PTD_NEW) {
+			pr_info("---urb already removed\n");
 			kfree(urb_priv);
+			urb->hcpriv = NULL;
 			break;
 		}
 

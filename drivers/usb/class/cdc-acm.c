@@ -499,8 +499,12 @@ next_buffer:
 urbs:
 	tty_kref_put(tty);
 
-	while (!list_empty(&acm->spare_read_bufs)) {
+	while (1) {
 		spin_lock_irqsave(&acm->read_lock, flags);
+		if (list_empty(&acm->spare_read_bufs)) {
+			spin_unlock_irqrestore(&acm->read_lock, flags);
+			break;
+		}
 		if (list_empty(&acm->spare_read_urbs)) {
 			acm->processing = 0;
 			spin_unlock_irqrestore(&acm->read_lock, flags);
@@ -509,11 +513,11 @@ urbs:
 		rcv = list_entry(acm->spare_read_urbs.next,
 				 struct acm_ru, list);
 		list_del(&rcv->list);
-		spin_unlock_irqrestore(&acm->read_lock, flags);
 
 		buf = list_entry(acm->spare_read_bufs.next,
 				 struct acm_rb, list);
 		list_del(&buf->list);
+		spin_unlock_irqrestore(&acm->read_lock, flags);
 
 		rcv->buffer = buf;
 
