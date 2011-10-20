@@ -346,48 +346,45 @@ static inline unsigned int cpufreq_quick_get(unsigned int cpu)
  *                       CPUFREQ ONDEMAND TICKLE                     *
  *********************************************************************/
 #ifdef CONFIG_CPU_FREQ_GOV_ONDEMAND_TICKLE
+struct tickle_file_data;
+
 void cpufreq_ondemand_tickle(void);
 void cpufreq_ondemand_tickle_millis(unsigned int millis);
-void cpufreq_ondemand_floor(unsigned int freq);
-void cpufreq_ondemand_floor_millis(unsigned int freq, unsigned int millis);
 void cpufreq_ondemand_hold(void);
 void cpufreq_ondemand_unhold(void);
 void cpufreq_ondemand_hold_check(int *flag);
 void cpufreq_ondemand_unhold_check(int *flag);
-void cpufreq_ondemand_floor_hold(unsigned int freq);
-void cpufreq_ondemand_floor_unhold(void);
-void cpufreq_ondemand_floor_hold_check(unsigned int freq, int *flag);
-void cpufreq_ondemand_floor_unhold_check(int *flag);
+void cpufreq_ondemand_floor_hold(struct tickle_file_data *tfdp);
+void cpufreq_ondemand_floor_unhold(struct tickle_file_data *tfdp);
+void cpufreq_ondemand_floor_hold_check(struct tickle_file_data *tfdp,
+	int *flag);
+void cpufreq_ondemand_floor_unhold_check(struct tickle_file_data *tfdp,
+	int *flag);
 void cpufreq_ondemand_hold_sync(void);
 #define CPUFREQ_TICKLE cpufreq_ondemand_tickle
 #define CPUFREQ_TICKLE_MILLIS(millis) cpufreq_ondemand_tickle_millis((millis));
-#define CPUFREQ_FLOOR cpufreq_ondemand_floor
-#define CPUFREQ_FLOOR_MILLIS(freq, millis) \
-	cpufreq_ondemand_floor_millis((freq), (millis))
 #define CPUFREQ_HOLD cpufreq_ondemand_hold
 #define CPUFREQ_UNHOLD cpufreq_ondemand_unhold
 #define CPUFREQ_HOLD_CHECK cpufreq_ondemand_hold_check
 #define CPUFREQ_UNHOLD_CHECK cpufreq_ondemand_unhold_check
-#define CPUFREQ_FLOOR_HOLD cpufreq_ondemand_floor_hold
-#define CPUFREQ_FLOOR_UNHOLD cpufreq_ondemand_floor_unhold
-#define CPUFREQ_FLOOR_HOLD_CHECK cpufreq_ondemand_floor_hold_check
-#define CPUFREQ_FLOOR_UNHOLD_CHECK cpufreq_ondemand_floor_unhold_check
 #define CPUFREQ_HOLD_SYNC cpufreq_ondemand_hold_sync
+
+/* kernel-only calls */
+int cpufreq_ondemand_floor_hold_kernel(unsigned int freq);
+int cpufreq_ondemand_floor_unhold_kernel(void);
+#define CPUFREQ_FLOOR_HOLD_KERNEL cpufreq_ondemand_floor_hold_kernel
+#define CPUFREQ_FLOOR_UNHOLD_KERNEL cpufreq_ondemand_floor_unhold_kernel
 #else
 
 #define CPUFREQ_TICKLE()
 #define CPUFREQ_TICKLE_MILLIS(millis)
-#define CPUFREQ_FLOOR()
-#define CPUFREQ_FLOOR_MILLIS(freq, millis)
 #define CPUFREQ_HOLD()
 #define CPUFREQ_UNHOLD()
 #define CPUFREQ_HOLD_CHECK(flag)
 #define CPUFREQ_UNHOLD_CHECK(flag)
-#define CPUFREQ_FLOOR_HOLD(freq)
-#define CPUFREQ_FLOOR_UNHOLD()
-#define CPUFREQ_FLOOR_HOLD_CHECK(freq, flag)
-#define CPUFREQ_FLOOR_UNHOLD_CHECK(flag)
 #define CPUFREQ_HOLD_SYNC()
+#define CPUFREQ_FLOOR_HOLD_KERNEL cpufreq_ondemand_floor_hold_kernel
+#define CPUFREQ_FLOOR_UNHOLD_KERNEL cpufreq_ondemand_floor_unhold_kernel
 #endif
 
 /*********************************************************************

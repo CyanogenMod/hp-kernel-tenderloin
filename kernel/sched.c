@@ -7137,48 +7137,6 @@ static int dattrs_equal(struct sched_domain_attr *cur, int idx_cur,
 			sizeof(struct sched_domain_attr));
 }
 
-#ifdef CONFIG_MSM_SCHED_FAST_CPU_ONLINE
-void fast_sched_domains_update(int cpu)
-{
-	struct s_data d;
-	struct sched_domain *sd;
-	struct cpumask *cpu_map = doms_cur[0];
-	int i;
-
-	mutex_lock(&sched_domains_mutex);
-
-	unregister_sched_domain_sysctl();
-
-	if (!alloc_cpumask_var(&d.nodemask, GFP_KERNEL))
-		goto skip;
-	if (!alloc_cpumask_var(&d.send_covered, GFP_KERNEL)) {
-		free_cpumask_var(d.nodemask);
-		goto skip;
-	}
-
-	cpumask_andnot(cpu_map, cpu_active_mask, cpu_isolated_map);
-
-	cpumask_and(d.nodemask, cpumask_of_node(cpu_to_node(cpu)), cpu_map);
-	sd = __build_cpu_sched_domain(&d, cpu_map, NULL, NULL, cpu);
-
-	build_sched_groups(&d, SD_LV_CPU, cpu_map, cpu);
-	for_each_cpu(i, cpu_map) {
-		sd = &per_cpu(phys_domains, i).sd;
-		init_sched_groups_power(i, sd);
-	}
-
-	cpu_attach_domain(sd, cpu_rq(0)->rd, cpu);
-
-	free_cpumask_var(d.nodemask);
-	free_cpumask_var(d.send_covered);
-
-skip:
-	register_sched_domain_sysctl();
-
-	mutex_unlock(&sched_domains_mutex);
-}
-#endif
-
 /*
  * Partition sched domains as specified by the 'ndoms_new'
  * cpumasks in the array doms_new[] of cpumasks. This compares
@@ -7372,14 +7330,6 @@ static int update_sched_domains(struct notifier_block *nfb,
 	switch (action) {
 	case CPU_ONLINE:
 	case CPU_ONLINE_FROZEN:
-#ifdef CONFIG_MSM_SCHED_FAST_CPU_ONLINE
-		/* Fast scheduler domain update for MSM8X60 CPU1 */
-		if (doms_cur == &fallback_doms) {
-			/* Add CPU 1 to existing scheduler domain */
-			fast_sched_domains_update(1);
-			return NOTIFY_OK;
-		}
-#endif
 	case CPU_DOWN_PREPARE:
 	case CPU_DOWN_PREPARE_FROZEN:
 	case CPU_DOWN_FAILED:

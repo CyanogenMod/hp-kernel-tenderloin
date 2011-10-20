@@ -18,6 +18,23 @@
  * published by the Free Software Foundation.
  */
 
+/* Palm modifications to the ondemand driver fall into 2 categories:
+ * 1) Floor and tickle capabilities (raise the frequency for controlled
+ *	periods of time)
+ * 2) Logging of cpufreq data (controlled by "sampling_enabled"; the name
+ *	"sample" for this is a little unfortunate).
+ *	Log data is retrieved from /proc/ondemandtcl_samples, and stored
+ *	with calls to "record_sample". The intent is to store any events that
+ *	might be interesting for post-analysis. The "load" field is overloaded
+ *	for this. For load-based frequency changes, it contains the calculated
+ *	load (0-100). For frequency changes caused for other reasons (tickles,
+ *	floor, limit changes, input subsystem), it will contain a value between
+ *	-1 and -99. Values that do not record an actual frequency change but
+ *	record a relevant event will have a load value < -100; this includes
+ *	CPU1 on/offline transitions. For further detail, look at the code.
+ */
+
+
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/init.h>
@@ -59,7 +76,7 @@
 #define MIN_FREQUENCY_DOWN_DIFFERENTIAL		(1)
 
 /* empirically determined reasonable sampling value; setting it
- * here as a default is intended as a temporary fix. Set it to 0 if you 
+ * here as a default is intended as a temporary fix. Set it to 0 if you
  * want this setting to be ignored.
  */
 #define DEF_SAMPLING_RATE			(200000)
@@ -70,11 +87,6 @@
 #define MAX_TICKLE_WINDOW				(10000)
 #define DEF_TICKLE_WINDOW				(3000)
 
-/*
- * The max and default time in mS to keep the processor at at least the floor freq.
- */
-#define MAX_FLOOR_WINDOW				(10000)
-#define DEF_FLOOR_WINDOW				(3000)
 
 #if defined(CONFIG_CPU_FREQ_MIN_TICKS)
 #define CPU_FREQ_MIN_TICKS CONFIG_CPU_FREQ_MIN_TICKS
@@ -109,10 +121,16 @@ static unsigned int min_sampling_rate;
 static void do_dbs_timer(struct work_struct *work);
 
 static void do_tickle_timer(unsigned long arg);
-static void do_floor_timer(unsigned long arg);
 
 /* Sampling types */
 enum {DBS_NORMAL_SAMPLE, DBS_SUB_SAMPLE};
+
+/* stashed values from dbs_check_cpu, in us: for log sampling */
+struct raw_load_values {
+	unsigned int wall;
+	unsigned int idle;
+	unsigned int iowait;
+};
 
 struct cpu_dbs_info_s {
 	cputime64_t prev_cpu_idle;
@@ -130,14 +148,16 @@ struct cpu_dbs_info_s {
 	int tickle_active;
 	int floor_active;
 	unsigned int freq_floor;
-	unsigned int freq_save;
 	unsigned int rel_save;
+
+	/* values stashed by dbs_check_cpu and retrieved by adjust_for_load */
 	int cur_load;
 	unsigned int max_load_freq;
-	
+	struct raw_load_values rlv;
+
 	int cpu;
 	unsigned int enable:1,
-	 			sample_type:1;
+				sample_type:1;
 
 	/*
 	 * percpu mutex that serializes governor limit change with
@@ -169,7 +189,6 @@ static struct dbs_tuners {
 	unsigned int powersave_bias;
 	unsigned int io_is_busy;
 	unsigned int max_tickle_window;
-	unsigned int max_floor_window;
 } dbs_tuners_ins = {
 	.up_threshold = DEF_FREQUENCY_UP_THRESHOLD,
 	.sampling_down_factor = DEF_SAMPLING_DOWN_FACTOR,
@@ -177,14 +196,19 @@ static struct dbs_tuners {
 	.ignore_nice = 0,
 	.powersave_bias = 0,
 	.max_tickle_window = DEF_TICKLE_WINDOW,
-	.max_floor_window = DEF_FLOOR_WINDOW,
 };
 
 /*
- * tickle/floor state
+ * tickle/floor state (shared across CPUs)
+ *   active:floor_active: is a tickle or floor currently held
+ *   active_tickle: is there an active _timed_ tickle.
+ *   active_count, floor_count: number of current tickle/floor
+ *	"clients" (timer = 1, each hold = 1)
  */
 static struct {
-	spinlock_t lock;
+	spinlock_t lock;	/* protects this structure,  tickle_file_data
+				 * structures, and tickle_clients list
+				 */
 
 	int active;
 	int active_tickle;
@@ -193,23 +217,19 @@ static struct {
 
 
 	int floor_active;
-	int floor_tickle;
 	int floor_count;
-	unsigned long floor_jiffies;
 	unsigned int cur_freq_floor;
 
 	struct work_struct tickle_work;
 	struct work_struct floor_work;
 
 	struct timer_list tickle_timer;
-	struct timer_list floor_timer;
 } tickle_state = {
 	.lock = SPIN_LOCK_UNLOCKED,
 	.active = 0,
 	.active_tickle = 0,
 	.active_count = 0,
 	.floor_active = 0,
-	.floor_tickle = 0,
 	.floor_count = 0,
 	.cur_freq_floor = 0,
 };
@@ -217,15 +237,14 @@ static struct {
 /*
  * Stats for profiling response characteristics.
  */
-#define NUM_SAMPLES 10000
+#define NUM_SAMPLES 2000
 struct sample_data {
-	cputime64_t timestamp;
+	unsigned long long timestamp;
 	cputime64_t user;
 	cputime64_t system;
-	cputime64_t irq;
-	cputime64_t softirq;
-	cputime64_t steal;
-	cputime64_t nice;
+	unsigned int wall;
+	unsigned int idle;
+	unsigned int iowait;
 	unsigned int cur_freq;
 	unsigned int target_freq;
 	int load;
@@ -301,7 +320,7 @@ static void *stats_start(struct seq_file *m, loff_t *pos)
 	int i;
 	struct stats_state *state = kmalloc(sizeof(struct stats_state),  GFP_KERNEL);
 
-	printk(KERN_DEBUG "%s: %u\n", __FUNCTION__, (unsigned int) *pos);
+	pr_debug("%s: %u\n", __func__, (unsigned int) *pos);
 	if (!state)
 		return ERR_PTR(-ENOMEM);
 
@@ -338,7 +357,8 @@ static void *stats_next(struct seq_file *m, void *v, loff_t *pos)
 	int i;
 	struct stats_state *state = (struct stats_state *) v;
 
-	printk(KERN_DEBUG "%s: CPU:%u, Pos:%u\n" ,__FUNCTION__, state->cpu, (unsigned int) *pos);
+	pr_debug("%s: CPU:%u, Pos:%u\n" , __func__, state->cpu,
+		(unsigned int) *pos);
 
 	++*pos;
 	if (*pos >= state->num_samples)
@@ -378,24 +398,27 @@ static int stats_show(struct seq_file *m, void *v)
 	struct stats_state *state = v;
 	struct sample_stats *stats = &per_cpu(sample_stats, state->cpu);
 	int rc = 0;
+	unsigned long long t;
+	unsigned long  ms;
 
-	if (state->sample_index == 0) {
-		rc = seq_printf(m, "cpufreq samples for cpu %u\n", state->cpu);
-		if (rc)
-			goto done;
-	}
 
 	if (stats->samples) {
-		rc = seq_printf(m, "%u %u: %llu %llu %llu %llu %llu %llu %llu %d %u %u\n",
+		/* conversion borrowed from printk_time */
+		t = stats->samples[state->sample_index].timestamp;
+		ms = do_div(t, NSEC_PER_SEC);
+		ms = ms/NSEC_PER_MSEC;
+
+		rc = seq_printf(m, "%u %4u %5lu.%03lu %6llu"
+			" %6llu %8u %8u %8u %4d %7u %7u\n",
 				state->cpu,
 				state->sample_index,
-				stats->samples[state->sample_index].timestamp,
+				(unsigned long)t,
+				ms,
 				stats->samples[state->sample_index].user,
 				stats->samples[state->sample_index].system,
-				stats->samples[state->sample_index].irq,
-				stats->samples[state->sample_index].softirq,
-				stats->samples[state->sample_index].steal,
-				stats->samples[state->sample_index].nice,
+				stats->samples[state->sample_index].wall,
+				stats->samples[state->sample_index].idle,
+				stats->samples[state->sample_index].iowait,
 				stats->samples[state->sample_index].load,
 				stats->samples[state->sample_index].cur_freq,
 				stats->samples[state->sample_index].target_freq
@@ -424,14 +447,17 @@ struct tickle_file_data {
 	unsigned int floor_freq;
 };
 
-/* static tickle_file_data entry for use by anonymous floor tickles that don't have a file handle */
-static struct tickle_file_data default_file_data;
+/* kernel_floor_data can be used safely for a single
+ * active kernel floor (hold/unhold).
+ */
+struct tickle_file_data kernel_floor_data;
 
 static int get_max_client_floor(void);
 
 static int tickle_open(struct inode *inode, struct file *filp);
 static int tickle_release(struct inode *inode, struct file *filp);
-static int tickle_ioctl(struct inode *inode, struct file *filp, unsigned int cmd, unsigned long arg);
+static int tickle_ioctl(struct inode *inode, struct file *filp,
+	unsigned int cmd, unsigned long arg);
 
 static struct file_operations tickle_fops = {
 	.owner			= THIS_MODULE,
@@ -450,7 +476,7 @@ static int setup_tickle_device(void)
 		printk(KERN_ERR "%s: can't alloc major number (%d)\n", __FILE__, res);
 		goto error;
 	}
-	
+
 	tickle_class = class_create(THIS_MODULE, "ondemandtcl");
 	if (IS_ERR(tickle_class)) {
 		res = PTR_ERR(tickle_class);
@@ -474,9 +500,9 @@ static int setup_tickle_device(void)
 
 		goto error_remove_cdev;
 	}
-	/* add the default file data for anonymous clients */
-	default_file_data.floor_freq = 0;
-	list_add(&default_file_data.list, &tickle_clients);
+	/* add the default data for a single kernel floor client */
+	kernel_floor_data.floor_freq = 0;
+	list_add(&kernel_floor_data.list, &tickle_clients);
 
 	return res;
 
@@ -489,7 +515,7 @@ error_remove_class:
 
 error_unregister_region:
 	unregister_chrdev_region(tickle_dev, 1);
-	
+
 error:
 	return res;
 }
@@ -503,7 +529,7 @@ static void remove_tickle_device(void)
 		unregister_chrdev_region(tickle_dev, 1);
 
 		/* for posterity */
-		list_del(&default_file_data.list);
+		list_del(&kernel_floor_data.list);
 	}
 }
 
@@ -513,8 +539,6 @@ static int tickle_open(struct inode *inode, struct file *filp)
 	struct tickle_file_data *data = kzalloc(sizeof(struct tickle_file_data), GFP_KERNEL);
 	if (!data)
 		return -ENOMEM;
-
-	//printk("%s\n", __FUNCTION__);
 
 	spin_lock_irqsave(&tickle_state.lock, flags);
 	list_add(&data->list, &tickle_clients);
@@ -528,9 +552,7 @@ static int tickle_open(struct inode *inode, struct file *filp)
 static int tickle_release(struct inode *inode, struct file *filp)
 {
 	unsigned long flags;
-	struct tickle_file_data *data = filp->private_data;	
-
-	//printk("%s\n", __FUNCTION__);
+	struct tickle_file_data *data = filp->private_data;
 
 	if (data) {
 		spin_lock_irqsave(&tickle_state.lock, flags);
@@ -538,7 +560,8 @@ static int tickle_release(struct inode *inode, struct file *filp)
 		spin_unlock_irqrestore(&tickle_state.lock, flags);
 
 		CPUFREQ_UNHOLD_CHECK(&data->tickle_hold_flag);
-		CPUFREQ_FLOOR_UNHOLD_CHECK(&data->floor_hold_flag);
+		cpufreq_ondemand_floor_unhold_check(data,
+			&data->floor_hold_flag);
 
 		kfree(data);
 	}
@@ -546,13 +569,12 @@ static int tickle_release(struct inode *inode, struct file *filp)
 	return 0;
 }
 
+/* maximum of one floor hold and one tickle hold per fd */
 static int tickle_ioctl(struct inode *inode, struct file *filp, unsigned int cmd, unsigned long arg)
 {
 	unsigned long flags;
 	struct tickle_file_data *data = filp->private_data;
 
-	//printk("%s: Ondemandtcl ioctl: cmd = %d, arg = %ld\n", __FUNCTION__, cmd, arg);
-	
 	if (_IOC_TYPE(cmd) != TICKLE_IOC_MAGIC)
 		return -ENOTTY;
 
@@ -564,32 +586,35 @@ static int tickle_ioctl(struct inode *inode, struct file *filp, unsigned int cmd
 			CPUFREQ_TICKLE_MILLIS((unsigned int) arg);
 			break;
 
-		case TICKLE_IOCT_FLOOR:
-			CPUFREQ_FLOOR((unsigned int) arg);
-			break;
-
 		case TICKLE_IOC_TICKLE_HOLD:
-			CPUFREQ_HOLD_CHECK(&data->floor_hold_flag);
+			if (data->tickle_hold_flag)
+				return -EBUSY;
+			CPUFREQ_HOLD_CHECK(&data->tickle_hold_flag);
 			break;
 
 		case TICKLE_IOC_TICKLE_UNHOLD:
-			CPUFREQ_UNHOLD_CHECK(&data->floor_hold_flag);
+			if (data->tickle_hold_flag == 0)
+				return -EINVAL;
+			CPUFREQ_UNHOLD_CHECK(&data->tickle_hold_flag);
 			break;
 
 		case TICKLE_IOCT_FLOOR_HOLD:
+			if (data->floor_hold_flag)
+				return -EBUSY;
 			spin_lock_irqsave(&tickle_state.lock, flags);
 			data->floor_freq = (unsigned int) arg;
 			spin_unlock_irqrestore(&tickle_state.lock, flags);
 
-			CPUFREQ_FLOOR_HOLD_CHECK((unsigned int) arg, &data->floor_hold_flag);
+			cpufreq_ondemand_floor_hold_check(data,
+				&data->floor_hold_flag);
 			break;
 
 		case TICKLE_IOC_FLOOR_UNHOLD:
-			spin_lock_irqsave(&tickle_state.lock, flags);
-			data->floor_freq = 0;
-			spin_unlock_irqrestore(&tickle_state.lock, flags);
+			if (data->floor_hold_flag == 0)
+				return -EINVAL;
 
-			CPUFREQ_FLOOR_UNHOLD_CHECK(&data->floor_hold_flag);
+			cpufreq_ondemand_floor_unhold_check(data,
+				&data->floor_hold_flag);
 			break;
 
 		case TICKLE_IOC_TICKLE_HOLD_SYNC:
@@ -766,7 +791,6 @@ show_one(sampling_down_factor, sampling_down_factor);
 show_one(ignore_nice_load, ignore_nice);
 show_one(powersave_bias, powersave_bias);
 show_one(max_tickle_window, max_tickle_window);
-show_one(max_floor_window, max_floor_window);
 
 /*** delete after deprecation time ***/
 
@@ -790,7 +814,6 @@ show_one_old(sampling_rate_min);
 show_one_old(sampling_rate_max);
 show_one_old(down_differential);
 show_one_old(max_tickle_window);
-show_one_old(max_floor_window);
 
 cpufreq_freq_attr_ro_old(sampling_rate_min);
 cpufreq_freq_attr_ro_old(sampling_rate_max);
@@ -956,39 +979,20 @@ static ssize_t store_max_tickle_window(struct kobject *a, struct attribute *b,
 	unsigned int input;
 	int ret;
 	ret = sscanf(buf, "%u", &input);
-	
+
 	if (ret != 1)
 		return -EINVAL;
-	
+
 	if (input > MAX_TICKLE_WINDOW)
 		input = MAX_TICKLE_WINDOW;
-	
+
 	mutex_lock(&dbs_mutex);
 	dbs_tuners_ins.max_tickle_window = input;
 	mutex_unlock(&dbs_mutex);
-	
+
 	return count;
 }
 
-static ssize_t store_max_floor_window(struct kobject *a, struct attribute *b,
-		const char *buf, size_t count)
-{
-	unsigned int input;
-	int ret;
-	ret = sscanf(buf, "%u", &input);
-	
-	if (ret != 1)
-		return -EINVAL;
-	
-	if (input > MAX_FLOOR_WINDOW)
-		input = MAX_FLOOR_WINDOW;
-	
-	mutex_lock(&dbs_mutex);
-	dbs_tuners_ins.max_floor_window = input;
-	mutex_unlock(&dbs_mutex);
-	
-	return count;
-}
 
 define_one_global_rw(sampling_rate);
 define_one_global_rw(io_is_busy);
@@ -998,7 +1002,6 @@ define_one_global_rw(sampling_down_factor);
 define_one_global_rw(ignore_nice_load);
 define_one_global_rw(powersave_bias);
 define_one_global_rw(max_tickle_window);
-define_one_global_rw(max_floor_window);
 
 static struct attribute *dbs_attributes[] = {
 	&sampling_rate_max.attr,
@@ -1011,7 +1014,6 @@ static struct attribute *dbs_attributes[] = {
 	&powersave_bias.attr,
 	&io_is_busy.attr,
 	&max_tickle_window.attr,
-	&max_floor_window.attr,
 	NULL
 };
 
@@ -1036,7 +1038,6 @@ write_one_old(ignore_nice_load);
 write_one_old(powersave_bias);
 write_one_old(down_differential);
 write_one_old(max_tickle_window);
-write_one_old(max_floor_window);
 
 cpufreq_freq_attr_rw_old(sampling_rate);
 cpufreq_freq_attr_rw_old(up_threshold);
@@ -1044,7 +1045,6 @@ cpufreq_freq_attr_rw_old(ignore_nice_load);
 cpufreq_freq_attr_rw_old(powersave_bias);
 cpufreq_freq_attr_rw_old(down_differential);
 cpufreq_freq_attr_rw_old(max_tickle_window);
-cpufreq_freq_attr_rw_old(max_floor_window);
 
 static struct attribute *dbs_attributes_old[] = {
        &sampling_rate_max_old.attr,
@@ -1054,7 +1054,6 @@ static struct attribute *dbs_attributes_old[] = {
        &ignore_nice_load_old.attr,
        &powersave_bias_old.attr,
        &max_tickle_window_old.attr,
-       &max_floor_window_old.attr,
        &down_differential_old.attr,
        NULL
 };
@@ -1068,7 +1067,7 @@ static struct attribute_group dbs_attr_group_old = {
 
 /************************** sysfs end ************************/
 
-static void __attribute__((unused)) 
+static void __attribute__((unused))
 dbs_freq_increase(struct cpufreq_policy *p, unsigned int freq)
 {
 	if (dbs_tuners_ins.powersave_bias)
@@ -1081,15 +1080,17 @@ dbs_freq_increase(struct cpufreq_policy *p, unsigned int freq)
 }
 
 static void record_sample(unsigned int cur_freq, unsigned int target_freq,
-		int load, int cpu)
+		int load, int cpu, struct raw_load_values *rlvp)
 {
 	struct sample_stats *stats;
-	cputime64_t cur_jiffies;
 	int i;
-	
-	/* abuse a module parameter to trigger clearing the sample buffer */
+
+	/* abuse a module parameter to trigger clearing the sample buffer. Note
+	 * that after setting the parameter the buffer won't get cleared until
+	 * a sample is made!
+	 */
 	if (clear_samples) {
-		for_each_online_cpu(i) {
+		for_each_present_cpu(i) {
 			stats = &per_cpu(sample_stats, i);
 			if (stats->samples)
 				memset(stats->samples, 0, sizeof(struct sample_data) * NUM_SAMPLES);
@@ -1097,30 +1098,29 @@ static void record_sample(unsigned int cur_freq, unsigned int target_freq,
 		}
 		clear_samples = 0;
 	}
-	
+
 	if (!sampling_enabled)
 		return;
-	
-	cur_jiffies = jiffies64_to_cputime64(get_jiffies_64());
+
 	stats = &per_cpu(sample_stats, cpu);
 
 	if (!stats->samples)
 		return;
 
-	//if (target_freq != cur_freq) {
-		i = stats->current_sample;
-		stats->samples[i].timestamp = cur_jiffies;
-		stats->samples[i].user = kstat_cpu(cpu).cpustat.user;
-		stats->samples[i].system = kstat_cpu(cpu).cpustat.system;
-		stats->samples[i].irq = kstat_cpu(cpu).cpustat.irq;
-		stats->samples[i].softirq = kstat_cpu(cpu).cpustat.softirq;
-		stats->samples[i].steal = kstat_cpu(cpu).cpustat.steal;
-		stats->samples[i].nice = kstat_cpu(cpu).cpustat.nice;
-		stats->samples[i].cur_freq = cur_freq;
-		stats->samples[i].target_freq = target_freq;
-		stats->samples[i].load = load;
-		stats->current_sample = (i + 1) % NUM_SAMPLES;
-	//}
+	i = stats->current_sample;
+	/* for timestamp, use same timer as printk does. CPU0 and
+	 * CPU1 appear to match to fractions of a millisecond
+	 */
+	stats->samples[i].timestamp = cpu_clock(0);
+	stats->samples[i].user = kstat_cpu(cpu).cpustat.user;
+	stats->samples[i].system = kstat_cpu(cpu).cpustat.system;
+	stats->samples[i].wall = rlvp ? rlvp->wall : 0;
+	stats->samples[i].idle = rlvp ? rlvp->idle : 0;
+	stats->samples[i].iowait = rlvp ? rlvp->iowait : 0;
+	stats->samples[i].cur_freq = cur_freq;
+	stats->samples[i].target_freq = target_freq;
+	stats->samples[i].load = load;
+	stats->current_sample = (i + 1) % NUM_SAMPLES;
 }
 
 static void do_tickle_state_change(struct work_struct *work)
@@ -1131,7 +1131,7 @@ static void do_tickle_state_change(struct work_struct *work)
 	unsigned long tickle_jiffies;
 
 	spin_lock_irqsave(&tickle_state.lock, flags);
-	
+
 	active = tickle_state.active;
 	active_count = tickle_state.active_count;
 	active_tickle = tickle_state.active_tickle;
@@ -1141,14 +1141,14 @@ static void do_tickle_state_change(struct work_struct *work)
 
 	if (print_tickles)
 		printk("%s: active=%u, active_count=%u, tickle_jiffies=%lu\n",
-				__FUNCTION__, active, active_count, tickle_jiffies);
+				__func__, active, active_count, tickle_jiffies);
 
 	if (active_count) {
 		if (!active) {
 			for_each_online_cpu(cpu) {
 				struct cpu_dbs_info_s *dbs_info;
 				struct cpufreq_policy *policy;
-				
+
 				mutex_lock(&dbs_mutex);
 				dbs_info = &per_cpu(od_cpu_dbs_info, cpu);
 
@@ -1159,7 +1159,9 @@ static void do_tickle_state_change(struct work_struct *work)
 
 				mutex_lock(&dbs_info->timer_mutex);
 				policy = dbs_info->cur_policy;
-				/* if we don't have a policy then we probably got tickled before setup completed */
+				/* if we don't have a policy then we probably
+				 * got tickled before setup completed
+				 */
 
 				if (!policy) {
 					mutex_unlock(&dbs_info->timer_mutex);
@@ -1167,12 +1169,10 @@ static void do_tickle_state_change(struct work_struct *work)
 					continue;
 				}
 
-				/* save the current operating frequency */	
-				dbs_info->freq_save = policy->cur;
-
 				/* ramp up to the policy max */
 				if (policy->cur < policy->max) {
-					record_sample(policy->cur, policy->max, -2, policy->cpu);
+					record_sample(policy->cur, policy->max,
+						 -21, policy->cpu, NULL);
 					__cpufreq_driver_target(policy, policy->max, CPUFREQ_RELATION_H);
 				}
 
@@ -1182,7 +1182,6 @@ static void do_tickle_state_change(struct work_struct *work)
 				mutex_unlock(&dbs_mutex);
 			}
 		}
-		
 		if (active_tickle)
 			mod_timer(&tickle_state.tickle_timer, tickle_jiffies);
 
@@ -1206,14 +1205,13 @@ static void do_tickle_state_change(struct work_struct *work)
 			dbs_info->tickle_active = 0;
 			adjust_for_load(dbs_info);
 
-			record_sample(policy->cur, policy->min, -5, policy->cpu);
 			mutex_unlock(&dbs_info->timer_mutex);
 			mutex_unlock(&dbs_mutex);
 		}
 
 		active = 0;
 	}
-	
+
 	/* update tickle_state */
 	spin_lock_irqsave(&tickle_state.lock, flags);
 	tickle_state.active = active;
@@ -1230,23 +1228,25 @@ void cpufreq_ondemand_tickle_millis(unsigned int millis)
 
 	if (millis > dbs_tuners_ins.max_tickle_window)
 		millis = dbs_tuners_ins.max_tickle_window;
-	
+
 	expire = jiffies + msecs_to_jiffies(millis);
 
+	/* record it on CPU 0 */
+	record_sample(0, millis, -225, 0, NULL);
 	spin_lock_irqsave(&tickle_state.lock, flags);
-	
+
 	if (time_after(expire, tickle_state.tickle_jiffies)) {
 		tickle_state.tickle_jiffies = expire;
 
 		if (!tickle_state.active_tickle)
 			tickle_state.active_count += 1;
-		
+
 		tickle_state.active_tickle = 1;
 		queue = 1;
 	}
 
 	spin_unlock_irqrestore(&tickle_state.lock, flags);
-	
+
 	if (queue)
 		queue_work(kondemand_wq, &tickle_state.tickle_work);
 }
@@ -1262,6 +1262,9 @@ void cpufreq_ondemand_hold(void)
 {
 	unsigned long flags;
 
+	/* record it on CPU 0 */
+	record_sample(0, 0, -221, 0, NULL);
+
 	spin_lock_irqsave(&tickle_state.lock, flags);
 	tickle_state.active_count += 1;
 	spin_unlock_irqrestore(&tickle_state.lock, flags);
@@ -1275,14 +1278,16 @@ void cpufreq_ondemand_unhold(void)
 	int queue = 0;
 	unsigned long flags;
 
-	spin_lock_irqsave(&tickle_state.lock, flags);
+	/* record it on CPU 0 */
+	record_sample(0, 0, -220, 0, NULL);
 
+	spin_lock_irqsave(&tickle_state.lock, flags);
 	if (tickle_state.active_count) {
 		tickle_state.active_count -= 1;
 		queue = 1;
 	} else {
 		printk(KERN_WARNING "%s: attempt to decrement when active_count == 0!\n",
-				__FUNCTION__);
+				__func__);
 	}
 
 	spin_unlock_irqrestore(&tickle_state.lock, flags);
@@ -1320,16 +1325,14 @@ EXPORT_SYMBOL(cpufreq_ondemand_unhold_check);
 
 static void do_floor_state_change(struct work_struct *work)
 {
-	int cpu, floor_active, floor_tickle, floor_count, cur_freq_floor, pending_freq_floor;
-	unsigned long flags, floor_jiffies;
+	int cpu, floor_active, floor_count, cur_freq_floor, pending_freq_floor;
+	unsigned long flags;
 
 	spin_lock_irqsave(&tickle_state.lock, flags);
 
 	floor_active = tickle_state.floor_active;
-	floor_tickle = tickle_state.floor_tickle;
 	floor_count = tickle_state.floor_count;
 	cur_freq_floor = tickle_state.cur_freq_floor;
-	floor_jiffies = tickle_state.floor_jiffies;
 
 	pending_freq_floor = get_max_client_floor();
 
@@ -1337,9 +1340,9 @@ static void do_floor_state_change(struct work_struct *work)
 
 
 	if (print_tickles)
-		printk("%s: floor_active=%u, floor_tickle=%u, floor_count=%u, floor_jiffies=%lu, "
+		printk("%s: floor_active=%u, floor_count=%u, "
 				"cur_freq_floor=%u, pending_freq_floor=%u\n",
-				__FUNCTION__, floor_active, floor_tickle, floor_count, floor_jiffies,
+				__func__, floor_active, floor_count,
 				cur_freq_floor, pending_freq_floor);
 
 	if (floor_count) {
@@ -1358,7 +1361,7 @@ static void do_floor_state_change(struct work_struct *work)
 					continue;
 				}
 
-				mutex_lock(&dbs_info->timer_mutex);	
+				mutex_lock(&dbs_info->timer_mutex);
 
 				policy = dbs_info->cur_policy;
 
@@ -1366,24 +1369,22 @@ static void do_floor_state_change(struct work_struct *work)
 					mutex_unlock(&dbs_info->timer_mutex);
 					mutex_unlock(&dbs_mutex);
 					continue;
-				}			
-
-				if (policy->min >= f) {
-					mutex_unlock(&dbs_info->timer_mutex);
-					mutex_unlock(&dbs_mutex);
-					continue;
 				}
-			
+
+				if (f < policy->min)
+					f = policy->min;
+
 				if (f > policy->max)
 					f = policy->max;
 
 				dbs_info->freq_floor = f;
-				dbs_info->freq_save = policy->cur;
 				dbs_info->floor_active = 1;
 
 				if (policy->cur < f) {
-					record_sample(policy->cur, f, -3, policy->cpu);
-					__cpufreq_driver_target(policy, f, CPUFREQ_RELATION_H);
+					record_sample(policy->cur, f, -31,
+						policy->cpu, NULL);
+					__cpufreq_driver_target(policy, f,
+						CPUFREQ_RELATION_L);
 				}
 
 				mutex_unlock(&dbs_info->timer_mutex);
@@ -1391,9 +1392,6 @@ static void do_floor_state_change(struct work_struct *work)
 			}
 
 		}
-		
-		if (floor_tickle)
-			mod_timer(&tickle_state.floor_timer, floor_jiffies);
 
 		floor_active = 1;
 		cur_freq_floor = pending_freq_floor;
@@ -1412,12 +1410,9 @@ static void do_floor_state_change(struct work_struct *work)
 			}
 
 			mutex_lock(&dbs_info->timer_mutex);
-
 			policy = dbs_info->cur_policy;
-
 			dbs_info->floor_active = 0;
-			__cpufreq_driver_target(policy, dbs_info->freq_save, dbs_info->rel_save);
-			record_sample(dbs_info->freq_save, policy->min, -5, policy->cpu);
+			adjust_for_load(dbs_info);
 
 			mutex_unlock(&dbs_info->timer_mutex);
 			mutex_unlock(&dbs_mutex);
@@ -1432,79 +1427,61 @@ static void do_floor_state_change(struct work_struct *work)
 	tickle_state.floor_active = floor_active;
 	tickle_state.cur_freq_floor = cur_freq_floor;
 	spin_unlock_irqrestore(&tickle_state.lock, flags);
-}	
-
-void cpufreq_ondemand_floor_millis(unsigned int freq, unsigned int millis)
-{
-	int queue = 0;
-	unsigned long flags, expire;
-
-	if (!tickling_enabled)
-		return;
-
-	if (millis > dbs_tuners_ins.max_floor_window)
-		millis = dbs_tuners_ins.max_floor_window;
-	
-	expire = jiffies + msecs_to_jiffies(millis);
-
-	spin_lock_irqsave(&tickle_state.lock, flags);
-	
-	if (time_after(expire, tickle_state.floor_jiffies) ||
-			(freq >  get_max_client_floor() && freq > tickle_state.cur_freq_floor)) {
-		if (time_after(expire, tickle_state.floor_jiffies))
-			tickle_state.floor_jiffies = expire;
-		
-		if (!tickle_state.floor_tickle)
-			tickle_state.floor_count += 1;
-		
-		tickle_state.floor_tickle = 1;
-		
-		default_file_data.floor_freq = max(default_file_data.floor_freq, freq);
-
-		queue = 1;
-	}
-
-	spin_unlock_irqrestore(&tickle_state.lock, flags);
-	
-	if (queue)
-		queue_work(kondemand_wq, &tickle_state.floor_work);
 }
-EXPORT_SYMBOL(cpufreq_ondemand_floor_millis);
 
-void cpufreq_ondemand_floor(unsigned int freq)
-{
-	cpufreq_ondemand_floor_millis(freq, dbs_tuners_ins.max_floor_window);
-}
-EXPORT_SYMBOL(cpufreq_ondemand_floor);
 
-void cpufreq_ondemand_floor_hold(unsigned int freq)
+void cpufreq_ondemand_floor_hold(struct tickle_file_data *tfdp)
 {
 	unsigned long flags;
+	unsigned int freq;
+
+	int cpu, index = 0;
+
+	struct cpu_dbs_info_s *dbs_info;
+
+	/* record it on CPU 0 */
+	record_sample(0, tfdp->floor_freq, -231, 0, NULL);
+
+	/* it is reasonable for a client to set a floor that is not an actual
+	 * CPU frequency, but that will cause a bit of flailing on each sample.
+	 * Round it up (once) as necessary here.
+	 */
+	cpu  = smp_processor_id();
+	dbs_info = &per_cpu(od_cpu_dbs_info, cpu);
+	cpufreq_frequency_table_target(dbs_info->cur_policy,
+		dbs_info->freq_table, tfdp->floor_freq, CPUFREQ_RELATION_L,
+		&index);
+	freq = dbs_info->freq_table[index].frequency;
 
 	spin_lock_irqsave(&tickle_state.lock, flags);
 	tickle_state.floor_count += 1;
-	
-	default_file_data.floor_freq = freq;
-
+	if (tfdp->floor_freq != freq) {
+		pr_debug("%s: changing floor from %u to %u\n",
+			__func__, tfdp->floor_freq, freq);
+		tfdp->floor_freq  = freq ;
+	}
 	spin_unlock_irqrestore(&tickle_state.lock, flags);
 
 	queue_work(kondemand_wq, &tickle_state.floor_work);
 }
-EXPORT_SYMBOL(cpufreq_ondemand_floor_hold);
 
-void cpufreq_ondemand_floor_unhold(void)
+void cpufreq_ondemand_floor_unhold(struct tickle_file_data *tfdp)
 {
 	int queue = 0;
 	unsigned long flags;
 
+	/* record it on CPU 0 */
+	record_sample(0, tfdp->floor_freq, -230, 0, NULL);
+
 	spin_lock_irqsave(&tickle_state.lock, flags);
+	tfdp->floor_freq = 0;
 
 	if (tickle_state.floor_count) {
 		tickle_state.floor_count -= 1;
 		queue = 1;
 	} else {
 		printk(KERN_WARNING "%s: attempt to decrement when floor_count == 0!\n",
-				__FUNCTION__);
+				__func__);
 	}
 
 	spin_unlock_irqrestore(&tickle_state.lock, flags);
@@ -1512,33 +1489,76 @@ void cpufreq_ondemand_floor_unhold(void)
 	if (queue)
 		queue_work(kondemand_wq, &tickle_state.floor_work);
 }
-EXPORT_SYMBOL(cpufreq_ondemand_floor_unhold);
 
-void cpufreq_ondemand_floor_hold_check(unsigned int freq, int *flag)
+void cpufreq_ondemand_floor_hold_check(struct tickle_file_data *tfdp,
+	int *flag)
 {
 	if (!*flag) {
-		cpufreq_ondemand_floor_hold(freq);
+		cpufreq_ondemand_floor_hold(tfdp);
 		*flag = 1;
 	}
 }
-EXPORT_SYMBOL(cpufreq_ondemand_floor_hold_check);
 
-void cpufreq_ondemand_floor_unhold_check(int *flag)
+void cpufreq_ondemand_floor_unhold_check(struct tickle_file_data *tfdp,
+	int *flag)
 {
 	if (*flag) {
-		cpufreq_ondemand_floor_unhold();
+		cpufreq_ondemand_floor_unhold(tfdp);
 		*flag = 0;
 	}
 }
-EXPORT_SYMBOL(cpufreq_ondemand_floor_unhold_check);
+
+/* allow a single kernel held floor using kernel_floor_data.
+ * Having more than one kernel floor will require a mechanism
+ * for creating and unregistering clients.
+ */
+int cpufreq_ondemand_floor_hold_kernel(unsigned int freq)
+{
+	unsigned long flags;
+	if (freq == 0)
+		return -EINVAL;
+	spin_lock_irqsave(&tickle_state.lock, flags);
+	if (kernel_floor_data.floor_freq) {	/* in use */
+		spin_unlock_irqrestore(&tickle_state.lock, flags);
+		return -EBUSY;
+	}
+	kernel_floor_data.floor_freq = freq;
+	spin_unlock_irqrestore(&tickle_state.lock, flags);
+
+	cpufreq_ondemand_floor_hold(&kernel_floor_data);
+	return 0;
+
+}
+EXPORT_SYMBOL(cpufreq_ondemand_floor_hold_kernel);
+
+int cpufreq_ondemand_floor_unhold_kernel(void)
+{
+	unsigned long flags;
+	spin_lock_irqsave(&tickle_state.lock, flags);
+	if (kernel_floor_data.floor_freq == 0) {
+		spin_unlock_irqrestore(&tickle_state.lock, flags);
+		return -EINVAL;
+	}
+	spin_unlock_irqrestore(&tickle_state.lock, flags);
+
+	cpufreq_ondemand_floor_unhold(&kernel_floor_data);
+
+	return 0;
+
+}
+EXPORT_SYMBOL(cpufreq_ondemand_floor_unhold_kernel);
 
 
-/** 
-* @brief 
+
+/**
+* @brief
 *
 * Should be called with the timer_mutex already held.
+* dbs_check_cpu will be called every sample even when a tickle
+* or floor is held (so the load data is always current), but if
+* a tickle is held it will not change the frequency on that sample.
 *
-* @param  this_dbs_info 
+* @param  this_dbs_info
 */
 static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 {
@@ -1606,6 +1626,7 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 
 			j_dbs_info->prev_cpu_nice = kstat_cpu(j).cpustat.nice;
 			idle_time += jiffies_to_usecs(cur_nice_jiffies);
+
 		}
 
 		/*
@@ -1624,6 +1645,13 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 		load = 100 * (wall_time - idle_time) / wall_time;
 		this_dbs_info->cur_load = load;
 
+		/* stash values for later sample storage */
+		if (sampling_enabled) {
+			j_dbs_info->rlv.wall = wall_time;
+			j_dbs_info->rlv.idle = idle_time;
+			j_dbs_info->rlv.iowait = iowait_time;
+		}
+
 		freq_avg = __cpufreq_driver_getavg(policy, j);
 		if (freq_avg <= 0)
 			freq_avg = policy->cur;
@@ -1635,16 +1663,16 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 	this_dbs_info->max_load_freq = max_load_freq;
 }
 
-/** 
-* @brief 
+/**
+* @brief
 *
 * Should be called with the timer_mutex already held.
 *
-* @param  this_dbs_info 
+* @param  this_dbs_info
 */
-static void adjust_for_load(struct cpu_dbs_info_s *this_dbs_info) 
+static void adjust_for_load(struct cpu_dbs_info_s *this_dbs_info)
 {
-	unsigned int 		max_load_freq;
+	unsigned int		max_load_freq;
 	unsigned int		load;
 	struct cpufreq_policy*	policy;
 
@@ -1652,27 +1680,23 @@ static void adjust_for_load(struct cpu_dbs_info_s *this_dbs_info)
 		return;
 	}
 
-	max_load_freq 	= this_dbs_info->max_load_freq;
+	max_load_freq	= this_dbs_info->max_load_freq;
 	load		= this_dbs_info->cur_load;
-	policy 		= this_dbs_info->cur_policy;
+	policy		= this_dbs_info->cur_policy;
 	/* Check for frequency increase */
 	if (max_load_freq > dbs_tuners_ins.up_threshold * policy->cur) {
 		/* If switching to max speed, apply sampling_down_factor */
 		if (policy->cur < policy->max)
 			this_dbs_info->rate_mult =
-				dbs_tuners_ins.sampling_down_factor;		
+				dbs_tuners_ins.sampling_down_factor;
 		/* if we are already at full speed then break out early */
 		if (!dbs_tuners_ins.powersave_bias) {
-			record_sample(policy->cur, policy->max, load, policy->cpu);
 			if (policy->cur == policy->max)
 				return;
 
-			if (this_dbs_info->floor_active) {
-				this_dbs_info->freq_save = policy->max;
-				this_dbs_info->rel_save = CPUFREQ_RELATION_H;
-			}
 
-			record_sample(policy->cur, policy->max, load, policy->cpu);
+			record_sample(policy->cur, policy->max, load,
+				policy->cpu, &this_dbs_info->rlv);
 			__cpufreq_driver_target(policy, policy->max,
 				CPUFREQ_RELATION_H);
 		} else {
@@ -1680,14 +1704,13 @@ static void adjust_for_load(struct cpu_dbs_info_s *this_dbs_info)
 					CPUFREQ_RELATION_H);
 
 			if (this_dbs_info->floor_active) {
-				this_dbs_info->freq_save = freq;
-				this_dbs_info->rel_save = CPUFREQ_RELATION_L;
-
 				if (freq <= this_dbs_info->freq_floor) {
 					freq = this_dbs_info->freq_floor;
 				}
 			}
-			record_sample(policy->cur, freq, load, policy->cpu);
+			if (policy->cur != freq)
+				record_sample(policy->cur, freq, load,
+					policy->cpu, &this_dbs_info->rlv);
 			__cpufreq_driver_target(policy, freq,
 				CPUFREQ_RELATION_L);
 		}
@@ -1720,28 +1743,26 @@ static void adjust_for_load(struct cpu_dbs_info_s *this_dbs_info)
 
 		if (!dbs_tuners_ins.powersave_bias) {
 			if (this_dbs_info->floor_active) {
-				this_dbs_info->freq_save = freq_next;
-				this_dbs_info->rel_save = CPUFREQ_RELATION_L;
-
 				if (freq_next <= this_dbs_info->freq_floor) {
 					freq_next = this_dbs_info->freq_floor;
 				}
 			}
-			record_sample(policy->cur, freq_next, load, policy->cpu);
+			if (policy->cur != freq_next)
+				record_sample(policy->cur, freq_next, load,
+					policy->cpu, &this_dbs_info->rlv);
 			__cpufreq_driver_target(policy, freq_next,
 					CPUFREQ_RELATION_L);
 		} else {
 			int freq = powersave_bias_target(policy, freq_next,
 					CPUFREQ_RELATION_L);
 			if (this_dbs_info->floor_active) {
-				this_dbs_info->freq_save = freq;
-				this_dbs_info->rel_save = CPUFREQ_RELATION_L;
-
 				if (freq <= this_dbs_info->freq_floor) {
 					freq = this_dbs_info->freq_floor;
 				}
 			}
-			record_sample(policy->cur, freq, load, policy->cpu);
+			if (policy->cur != freq)
+				record_sample(policy->cur, freq, load,
+					policy->cpu, &this_dbs_info->rlv);
 			__cpufreq_driver_target(policy, freq,
 				CPUFREQ_RELATION_L);
 		}
@@ -1776,7 +1797,8 @@ static void do_dbs_timer(struct work_struct *work)
 			delay = dbs_info->freq_hi_jiffies;
 		}
 	} else {
-		record_sample(dbs_info->cur_policy->cur, dbs_info->freq_lo, -1, cpu);
+		record_sample(dbs_info->cur_policy->cur, dbs_info->freq_lo,
+			-1, cpu, NULL);
 		__cpufreq_driver_target(dbs_info->cur_policy,
 			dbs_info->freq_lo, CPUFREQ_RELATION_H);
 	}
@@ -1789,7 +1811,7 @@ static void do_tickle_timer(unsigned long arg)
 	unsigned long flags;
 
 	spin_lock_irqsave(&tickle_state.lock, flags);
-	
+
 	if (tickle_state.active_count) {
 		if (tickle_state.active_tickle) {
 			tickle_state.active_count -= 1;
@@ -1797,33 +1819,12 @@ static void do_tickle_timer(unsigned long arg)
 		}
 	} else {
 		printk(KERN_WARNING "%s: attempt to decrement when active_count == 0!\n",
-				__FUNCTION__);
+				__func__);
 	}
 
 	spin_unlock_irqrestore(&tickle_state.lock, flags);
 
 	queue_work(kondemand_wq, &tickle_state.tickle_work);
-}
-
-static void do_floor_timer(unsigned long arg)
-{
-	unsigned long flags;
-
-	spin_lock_irqsave(&tickle_state.lock, flags);
-
-	if (tickle_state.floor_count) {
-		if (tickle_state.floor_tickle) {
-			tickle_state.floor_count -= 1;
-			tickle_state.floor_tickle = 0;
-		}
-	} else {
-		printk(KERN_WARNING "%s: attempt to decrement when floor_count == 0!\n",
-				__FUNCTION__);
-	}
-
-	spin_unlock_irqrestore(&tickle_state.lock, flags);
-
-	queue_work(kondemand_wq, &tickle_state.floor_work);
 }
 
 static inline void dbs_timer_init(struct cpu_dbs_info_s *dbs_info)
@@ -1876,7 +1877,7 @@ static void dbs_refresh_callback(struct work_struct *unused)
 {
 	struct cpufreq_policy *policy;
 	struct cpu_dbs_info_s *this_dbs_info;
-			
+
 	mutex_lock(&dbs_mutex);
 	this_dbs_info = &per_cpu(od_cpu_dbs_info, 0);
 
@@ -1888,10 +1889,11 @@ static void dbs_refresh_callback(struct work_struct *unused)
 	mutex_lock(&this_dbs_info->timer_mutex);
 	policy = this_dbs_info->cur_policy;
 
+	record_sample(0, 0, -251, policy->cpu, NULL);
 	if (policy->cur < policy->max) {
+		record_sample(policy->cur, policy->max, -51, policy->cpu, NULL);
 		policy->cur = policy->max;
 
-		record_sample(policy->cur, policy->max, -200, policy->cpu);
 		__cpufreq_driver_target(policy, policy->max,
 					CPUFREQ_RELATION_L);
 		this_dbs_info->prev_cpu_idle = get_cpu_idle_time(0,
@@ -1959,6 +1961,45 @@ static struct input_handler dbs_input_handler = {
 	.id_table	= dbs_ids,
 };
 
+/* support for logging CPU hotplug in the sample file. Getting the
+ * frequency right is a little messy, hence the separate notifiers
+ * with different priorities. Only used if logging is enabled.
+ */
+static int cpufreq_hotplug_online_callback(struct notifier_block *nfb,
+					   unsigned long action,
+					   void *hcpu)
+{	unsigned int cpu = (unsigned long)hcpu;
+	switch (action) {
+	case CPU_ONLINE:
+		record_sample(0, cpufreq_quick_get(cpu), -501, cpu, NULL);
+		break;
+	}
+	return NOTIFY_OK;
+}
+
+static int cpufreq_hotplug_offline_callback(struct notifier_block *nfb,
+					   unsigned long action,
+					   void *hcpu)
+{	unsigned int cpu = (unsigned long)hcpu;
+	switch (action) {
+	case CPU_DOWN_PREPARE:
+		record_sample(cpufreq_quick_get(cpu), 0, -500, cpu, NULL);
+		break;
+	}
+	return NOTIFY_OK;
+}
+
+
+static struct notifier_block cpufreq_online_notifier = {
+	.notifier_call = cpufreq_hotplug_online_callback,
+	.priority = 0,
+};
+
+static struct notifier_block cpufreq_offline_notifier = {
+	.notifier_call = cpufreq_hotplug_offline_callback,
+	.priority = 1,
+};
+
 static int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 				   unsigned int event)
 {
@@ -2003,22 +2044,29 @@ static int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 		if (sampling_enabled) {
 			for_each_cpu(j, policy->cpus) {
 				struct sample_stats *stats = &per_cpu(sample_stats, j);
-			
-				// if allocation fails, sampling is disabled on this cpu
-				if (!stats->samples)
-					stats->samples = vmalloc(sizeof(struct sample_data) * NUM_SAMPLES);
-				
-				if (!stats->samples)
-					continue;
 
-				// touch each page to force allocation of physical pages
-				memset(stats->samples, 0, sizeof(struct sample_data) * NUM_SAMPLES);	
+				// if allocation fails, sampling is disabled on this cpu
+				if (!stats->samples) {
+					stats->samples = vmalloc(sizeof(struct sample_data) * NUM_SAMPLES);
+					if (!stats->samples)
+						continue;
+
+					/* if it's a  new allocation,  touch
+					 * each page to force allocation of
+					 * physical pages. This also initializes
+					 * the structure to 0.
+					 */
+					memset(stats->samples, 0, sizeof(struct sample_data) *
+						NUM_SAMPLES);
+					stats->current_sample = 0;
+				}
 			}
 		}
 
 		/*
-		 * Start the timerschedule work and create procfs entry for sampling statistics, 
-		 * when this governor is used for first time
+		 * Start the timerschedule work and create procfs entry
+		 * for sampling statistics when this governor is used for
+		 * the first time.
 		 */
 		if (dbs_enable == 1) {
 			unsigned int latency;
@@ -2026,6 +2074,18 @@ static int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 			entry = create_proc_entry("ondemandtcl_samples", 0444, NULL);
 			if (entry)
 				entry->proc_fops = &proc_stats_operations;
+			if (sampling_enabled) {
+				int rc1 = 0;
+				rc = register_hotcpu_notifier(&cpufreq_online_notifier);
+				if (rc == 0) {
+					rc1 = register_hotcpu_notifier(&cpufreq_offline_notifier);
+					if (rc1)
+						unregister_hotcpu_notifier(&cpufreq_online_notifier);
+				}
+
+				if (rc || rc1)
+					pr_err("ondemandtcl not logging CPU hotplug\n");
+			}
 
 			rc = sysfs_create_group(cpufreq_global_kobject,
 						&dbs_attr_group);
@@ -2045,7 +2105,9 @@ static int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 				max(min_sampling_rate,
 				    latency * LATENCY_MULTIPLIER);
 
-			/* Until user-space startup scripts are set up, override it here */
+			/* Until user-space startup scripts are set up,
+			 * override it here
+			 */
 			if (DEF_SAMPLING_RATE > 0)
 				dbs_tuners_ins.sampling_rate = DEF_SAMPLING_RATE;
 
@@ -2068,15 +2130,26 @@ static int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 		dbs_enable--;
 		if (!cpu)
 			input_unregister_handler(&dbs_input_handler);
-		for_each_cpu(j, policy->cpus) {
-			struct sample_stats *stats = &per_cpu(sample_stats, j);
-
-			if (stats->samples)
-				vfree(stats->samples);
-
-			stats->samples = NULL;
-		}
 		if (!dbs_enable) {
+			/* don't free sampling data for _any_ CPU until
+			 * there's no one using this governor, then free it
+			 * all. Implicitly assumes that all CPU's are using
+			 * this governor, but will be harmless if not.
+			 */
+			for_each_possible_cpu(j) {
+				struct sample_stats *stats;
+				stats = &per_cpu(sample_stats, j);
+
+				if (stats->samples) {
+					vfree(stats->samples);
+					stats->samples = NULL;
+				}
+			}
+			/* if registration failed earlier, unregistration will
+			 * benignly return an ENOENT error code)
+			 */
+			unregister_hotcpu_notifier(&cpufreq_online_notifier);
+			unregister_hotcpu_notifier(&cpufreq_offline_notifier);
 			remove_proc_entry("ondemandtcl_samples", NULL);
 			sysfs_remove_group(cpufreq_global_kobject,
 					   &dbs_attr_group);
@@ -2086,13 +2159,18 @@ static int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 
 	case CPUFREQ_GOV_LIMITS:
 		mutex_lock(&this_dbs_info->timer_mutex);
+
+		record_sample(policy->min, policy->max, -240,
+			policy->cpu, NULL);
 		if (policy->max < this_dbs_info->cur_policy->cur) {
-			record_sample(policy->cur, policy->max, -1, policy->cpu);
+			record_sample(policy->cur, policy->max, -40,
+				policy->cpu, NULL);
 			__cpufreq_driver_target(this_dbs_info->cur_policy,
 			                        policy->max,
 			                        CPUFREQ_RELATION_H);
 		} else if (policy->min > this_dbs_info->cur_policy->cur) {
-			record_sample(policy->cur, policy->min, -1, policy->cpu);
+			record_sample(policy->cur, policy->min, -41,
+				policy->cpu, NULL);
 			__cpufreq_driver_target(this_dbs_info->cur_policy,
 			                        policy->min,
 			                        CPUFREQ_RELATION_L);
@@ -2146,16 +2224,16 @@ static int __init cpufreq_gov_dbs_init(void)
 	}
 
 	init_timer(&tickle_state.tickle_timer);
-	init_timer(&tickle_state.floor_timer);
 
 	tickle_state.tickle_timer.function = do_tickle_timer;
-	tickle_state.floor_timer.function = do_floor_timer;
 
 	INIT_WORK(&tickle_state.tickle_work, do_tickle_state_change);
 	INIT_WORK(&tickle_state.floor_work, do_floor_state_change);
 
-	/* init these to current jiffies or short circuiting doesn't work until jiffies wraps */
-	tickle_state.tickle_jiffies = tickle_state.floor_jiffies = jiffies;
+	/* init this to current jiffies or short circuiting
+	 * doesn't work until jiffies wraps
+	 */
+	tickle_state.tickle_jiffies =  jiffies;
 
 	err = setup_tickle_device();
 	if (err < 0) {
@@ -2174,7 +2252,6 @@ static void __exit cpufreq_gov_dbs_exit(void)
 	cpufreq_unregister_governor(&cpufreq_gov_ondemand_tickle);
 	/* cancel any pending timers before destroying the work queue */
 	del_timer(&tickle_state.tickle_timer);
-	del_timer(&tickle_state.floor_timer);
 	destroy_workqueue(kondemand_wq);
 }
 
