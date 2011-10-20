@@ -68,6 +68,12 @@ enum {
 static int a6_debug_mask = 0x0;
 static int a6_tp_irq_count = 0;
 static int a6_t2s_dup_correct = 0;
+static int a6_disable_dock_switch = 0;
+
+module_param_named(
+		   disable_dock_switch, a6_disable_dock_switch, int,
+		   S_IRUGO | S_IWUSR | S_IWGRP
+		  );
 
 module_param_named(
 		   debug_mask, a6_debug_mask, int, S_IRUGO | S_IWUSR | S_IWGRP
@@ -4692,7 +4698,11 @@ static void a6_dock_update_state(struct a6_device_state *state)
 	a6_generic_show (&state->i2c_dev->dev, &a6_register_desc_arr[31].dev_attr, state->print_buffer);
 	sscanf (state->print_buffer, "%u", &value);
 
-	dock = value & TS2_I2C_FLAGS_2_PUCK ? 1 : 0;
+	if (a6_disable_dock_switch) {
+		dock = 0;
+	} else {
+		dock = value & TS2_I2C_FLAGS_2_PUCK ? 1 : 0;
+	}
 	switch_set_state(state->dock_switch, dock);
 }
 
