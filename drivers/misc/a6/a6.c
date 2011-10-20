@@ -414,6 +414,25 @@ uint32_t start_last_a6_activity = 0;
 #define RSENSE_DEFAULT	20;
 #define FORCE_WAKE_TIMER_EXPIRY (HZ/20)
 
+#define a6_wait_event_ex(wq, condition)					\
+do {									\
+	if (condition)							\
+		break;							\
+	do {								\
+		DEFINE_WAIT(__wait);					\
+									\
+		for (;;) {						\
+			prepare_to_wait_exclusive(&wq, &__wait,		\
+				TASK_UNINTERRUPTIBLE);			\
+			if (condition)					\
+				break;					\
+			schedule();					\
+		}							\
+		finish_wait(&wq, &__wait);				\
+	} while (0);							\
+} while (0)
+
+
 enum {
 	DEVICE_BUSY_BIT = 0,
 	IS_OPENED,
@@ -1396,7 +1415,7 @@ int32_t enq_a6_action_item(struct a6_device_state* state, struct a6_action_item*
 	complete(&state->aq_enq_complete);
 
 	// ** wait for action_item to be processed
-	wait_event(ai->ai_waitq, ai->ai_complete);
+	a6_wait_event_ex(ai->ai_waitq, ai->ai_complete);
 	rc = *ai->ai_ret_code(ai->ai_payload);
 
 	return rc;
@@ -1545,6 +1564,7 @@ int ai_dispatch_thread_fn(void* param)
 				if (ret_val) {
 					printk(KERN_ERR "%s: ai_do_action failed.\n", __func__);
 				}
+
 				// set completion indicator
 				ai->ai_complete = 1;
 				// signal ai requestor
