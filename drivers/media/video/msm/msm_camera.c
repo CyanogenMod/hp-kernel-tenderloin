@@ -240,6 +240,10 @@ static void msm_enqueue_vpe(struct msm_device_queue *queue,
 	pr_info("%s: draining queue %s\n", __func__, __q->name);	\
 	while (!list_empty(&__q->list)) {			\
 		__q->len--;					\
+		if(__q->len < 0) {				\
+			pr_err("%s,q->len < 0 unexpected.\n", __func__);\
+			break;					\
+		}						\
 		pr_info("%s,q->len = %d\n", __func__, __q->len);	\
 		qcmd = list_first_entry(&__q->list,		\
 			struct msm_queue_cmd, member);		\
@@ -257,10 +261,14 @@ struct msm_cam_device *g_pmsm;
 
 void msm_empty_frame_q()
 {
-	if(!g_pmsm || !g_pmsm->sync)
-		printk("%s: Something bad was null!!! 0x%8.8X\n",__func__,g_pmsm);
-	else
-		msm_queue_drain(&g_pmsm->sync->frame_q, list_frame);
+	if (NULL == g_pmsm) {
+		pr_err("%s: NULL value for g_pmsm\n", __func__);
+		return;
+	} else if (NULL == g_pmsm->sync) {
+		pr_err("%s: NULL value for g_pmsm->sync\n", __func__);
+		return;
+	}
+	msm_queue_drain(&g_pmsm->sync->frame_q, list_frame);
 } 
 
 static int check_overlap(struct hlist_head *ptype,

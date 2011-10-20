@@ -40,7 +40,26 @@
 
 #define SENSOR_DEBUG 0
 
+#define AE_MAX_DGAIN_AE1	0x2212 /* default 0x00A0 */
+#define AE_SKIP_FRAMES		0xA208 /* default 0x0002 */
+#define AE_JUMP_DIVISOR		0xA209 /* default 0x0002 */
+#define AE_MAX_INDEX		0xA20C /* default 0x0028 */
+#define AE_MAX_VIRTGAIN		0xA20E /* default 0x0080 */
+#define AE_TARGETMAX		0xA24B /* default 0x0096 */
+#define AE_TARGET_BUFFER_SPEED	0xA24C /* default 0x000C */
+#define AE_BASETARGET		0xA24F /* default 0x0036 */
 
+#define AWB_SATURATION		0xA354 /* default 0x0080 */
+
+#define SEQ_MODE		0xA102 /* */
+#define SEQ_CMD			0xA103 /* */
+#define SEQ_CAP_MODE		0xA115 /* */
+#define SEQ_CAP_NUM_FRAMES	0xA116 /* */
+
+#define CORE_0248		0x0248 /* default N/A */
+
+#define REG_ADDR		0x098C
+#define REG_VALUE		0x0990
 
 struct mt9m113_work {
 	struct work_struct work;
@@ -233,6 +252,31 @@ static int32_t mt9m113_i2c_read(unsigned short   saddr,
 	return rc;
 }
 
+static void mt9m113_suspend_update_double_buffer(void)
+{
+	unsigned short value = 0x00;
+
+	mt9m113_i2c_write(mt9m113_client->addr, REG_ADDR , CORE_0248 , WORD_LEN);
+	mt9m113_i2c_read(mt9m113_client->addr, REG_VALUE , &value, WORD_LEN);
+
+	CDBG("%s: CORE_0248:0x%04x\n", __func__, value);
+
+	mt9m113_i2c_write(mt9m113_client->addr, REG_ADDR , CORE_0248 , WORD_LEN);
+	mt9m113_i2c_write(mt9m113_client->addr, REG_VALUE , value | 0x8000, WORD_LEN);
+}
+
+static void mt9m113_resume_update_double_buffer(void)
+{
+	unsigned short value = 0x00;
+
+	mt9m113_i2c_write(mt9m113_client->addr, REG_ADDR , CORE_0248 , WORD_LEN);
+	mt9m113_i2c_read(mt9m113_client->addr, REG_VALUE , &value, WORD_LEN);
+
+	CDBG("%s: CORE_0248:0x%04x\n", __func__, value);
+
+	mt9m113_i2c_write(mt9m113_client->addr, REG_ADDR , CORE_0248 , WORD_LEN);
+	mt9m113_i2c_write(mt9m113_client->addr, REG_VALUE , value & 0x7FFF, WORD_LEN);
+}
 
 static int32_t mt9m113_i2c_write_table(
 	struct mt9m113_i2c_reg_conf const *reg_conf_tbl,
@@ -240,6 +284,8 @@ static int32_t mt9m113_i2c_write_table(
 {
 	int i;
 	int32_t rc = -EIO;
+
+	mt9m113_suspend_update_double_buffer();
 
 	for (i = 0; i < num_of_items_in_table; i++) {
 		unsigned short rb_wdata = 0;
@@ -266,6 +312,8 @@ static int32_t mt9m113_i2c_write_table(
 		reg_conf_tbl++;
 	}
 
+	mt9m113_resume_update_double_buffer();
+
 	return rc;
 }
 
@@ -277,7 +325,7 @@ static int32_t mt9m113_reg_init(void)
 	unsigned short value=0,count=0;
 
 	rc = mt9m113_i2c_write_table(&mt9m113_regs.prev_snap_reg_tbl[0],
-								mt9m113_regs.prev_snap_reg_tbl_size);
+			mt9m113_regs.prev_snap_reg_tbl_size);
 	if(rc<0)
 		return rc;
 	//Move last part of initialize list here, and also use polling method to make sure MCU status ready before leave initialize.
@@ -441,7 +489,7 @@ static int32_t mt9m113_set_effect(int mode, int effect)
 			0x0990, reg_val, WORD_LEN);
 		if (rc < 0)
 			return rc;
-    break;
+    		break;
 	}
 	mt9m113_effect = effect;
 	/* Refresh Sequencer */
@@ -458,6 +506,32 @@ static int32_t mt9m113_set_effect(int mode, int effect)
 	CDBG("%s X\n",__func__);
 	return rc;
 }
+
+struct mt9m113_i2c_reg_conf mod_snapshot_mode_reg_tbl[] = {
+	{ REG_ADDR,	0xFFFF,	AE_MAX_INDEX,		WORD_LEN, 1 },
+	{ REG_VALUE,	0xFFFF,	0x0028,			WORD_LEN, 1 },
+	{ REG_ADDR,	0xFFFF,	AE_MAX_VIRTGAIN,	WORD_LEN, 1 },
+	{ REG_VALUE,	0xFFFF,	0x0060,			WORD_LEN, 1 },
+	{ REG_ADDR,	0xFFFF,	AE_MAX_DGAIN_AE1,	WORD_LEN, 1 },
+	{ REG_VALUE,	0xFFFF,	0x00C8,			WORD_LEN, 1 },
+	{ REG_ADDR,	0xFFFF,	AE_JUMP_DIVISOR,	WORD_LEN, 1 },
+	{ REG_VALUE,	0xFFFF,	0x0002,			WORD_LEN, 1 },
+	{ REG_ADDR,	0xFFFF,	AE_SKIP_FRAMES,		WORD_LEN, 1 },
+	{ REG_VALUE,	0xFFFF,	0x0002,			WORD_LEN, 1 },
+};
+
+struct mt9m113_i2c_reg_conf mod_preview_mode_reg_tbl[] = {
+	{ REG_ADDR,	0xFFFF,	AE_MAX_INDEX,		WORD_LEN, 1 },
+	{ REG_VALUE,	0xFFFF,	0x0008,			WORD_LEN, 1 },
+	{ REG_ADDR,	0xFFFF,	AE_MAX_VIRTGAIN,	WORD_LEN, 1 },
+	{ REG_VALUE,	0xFFFF,	0x00A0,			WORD_LEN, 1 },
+	{ REG_ADDR,	0xFFFF,	AE_MAX_DGAIN_AE1,	WORD_LEN, 1 },
+	{ REG_VALUE,	0xFFFF,	0x0150,			WORD_LEN, 1 },
+	{ REG_ADDR,	0xFFFF,	AE_JUMP_DIVISOR,	WORD_LEN, 1 },
+	{ REG_VALUE,	0xFFFF,	0x0001,			WORD_LEN, 1 },
+	{ REG_ADDR,	0xFFFF,	AE_SKIP_FRAMES,		WORD_LEN, 1 },
+	{ REG_VALUE,	0xFFFF,	0x0001,			WORD_LEN, 1 },
+};
 
 static int32_t mt9m113_set_sensor_mode(int mode)
 {
@@ -500,6 +574,10 @@ static int32_t mt9m113_set_sensor_mode(int mode)
 		if (rc < 0) return rc;
 		rc = mt9m113_i2c_write(mt9m113_client->addr, 0x0990, 0x0001, WORD_LEN);
 		if (rc < 0) return rc;
+
+		rc = mt9m113_i2c_write_table(&mod_preview_mode_reg_tbl[0], ARRAY_SIZE(mod_preview_mode_reg_tbl));
+		if (rc < 0) return rc;
+
 		//Delay settings here is very helpful for no preview issue(mentioned as "black screen issue"),
 		//especially at low-rate clock(320M for example)
 		//Use polling instead of static delay to make sure sensor ready before leave configuration
@@ -537,18 +615,22 @@ static int32_t mt9m113_set_sensor_mode(int mode)
 		if (rc < 0) return rc;
 
 		coarse_integration_time_B = ((coarse_integration_time_A * 1228)
-										+ fine_integration_time_A - fine_integration_time_B) / 1826;
+				+ fine_integration_time_A - fine_integration_time_B) / 1826;
 
 		CDBG(KERN_ERR "+++++ MT0M113 SENSOR_SNAPSHOT_MODE coarse A= %d, coarse B= %d\n"
-													,coarse_integration_time_A, coarse_integration_time_B );
+				,coarse_integration_time_A, coarse_integration_time_B );
 		CDBG(KERN_ERR "+++++ MT0M113 SENSOR_SNAPSHOT_MODE fine_ A= %d, fine B= %d\n"
-													,fine_integration_time_A, fine_integration_time_B );
+				,fine_integration_time_A, fine_integration_time_B );
 
 		rc = mt9m113_i2c_write(mt9m113_client->addr, 0x3012, coarse_integration_time_B, WORD_LEN);
 		if (rc < 0) return rc;
 
 		rc = mt9m113_i2c_write(mt9m113_client->addr, 0x301A, 0x12CE, WORD_LEN);
 		if (rc < 0) return rc;
+
+		rc = mt9m113_i2c_write_table(&mod_snapshot_mode_reg_tbl[0], ARRAY_SIZE(mod_snapshot_mode_reg_tbl));
+		if (rc < 0) return rc;
+
 		//Use polling instead of static delay to make sure sensor ready before leave configuration.
 		//mdelay(20);
 
@@ -563,7 +645,7 @@ static int32_t mt9m113_set_sensor_mode(int mode)
 		rc = mt9m113_i2c_write(mt9m113_client->addr, 0x098C, 0xA103, WORD_LEN);
 		if (rc < 0) return rc;
 		rc = mt9m113_i2c_read(mt9m113_client->addr, 0x0990, &value, WORD_LEN);
-		if (rc < 0) return rc;
+	if (rc < 0) return rc;
 
 		if(value!=0)
 		{

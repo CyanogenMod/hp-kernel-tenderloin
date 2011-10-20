@@ -308,6 +308,9 @@ enum  VFE_STATE {
 /* BPC     */
 #define V31_DEMOSAIC_2_OFF        0x0000029C
 #define V31_DEMOSAIC_2_LEN        8
+/* gamma VFE_LUT_BANK_SEL*/
+#define V31_GAMMA_CFG_OFF         0x000003BC
+#define V31_LUMA_CFG_OFF          0x000003C0
 
 #define V31_OUT_CLAMP_OFF         0x00000524
 #define V31_OUT_CLAMP_LEN         8
@@ -370,7 +373,7 @@ enum  VFE_STATE {
 #define V31_CHROMA_SUP_OFF 0x000003E8
 #define V31_CHROMA_SUP_LEN 12
 
-#define V31_MCE_OFF 0x000003E8
+#define V31_MCE_OFF 0x000003F4
 #define V31_MCE_LEN 36
 #define V31_STATS_AF_OFF 0x0000053c
 #define V31_STATS_AF_LEN 16
@@ -1020,6 +1023,8 @@ struct vfe31_ctrl_type {
 	int8_t update_ack_pending;
 	int8_t req_start_video_rec;
 	int8_t req_stop_video_rec;
+	int8_t update_gamma;
+	int8_t update_luma;
 
 	spinlock_t  tasklet_lock;
 	struct list_head tasklet_q;
