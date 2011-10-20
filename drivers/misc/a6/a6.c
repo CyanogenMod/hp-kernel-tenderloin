@@ -412,6 +412,98 @@ long a6_last_ps_connect = 0;
 #define TS2_I2C_DEBUG_TRACE_DATA_RESERVED_2            0x101f /* reserved 2 */
 #define TS2_I2C_DEBUG_TRACE_DATA                       0x1020 /* side-effect */
 
+#define A6_REG_TS2_I2C_INT_MASK_0	0
+#define A6_REG_TS2_I2C_INT_MASK_1	1
+#define A6_REG_TS2_I2C_INT_MASK_2	2
+#define A6_REG_TS2_I2C_INT_MASK_3	3
+#define A6_REG_TS2_I2C_INT_STATUS_0	4
+#define A6_REG_TS2_I2C_INT_STATUS_1	5
+#define A6_REG_TS2_I2C_INT_STATUS_2	6
+#define A6_REG_TS2_I2C_INT_STATUS_3	7
+#define A6_REG_TS2_I2C_BAT_STATUS	8
+#define A6_REG_TS2_I2C_BAT_RARC	9
+#define A6_REG_TS2_I2C_BAT_RSRC	10
+#define A6_REG_TS2_I2C_BAT_AVG_CUR_LSB_MSB	11
+#define A6_REG_TS2_I2C_BAT_TEMP_LSB_MSB	12
+#define A6_REG_TS2_I2C_BAT_VOLT_LSB_MSB	13
+#define A6_REG_TS2_I2C_BAT_CUR_LSB_MSB	14
+#define A6_REG_TS2_I2C_BAT_COULOMB_LSB_MSB	15
+// #define A6_REG_TS2_I2C_BAT_AS	16 // two entries? TODO
+#define A6_REG_TS2_I2C_BAT_FULL_LSB_MSB	17
+#define A6_REG_TS2_I2C_BAT_FULL40_LSB_MSB	18
+#define A6_REG_TS2_I2C_BAT_RSNSP	19
+#define A6_REG_TS2_I2C_BAT_ROMID_0	20
+#define A6_REG_TS2_I2C_BAT_COMMAND_STATUS	21
+#define A6_REG_TS2_I2C_BAT_TEMP_LOW_LSB_MSB	22
+#define A6_REG_TS2_I2C_BAT_TEMP_HIGH_LSB_MSB	23
+#define A6_REG_TS2_I2C_BAT_VOLT_LOW_LSB_MSB	24
+#define A6_REG_TS2_I2C_BAT_RARC_CRIT	25
+#define A6_REG_TS2_I2C_BAT_RARC_LOW_2	26
+#define A6_REG_TS2_I2C_BAT_RARC_LOW_1	27
+#define A6_REG_TS2_I2C_BAT_RAAC_MSB	28
+#define A6_REG_TS2_I2C_ID	29
+#define A6_REG_TS2_I2C_FLAGS_0	30
+#define A6_REG_TS2_I2C_FLAGS_2	31
+#define A6_REG_VERSION	32
+#define A6_REG_TS2_I2C_V_OFFSET	33
+#define A6_REG_TS2_I2C_WAKEUP_PERIOD	34
+#define A6_REG_TS2_I2C_COMMAND	35
+#define A6_REG_REMOTE_VERSION	36
+#define A6_REG_ACCESSORY_DATA_0	37
+#define A6_REG_ACCESSORY_DATA_1	38
+#define A6_REG_ACCESSORY_DATA_2	39
+#define A6_REG_ACCESSORY_DATA_3	40
+#define A6_REG_ACCESSORY_DATA_4	41
+#define A6_REG_ACCESSORY_DATA_5	42
+#define A6_REG_ACCESSORY_DATA_6	43
+#define A6_REG_ACCESSORY_DATA_7	44
+#define A6_REG_ACCESSORY_DATA_8	45
+#define A6_REG_ACCESSORY_DATA_9	46
+#define A6_REG_ACCESSORY_DATA_10	47
+#define A6_REG_ACCESSORY_DATA_11	48
+#define A6_REG_ACCESSORY_DATA_12	49
+#define A6_REG_REMOTE_ACCESSORY_DATA_0	50
+#define A6_REG_REMOTE_ACCESSORY_DATA_1	51
+#define A6_REG_REMOTE_ACCESSORY_DATA_2	52
+#define A6_REG_REMOTE_ACCESSORY_DATA_3	53
+#define A6_REG_REMOTE_ACCESSORY_DATA_4	54
+#define A6_REG_REMOTE_ACCESSORY_DATA_5	55
+#define A6_REG_REMOTE_ACCESSORY_DATA_6	56
+#define A6_REG_REMOTE_ACCESSORY_DATA_7	57
+#define A6_REG_REMOTE_ACCESSORY_DATA_8	58
+#define A6_REG_REMOTE_ACCESSORY_DATA_9	59
+#define A6_REG_REMOTE_ACCESSORY_DATA_10	60
+#define A6_REG_REMOTE_ACCESSORY_DATA_11	61
+#define A6_REG_REMOTE_ACCESSORY_DATA_12	62
+#define A6_REG_TS2_I2C_COMM_STATUS	63
+#define A6_REG_TS2_I2C_COMM_TXDATA_RXDATA	64
+#define A6_REG_TS2_I2C_BAT_SACR_LSB_MSB	65
+#define A6_REG_TS2_I2C_BAT_ASL	66
+// #define A6_REG_TS2_I2C_BAT_AS	67 // two entries? TODO
+#define A6_REG_TS2_I2C_BAT_FAC_LSB_MSB	68
+#define A6_REG_MAX_POWER_AVAILABLE	69
+#define A6_REG_TS2_I2C_ENUM_REMOTE_STRUCT_VER	70
+#define A6_REG_ACCESSORY_DATA_13	71
+#define A6_REG_ACCESSORY_DATA_14	72
+#define A6_REG_ACCESSORY_DATA_15	73
+#define A6_REG_REMOTE_ACCESSORY_DATA_13	74
+#define A6_REG_REMOTE_ACCESSORY_DATA_14	75
+#define A6_REG_REMOTE_ACCESSORY_DATA_15	76
+#define A6_REG_TS2_I2C_ENUM_MIN_PWM	77
+#define A6_REG_ACCESSORY_DATA_COMBO	78
+#define A6_REG_REMOTE_ACCESSORY_DATA_COMBO	79
+#define A6_REG_TS2_I2C_COMMAND_ADDR_LSB_MSB	80
+#define A6_REG_TS2_I2C_COMMAND_DATA_LSB_MSB	81
+#define A6_REG_REMOTE_MFGRID_V1	82
+#define A6_REG_REMOTE_MFGRID_V2	83
+#define A6_REG_REMOTE_PRODUCTID_V1	84
+#define A6_REG_REMOTE_PRODUCTID_V2	85
+#define A6_REG_REMOTE_SERNO_V1	86
+#define A6_REG_REMOTE_SERNO_V2	87
+#define A6_REG_LOCAL_MFGRID	88
+#define A6_REG_LOCAL_PRODUCTID	89
+#define A6_REG_LOCAL_SERNO	90
+
 
 #define RSENSE_DEFAULT	20;
 #define FORCE_WAKE_TIMER_EXPIRY (HZ/20)
@@ -1199,6 +1291,11 @@ static enum power_supply_property a6_fish_battery_properties[] = {
 	POWER_SUPPLY_PROP_PRESENT,
 	POWER_SUPPLY_PROP_TECHNOLOGY,
 	POWER_SUPPLY_PROP_CAPACITY,
+	POWER_SUPPLY_PROP_CURRENT_NOW,
+	POWER_SUPPLY_PROP_VOLTAGE_NOW,
+	POWER_SUPPLY_PROP_TEMP,
+	POWER_SUPPLY_PROP_CHARGE_FULL,
+	POWER_SUPPLY_PROP_CHARGE_NOW,
 };
 
 static enum power_supply_property a6_fish_power_properties[] = {
@@ -4348,6 +4445,7 @@ static int a6_fish_power_get_property(struct power_supply *psy,
 						||
 				(psy->type == POWER_SUPPLY_TYPE_USB 
 				 	&& (connected & MAX8903B_CONNECTED_PS_USB)
+				 	&& !(connected & MAX8903B_CONNECTED_PS_DOCK)
 					)
 				) {
 			val->intval = 1;
@@ -4416,7 +4514,46 @@ static int a6_fish_battery_get_property(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY:
 		val->intval = a6_fish_battery_get_percent(psy->dev->parent);
-
+		break;
+	case POWER_SUPPLY_PROP_CURRENT_NOW:
+		state->print_buffer[0] = '\0';
+		a6_generic_show (psy->dev->parent,
+			&a6_register_desc_arr[A6_REG_TS2_I2C_BAT_CUR_LSB_MSB].dev_attr,
+			state->print_buffer);
+		sscanf (state->print_buffer, "%d", &temp_val);
+		val->intval = temp_val;
+		break;
+	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
+		state->print_buffer[0] = '\0';
+		a6_generic_show (psy->dev->parent,
+			&a6_register_desc_arr[A6_REG_TS2_I2C_BAT_VOLT_LSB_MSB].dev_attr,
+			state->print_buffer);
+		sscanf (state->print_buffer, "%d", &temp_val);
+		val->intval = temp_val;
+		break;
+	case POWER_SUPPLY_PROP_TEMP:
+		state->print_buffer[0] = '\0';
+		a6_generic_show (psy->dev->parent,
+			&a6_register_desc_arr[A6_REG_TS2_I2C_BAT_TEMP_LSB_MSB].dev_attr,
+			state->print_buffer);
+		sscanf (state->print_buffer, "%d", &temp_val);
+		val->intval = temp_val * 10; /* convert C to .1 C */
+		break;
+	case POWER_SUPPLY_PROP_CHARGE_FULL:
+		state->print_buffer[0] = '\0';
+		a6_generic_show (psy->dev->parent,
+			&a6_register_desc_arr[A6_REG_TS2_I2C_BAT_FULL40_LSB_MSB].dev_attr,
+			state->print_buffer);
+		sscanf (state->print_buffer, "%d", &temp_val);
+		val->intval = temp_val * 1000;
+		break;
+	case POWER_SUPPLY_PROP_CHARGE_NOW:
+		state->print_buffer[0] = '\0';
+		a6_generic_show (psy->dev->parent,
+			&a6_register_desc_arr[A6_REG_TS2_I2C_BAT_COULOMB_LSB_MSB].dev_attr,
+			state->print_buffer);
+		sscanf (state->print_buffer, "%d", &temp_val);
+		val->intval = temp_val * 1000;
 		break;
 	default:
 		return -EINVAL;
