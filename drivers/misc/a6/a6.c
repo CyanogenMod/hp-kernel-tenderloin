@@ -96,6 +96,8 @@ int32_t diff_time;
 uint32_t start_last_a6_activity = 0;
 #endif
 
+long a6_last_ps_connect = 0;
+
 /* page 0x00 */
 /* host interrupts */
 #define TS2_I2C_INT_MASK_0                             0x0000
@@ -4269,7 +4271,16 @@ static unsigned a6_calc_connected_ps(void)
 	unsigned int temp_val = 0;
 	unsigned connected = 0;
 
-	psy = &a6_fish_power_supplies[1];
+	psy = &a6_fish_power_supplies[0];
+
+	if (!(psy->dev)) {
+		printk(KERN_ERR "%s: psy->dev is NULL\n", __func__);
+		return 0;
+	}
+	if (!(psy->dev->parent)) {
+		printk(KERN_ERR "%s: psy->dev->parent is NULL\n", __func__);
+		return 0;
+	}
 
 	state = (struct a6_device_state*)dev_get_drvdata(psy->dev->parent);
 	state->print_buffer[0] = '\0';
@@ -4306,6 +4317,7 @@ static void a6_update_connected_ps()
 			(connected & MAX8903B_CONNECTED_PS_DOCK) ? 1 : 0);
 
 	max8903b_set_connected_ps(connected);
+	a6_last_ps_connect = (long)jiffies;
 }
 
 static int a6_fish_power_get_property(struct power_supply *psy,
@@ -4351,51 +4363,41 @@ static int a6_fish_power_get_property(struct power_supply *psy,
 }
 
 
-#define CHARGING_CURR_HYSTERESIS_MIN	-10000
-#define CHARGING_CURR_HYSTERESIS_MAX	25000
+#define A6_BATT_STATS_DELAY (msecs_to_jiffies (15*1000))
 static int a6_fish_battery_get_property(struct power_supply *psy,
 				     enum power_supply_property psp,
 				     union power_supply_propval *val)
 {
 	int temp_val = 0;
-	unsigned int temp_val2 = 0;
-	struct a6_device_state *state = (struct a6_device_state*)dev_get_drvdata(psy->dev->parent);
+	unsigned connected;
+	struct a6_device_state *state = 
+			(struct a6_device_state*)dev_get_drvdata(psy->dev->parent);
 
 	switch (psp) {
 	case POWER_SUPPLY_PROP_STATUS:
-		/* a6 "status" reg is actually semi-health, it always shows "charge-termination" even while charging */
-#if 0		//Current seems to go negative if the screen is on, even when plugged into the wall
-		state->print_buffer[0] = '\0';
-		a6_generic_show (psy->dev->parent, &a6_register_desc_arr[14].dev_attr, state->print_buffer);
-		sscanf (state->print_buffer, "%d", &temp_val);
-
-		if ( temp_val > CHARGING_CURR_HYSTERESIS_MIN &&
-				temp_val < CHARGING_CURR_HYSTERESIS_MAX) {
+		if (a6_fish_battery_get_percent(psy->dev->parent) == 100) {
 			val->intval = POWER_SUPPLY_STATUS_FULL;
-		} else if (temp_val > 0){
-			val->intval = POWER_SUPPLY_STATUS_CHARGING;
-		} else {
-			val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
-		}
-#else
-		state->print_buffer[0] = '\0';
-		a6_generic_show (psy->dev->parent, &a6_register_desc_arr[31].dev_attr, state->print_buffer);
-		sscanf (state->print_buffer, "%u", &temp_val2);
-
-		if ( (temp_val2 & TS2_I2C_FLAGS_2_WIRED_CHARGE) ||
-				(temp_val2 & TS2_I2C_FLAGS_2_PUCK_CHARGE)){
-
-			temp_val = a6_fish_battery_get_percent(psy->dev->parent);
-			if (temp_val == 100) {
-				val->intval = POWER_SUPPLY_STATUS_FULL;
-			} else {
+		} else if (a6_last_ps_connect &&
+				jiffies > a6_last_ps_connect + A6_BATT_STATS_DELAY) {
+			state->print_buffer[0] = '\0';
+			a6_generic_show (psy->dev->parent, 
+				/* TODO use A6_REG_TS2_I2C_BAT_AVG_CUR_LSB_MSB for 11 */
+				&a6_register_desc_arr[11].dev_attr,
+				state->print_buffer);
+			sscanf (state->print_buffer, "%d", &temp_val);
+			if (temp_val > 0) {
 				val->intval = POWER_SUPPLY_STATUS_CHARGING;
+			} else {
+				val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
 			}
 		} else {
-			val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
+			connected = a6_calc_connected_ps();
+			if (connected && !(connected == MAX8903B_CONNECTED_PS_USB)) {
+				val->intval = POWER_SUPPLY_STATUS_CHARGING;
+			} else {
+				val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
+			}
 		}
-#endif
-
 		break;
 	case POWER_SUPPLY_PROP_HEALTH:
 #if 0
