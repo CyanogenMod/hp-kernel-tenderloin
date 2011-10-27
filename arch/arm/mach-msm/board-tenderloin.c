@@ -4756,6 +4756,12 @@ static void fixup_i2c_configs(void)
 		pm8901_vreg_init_pdata[PM8901_VREG_ID_MPP0].active_high = 0;
 	else
 		pm8901_vreg_init_pdata[PM8901_VREG_ID_MPP0].active_high = 1;
+
+#ifdef CONFIG_INPUT_LSM303DLH
+	if (machine_is_tenderloin() && boardtype_is_3g()) {
+		lsm303dlh_acc_pdata.negate_x = 1;
+	}
+#endif
 #endif
 }
 
