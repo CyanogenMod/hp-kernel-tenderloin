@@ -3516,22 +3516,6 @@ static struct user_pin bt_pins[] = {
 	},
 };
 
-static struct user_pin gpio_pins[] = {
-	{
-		.name       =  "gpio_125",
-		.gpio       =  TENDERLOIN_GYRO_INT,
-		.act_level  =  1, // active high
-		.direction  =  1, // input
-		.def_level  = -1, // undefined
-		.pin_mode   =  (void *)-1,// undefined
-		.sysfs_mask =  0777,
-		.options    =  PIN_IRQ,
-		.irq_handler = NULL,
-		.irq_config =  IRQF_TRIGGER_RISING,
-		.irq_handle_mode = IRQ_HANDLE_AUTO
-	},
-};
-
 static struct user_pin_set  board_user_pins_sets[] = {
 	{
 		.set_name = "bt",
@@ -3546,11 +3530,6 @@ static struct user_pin_set  board_user_pins_sets[] = {
 		.pins = ctp_pins,
 	},
 #endif /* CONFIG_TOUCHSCREEN_CY8CTMA395[_MODULE] */
-	{
-		.set_name = "gpios",
-		.num_pins = ARRAY_SIZE(gpio_pins),
-		.pins = gpio_pins,
-	},
 };
 
 static struct user_pins_platform_data board_user_pins_pdata = {
@@ -6419,9 +6398,6 @@ static void __init platform_fixup_pin_numbers(void)
 		tenderloin_a6_1_platform_data.sbw_deinit_gpio_config = a6_1_sbw_gpio_config_3g;
 		tenderloin_a6_1_platform_data.sbw_deinit_gpio_config_size = ARRAY_SIZE(a6_1_sbw_gpio_config_3g);
 
-		gpio_pins[0].name = "gpio_75";
-		gpio_pins[0].gpio = TENDERLOIN_GYRO_INT_3G;
-
 		// A6 irq
 		/* 3G EVT4 boards use the same A6 gpios as DVT */
 		if (board_type >= TOPAZ_3G_EVT4) {
@@ -6878,6 +6854,8 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
 		} else {
 			msm8x60_init_gpiomux(tenderloin_3g_gpiomux_cfgs);
 		}
+		mpu3050_i2c_board_info[0].irq = MSM_GPIO_TO_INT(TENDERLOIN_GYRO_INT_3G);
+
 	} else {
 		if (board_type >= TOPAZ_DVT) {
 			msm8x60_init_gpiomux(tenderloin_dvt_gpiomux_cfgs);
