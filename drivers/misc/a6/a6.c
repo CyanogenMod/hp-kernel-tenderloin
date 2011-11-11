@@ -611,9 +611,6 @@ struct a6_device_state {
 	int stop_heartbeat;
 	int last_percent;
 
-	/* used for the various generic_show calls, to be removed later */
-	char *print_buffer;
-
 	struct switch_dev *dock_switch;
 };
 
@@ -2519,11 +2516,10 @@ int32_t format_serno_v2(const struct a6_device_state* state, const uint8_t* val,
 	return ret;
 }
 
-static ssize_t a6_generic_show(struct device *dev, struct device_attribute *attr, char *buf)
+static ssize_t a6_get_reg_vals(struct device *dev, struct device_attribute *attr, uint8_t *vals, unsigned num_vals)
 {
 	struct i2c_client *client = to_i2c_client(dev);
-	int32_t ret = 0, i = 0;
-	uint8_t vals[id_size];
+	int32_t ret = 0;
 	struct a6_register_desc* reg_desc;
 	struct a6_device_state* state = i2c_get_clientdata(client);
 
@@ -2572,11 +2568,37 @@ static ssize_t a6_generic_show(struct device *dev, struct device_attribute *attr
 
 	reg_desc = container_of(attr, struct a6_register_desc, dev_attr);
 
-	memset(vals, 0, sizeof(vals));
+	memset(vals, 0, sizeof(vals[0])*num_vals);
 	ret = a6_i2c_read_reg(client, reg_desc->id, reg_desc->num_ids, vals);
-	if (ret < 0) {
-		goto err0;
+
+	// reset busy state
+	mutex_lock(&state->dev_mutex);
+	// decrement busy refcount
+	if (state->busy_count) {
+		state->busy_count--;
 	}
+	if (!state->busy_count) {
+		clear_bit(DEVICE_BUSY_BIT, state->flags);
+	}
+	mutex_unlock(&state->dev_mutex);
+	wake_up_interruptible(&state->dev_busyq);
+
+	return ret;
+}
+
+static ssize_t a6_generic_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	int32_t ret = 0, i = 0;
+	uint8_t vals[id_size];
+	struct a6_register_desc* reg_desc;
+	struct i2c_client *client = to_i2c_client(dev);
+	struct a6_device_state* state = i2c_get_clientdata(client);
+
+	ret = a6_get_reg_vals(dev, attr, vals, id_size);
+
+	if (ret < 0) return ret;
+
+	reg_desc = container_of(attr, struct a6_register_desc, dev_attr);
 
 	if (reg_desc->format) {
 		ret = reg_desc->format(state, vals, buf, PAGE_SIZE);
@@ -2620,18 +2642,77 @@ static ssize_t a6_generic_show(struct device *dev, struct device_attribute *attr
 	}
 #endif
 
-err0:
-	// reset busy state
-	mutex_lock(&state->dev_mutex);
-	// decrement busy refcount
-	if (state->busy_count) {
-		state->busy_count--;
+	return ret;
+}
+
+static ssize_t a6_reg_get(struct device *dev, unsigned regnum, void *buf)
+{
+	int32_t ret = 0;
+	uint8_t vals[id_size];
+	struct i2c_client *client = to_i2c_client(dev);
+	struct a6_device_state* state = i2c_get_clientdata(client);
+	struct device_attribute *attr = &a6_register_desc_arr[regnum].dev_attr;
+	int32_t rsense = (int32_t)state->cached_rsense_val;
+
+	ret = a6_get_reg_vals(dev, attr, vals, id_size);
+
+	if (ret < 0) {
+		printk(KERN_ERR "%s: a6_get_reg_vals failed for regnum %u\n",
+				__func__, regnum);
+		return ret;
 	}
-	if (!state->busy_count) {
-		clear_bit(DEVICE_BUSY_BIT, state->flags);
+
+	ret = 0;
+
+	switch (regnum) {
+		case A6_REG_TS2_I2C_FLAGS_2:
+			{
+				uint32_t *out_val = (uint32_t*)buf;
+				*out_val = *vals;
+			}
+			break;
+		case A6_REG_TS2_I2C_BAT_RARC:
+			{
+				int32_t *out_val = (int32_t*)buf;
+				*out_val = *vals;
+			}
+			break;
+		case A6_REG_TS2_I2C_BAT_AVG_CUR_LSB_MSB:
+		case A6_REG_TS2_I2C_BAT_CUR_LSB_MSB:
+			{
+				int32_t *out_val = (int32_t*)buf;
+				*out_val = *(int16_t*)vals;
+				*out_val = (*out_val * 3125) / 2 / rsense;
+			}
+			break;
+		case A6_REG_TS2_I2C_BAT_VOLT_LSB_MSB:
+			{
+				int32_t *out_val = (int32_t*)buf;
+				*out_val = *(int16_t*)vals;
+				*out_val = (*out_val >> 5) * 4800;
+			}
+			break;
+		case A6_REG_TS2_I2C_BAT_FULL40_LSB_MSB:
+		case A6_REG_TS2_I2C_BAT_COULOMB_LSB_MSB:
+			{
+				int32_t *out_val = (int32_t*)buf;
+				*out_val = *(int16_t*)vals;
+				*out_val = (*out_val * 6250) / rsense;
+			}
+			break;
+		case A6_REG_TS2_I2C_BAT_TEMP_LSB_MSB:
+			{
+				int32_t *out_val = (int32_t*)buf;
+				int8_t temp_val = ((int8_t*)vals)[1];
+				*out_val = temp_val * 10;
+			}
+			break;
+		default:
+			{
+				printk(KERN_ERR "%s: Invalid register %u\n", __func__, regnum);
+				ret = -EINVAL;
+			}
 	}
-	mutex_unlock(&state->dev_mutex);
-	wake_up_interruptible(&state->dev_busyq);
 
 	return ret;
 }
@@ -4358,11 +4439,8 @@ struct file_operations a6_pmem_fops = {
 static int a6_fish_battery_get_percent(struct device *dev)
 {
 	int temp_val = 0;
-	struct a6_device_state *state = (struct a6_device_state*) dev_get_drvdata(dev);
 
-	state->print_buffer[0] = '\0';
-	a6_generic_show (dev, &a6_register_desc_arr[9].dev_attr, state->print_buffer);
-	sscanf (state->print_buffer, "%d", &temp_val);
+	a6_reg_get (dev, A6_REG_TS2_I2C_BAT_RARC, &temp_val);
 
 	return temp_val;
 }
@@ -4386,12 +4464,8 @@ static unsigned a6_calc_connected_ps(void)
 	}
 
 	state = (struct a6_device_state*)dev_get_drvdata(psy->dev->parent);
-	state->print_buffer[0] = '\0';
 
-	a6_generic_show (psy->dev->parent,
-			&a6_register_desc_arr[31].dev_attr, state->print_buffer);
-
-	sscanf (state->print_buffer, "%u", &temp_val);
+	a6_reg_get (psy->dev->parent, A6_REG_TS2_I2C_FLAGS_2, &temp_val);
 
 	if (state->otg_chg_type == USB_CHG_TYPE__WALLCHARGER) {
 		connected |= MAX8903B_CONNECTED_PS_AC;
@@ -4474,8 +4548,6 @@ static int a6_fish_battery_get_property(struct power_supply *psy,
 {
 	int temp_val = 0;
 	unsigned connected;
-	struct a6_device_state *state = 
-			(struct a6_device_state*)dev_get_drvdata(psy->dev->parent);
 
 	switch (psp) {
 	case POWER_SUPPLY_PROP_STATUS:
@@ -4483,12 +4555,8 @@ static int a6_fish_battery_get_property(struct power_supply *psy,
 			val->intval = POWER_SUPPLY_STATUS_FULL;
 		} else if (a6_last_ps_connect &&
 				jiffies > a6_last_ps_connect + A6_BATT_STATS_DELAY) {
-			state->print_buffer[0] = '\0';
-			a6_generic_show (psy->dev->parent, 
-				/* TODO use A6_REG_TS2_I2C_BAT_AVG_CUR_LSB_MSB for 11 */
-				&a6_register_desc_arr[11].dev_attr,
-				state->print_buffer);
-			sscanf (state->print_buffer, "%d", &temp_val);
+			a6_reg_get (psy->dev->parent, 
+					A6_REG_TS2_I2C_BAT_AVG_CUR_LSB_MSB, &temp_val);
 			if (temp_val > 0) {
 				val->intval = POWER_SUPPLY_STATUS_CHARGING;
 			} else {
@@ -4505,8 +4573,8 @@ static int a6_fish_battery_get_property(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_HEALTH:
 #if 0
-		state->print_buffer[0] = '\0';
-		a6_generic_show (psy->dev->parent, &a6_register_desc_arr[8].dev_attr, state->print_buffer);
+		/* NOTE: *_BAT_STATUS not supported by a6_reg_get yet */
+		a6_reg_get(psy->dev->parent, A6_REG_TS2_I2C_BAT_STATUS, &temp_uval);
 #endif
 		// TODO: parse temps and set OVERHEAT, parse "age" and set DEAD */
 
@@ -4522,44 +4590,29 @@ static int a6_fish_battery_get_property(struct power_supply *psy,
 		val->intval = a6_fish_battery_get_percent(psy->dev->parent);
 		break;
 	case POWER_SUPPLY_PROP_CURRENT_NOW:
-		state->print_buffer[0] = '\0';
-		a6_generic_show (psy->dev->parent,
-			&a6_register_desc_arr[A6_REG_TS2_I2C_BAT_CUR_LSB_MSB].dev_attr,
-			state->print_buffer);
-		sscanf (state->print_buffer, "%d", &temp_val);
+		a6_reg_get(psy->dev->parent, 
+				A6_REG_TS2_I2C_BAT_CUR_LSB_MSB, &temp_val);
 		val->intval = temp_val;
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
-		state->print_buffer[0] = '\0';
-		a6_generic_show (psy->dev->parent,
-			&a6_register_desc_arr[A6_REG_TS2_I2C_BAT_VOLT_LSB_MSB].dev_attr,
-			state->print_buffer);
-		sscanf (state->print_buffer, "%d", &temp_val);
+		a6_reg_get (psy->dev->parent,
+			A6_REG_TS2_I2C_BAT_VOLT_LSB_MSB, &temp_val);
 		val->intval = temp_val;
 		break;
 	case POWER_SUPPLY_PROP_TEMP:
-		state->print_buffer[0] = '\0';
-		a6_generic_show (psy->dev->parent,
-			&a6_register_desc_arr[A6_REG_TS2_I2C_BAT_TEMP_LSB_MSB].dev_attr,
-			state->print_buffer);
-		sscanf (state->print_buffer, "%d", &temp_val);
-		val->intval = temp_val * 10; /* convert C to .1 C */
+		a6_reg_get (psy->dev->parent,
+			A6_REG_TS2_I2C_BAT_TEMP_LSB_MSB, &temp_val);
+		val->intval = temp_val;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_FULL:
-		state->print_buffer[0] = '\0';
-		a6_generic_show (psy->dev->parent,
-			&a6_register_desc_arr[A6_REG_TS2_I2C_BAT_FULL40_LSB_MSB].dev_attr,
-			state->print_buffer);
-		sscanf (state->print_buffer, "%d", &temp_val);
-		val->intval = temp_val * 1000;
+		a6_reg_get (psy->dev->parent,
+			A6_REG_TS2_I2C_BAT_FULL40_LSB_MSB, &temp_val);
+		val->intval = temp_val;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_NOW:
-		state->print_buffer[0] = '\0';
-		a6_generic_show (psy->dev->parent,
-			&a6_register_desc_arr[A6_REG_TS2_I2C_BAT_COULOMB_LSB_MSB].dev_attr,
-			state->print_buffer);
-		sscanf (state->print_buffer, "%d", &temp_val);
-		val->intval = temp_val * 1000;
+		a6_reg_get (psy->dev->parent,
+			A6_REG_TS2_I2C_BAT_COULOMB_LSB_MSB, &temp_val);
+		val->intval = temp_val;
 		break;
 	default:
 		return -EINVAL;
@@ -4694,9 +4747,7 @@ static void a6_dock_update_state(struct a6_device_state *state)
 		return;
 	}
 
-	state->print_buffer[0] = '\0';
-	a6_generic_show (&state->i2c_dev->dev, &a6_register_desc_arr[31].dev_attr, state->print_buffer);
-	sscanf (state->print_buffer, "%u", &value);
+	a6_reg_get (&state->i2c_dev->dev, A6_REG_TS2_I2C_FLAGS_2, &value);
 
 	if (a6_disable_dock_switch) {
 		dock = 0;
@@ -4748,11 +4799,13 @@ static int a6_i2c_probe(struct i2c_client *client, const struct i2c_device_id *d
 	struct a6_wake_ops *wake_ops = (struct a6_wake_ops *) plat_data->wake_ops;
 
 	if (plat_data == NULL) {
+		/* should this be -ENODEV ? TODO */
 		return ENODEV;
 	}
 
 	state = kzalloc(sizeof(struct a6_device_state), GFP_KERNEL);
 	if(!state) {
+		/* should this be -ENOMEM ? TODO */
 		return ENOMEM;
 	}
 
@@ -4765,12 +4818,6 @@ static int a6_i2c_probe(struct i2c_client *client, const struct i2c_device_id *d
 	if(!state->a2a_wr_buf) {
 		rc = -ENOMEM;
 		goto err1;
-	}
-
-	state->print_buffer = kzalloc(PAGE_SIZE, GFP_KERNEL);
-	if (!state->print_buffer) {
-		rc = -ENOMEM;
-		goto err2;
 	}
 
 	// store i2c client device in state
@@ -4986,8 +5033,6 @@ err5:
 err4:
 	destroy_workqueue(state->ka6d_workqueue);
 err3:
-	kfree(state->print_buffer);
-err2:
 	kfree(state->a2a_wr_buf);
 err1:
 	kfree(state->a2a_rd_buf);
@@ -5029,10 +5074,6 @@ static int a6_i2c_remove(struct i2c_client *client)
 
 	if (state->a2a_wr_buf) {
 		kfree(state->a2a_wr_buf);
-	}
-
-	if (state->print_buffer) {
-		kfree(state->print_buffer);
 	}
 
 	return 0;
