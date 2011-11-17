@@ -30,6 +30,7 @@
 #include "xt_qtaguid_internal.h"
 #include "xt_qtaguid_print.h"
 
+#define pr_warn_once printk
 /*
  * We only use the xt_socket funcs within a similar context to avoid unexpected
  * return values.
@@ -785,7 +786,7 @@ static int iface_stat_all_proc_read(char *page, char **num_items_returned,
 	int item_index = 0;
 	int len;
 	struct iface_stat *iface_entry;
-	struct rtnl_link_stats64 dev_stats, *stats;
+	const struct net_device_stats *stats;
 	struct rtnl_link_stats64 no_dev_stats = {0};
 
 	if (unlikely(module_passive)) {
@@ -811,15 +812,14 @@ static int iface_stat_all_proc_read(char *page, char **num_items_returned,
 			continue;
 
 		if (iface_entry->active) {
-			stats = dev_get_stats(iface_entry->net_dev,
-					      &dev_stats);
+			stats = dev_get_stats(iface_entry->net_dev);
 		} else {
 			stats = &no_dev_stats;
 		}
 		len = snprintf(outp, char_count,
 			       "%s %d "
 			       "%llu %llu %llu %llu "
-			       "%llu %llu %llu %llu\n",
+			       "%lu %lu %lu %lu\n",
 			       iface_entry->ifname,
 			       iface_entry->active,
 			       iface_entry->totals[IFS_RX].bytes,
@@ -948,17 +948,17 @@ static struct iface_stat *iface_alloc(struct net_device *net_dev)
 static void iface_check_stats_reset_and_adjust(struct net_device *net_dev,
 					       struct iface_stat *iface)
 {
-	struct rtnl_link_stats64 dev_stats, *stats;
+	const struct net_device_stats *stats;
 	bool stats_rewound;
 
-	stats = dev_get_stats(net_dev, &dev_stats);
+	stats = dev_get_stats(net_dev);
 	/* No empty packets */
 	stats_rewound =
 		(stats->rx_bytes < iface->last_known[IFS_RX].bytes)
 		|| (stats->tx_bytes < iface->last_known[IFS_TX].bytes);
 
 	IF_DEBUG("qtaguid: %s(%s): iface=%p netdev=%p "
-		 "bytes rx/tx=%llu/%llu "
+		 "bytes rx/tx=%lu/%lu "
 		 "active=%d last_known=%d "
 		 "stats_rewound=%d\n", __func__,
 		 net_dev ? net_dev->name : "?",
@@ -1169,10 +1169,10 @@ data_counters_update(struct data_counters *dc, int set,
  */
 static void iface_stat_update(struct net_device *net_dev, bool stash_only)
 {
-	struct rtnl_link_stats64 dev_stats, *stats;
+	const struct net_device_stats *stats;
 	struct iface_stat *entry;
 
-	stats = dev_get_stats(net_dev, &dev_stats);
+	stats = dev_get_stats(net_dev);
 	spin_lock_bh(&iface_stat_list_lock);
 	entry = get_iface_entry(net_dev->name);
 	if (entry == NULL) {
@@ -1198,7 +1198,7 @@ static void iface_stat_update(struct net_device *net_dev, bool stash_only)
 		entry->last_known[IFS_RX].packets = stats->rx_packets;
 		entry->last_known_valid = true;
 		IF_DEBUG("qtaguid: %s(%s): "
-			 "dev stats stashed rx/tx=%llu/%llu\n", __func__,
+			 "dev stats stashed rx/tx=%lu/%lu\n", __func__,
 			 net_dev->name, stats->rx_bytes, stats->tx_bytes);
 		spin_unlock_bh(&iface_stat_list_lock);
 		return;
@@ -1211,7 +1211,7 @@ static void iface_stat_update(struct net_device *net_dev, bool stash_only)
 	entry->last_known_valid = false;
 	_iface_stat_set_active(entry, net_dev, false);
 	IF_DEBUG("qtaguid: %s(%s): "
-		 "disable tracking. rx/tx=%llu/%llu\n", __func__,
+		 "disable tracking. rx/tx=%lu/%lu\n", __func__,
 		 net_dev->name, stats->rx_bytes, stats->tx_bytes);
 	spin_unlock_bh(&iface_stat_list_lock);
 }
@@ -1509,9 +1509,11 @@ static struct sock *qtaguid_find_sk(const struct sk_buff *skb,
 		return NULL;
 
 	switch (par->family) {
+#ifdef XT_SOCKET_HAVE_IPV6
 	case NFPROTO_IPV6:
 		sk = xt_socket_get6_sk(skb, par);
 		break;
+#endif
 	case NFPROTO_IPV4:
 		sk = xt_socket_get4_sk(skb, par);
 		break;
