@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2008-2011, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -31,6 +31,10 @@
 
 #define IDX_2D(X) ((X)-KGSL_DEVICE_2D0)
 
+#define DEVICE_2D_NAME "kgsl-2d"
+#define DEVICE_2D0_NAME "kgsl-2d0"
+#define DEVICE_2D1_NAME "kgsl-2d1"
+
 struct kgsl_g12_ringbuffer {
 	unsigned int prevctx;
 	struct kgsl_memdesc      cmdbufdesc;
@@ -38,12 +42,8 @@ struct kgsl_g12_ringbuffer {
 
 struct kgsl_g12_device {
 	struct kgsl_device dev;    /* Must be first field in this struct */
-	const char *iomemname;
-	const char *irqname;
-	const char *regulator;
 	int current_timestamp;
 	int timestamp;
-	wait_queue_head_t wait_timestamp_wq;
 	struct kgsl_g12_ringbuffer ringbuffer;
 	spinlock_t cmdwin_lock;
 };
@@ -51,7 +51,6 @@ struct kgsl_g12_device {
 irqreturn_t kgsl_g12_isr(int irq, void *data);
 int kgsl_g12_setstate(struct kgsl_device *device, uint32_t flags);
 int kgsl_g12_idle(struct kgsl_device *device, unsigned int timeout);
-struct kgsl_device *kgsl_get_2d_device(enum kgsl_deviceid);
 void kgsl_g12_regread(struct kgsl_device *device, unsigned int offsetwords,
 				unsigned int *value);
 void kgsl_g12_regwrite(struct kgsl_device *device, unsigned int offsetwords,
@@ -60,16 +59,5 @@ void kgsl_g12_regread_isr(struct kgsl_device *device, unsigned int offsetwords,
 				unsigned int *value);
 void kgsl_g12_regwrite_isr(struct kgsl_device *device, unsigned int offsetwords,
 			unsigned int value);
-
-int __init kgsl_g12_config(struct kgsl_devconfig *,
-		      struct platform_device *pdev, enum kgsl_deviceid dev_id);
-
-int __init kgsl_g12_init(struct kgsl_device *device);
-int __init kgsl_g12_init_pwrctrl(struct kgsl_device *device);
-
-int kgsl_g12_close(struct kgsl_device *device);
-
-int kgsl_g12_getfunctable(struct kgsl_functable *ftbl);
-
 
 #endif /* _KGSL_G12_H */

@@ -29,91 +29,94 @@
 #ifndef _GSL_LOG_H
 #define _GSL_LOG_H
 
-extern unsigned int kgsl_drv_log;
-extern unsigned int kgsl_cmd_log;
-extern unsigned int kgsl_ctxt_log;
-extern unsigned int kgsl_mem_log;
 extern unsigned int kgsl_cff_dump_enable;
 
-struct device *kgsl_driver_getdevnode(void);
-int kgsl_debug_init(void);
-
-#define KGSL_LOG_VDBG(lvl, fmt, args...) \
-	do { \
-		if ((lvl) >= 7)  \
-			dev_vdbg(kgsl_driver_getdevnode(), "|%s| " fmt, \
-					__func__, ##args);\
-	} while (0)
-
-#define KGSL_LOG_DBG(lvl, fmt, args...) \
-	do { \
-		if ((lvl) >= 7)  \
-			dev_dbg(kgsl_driver_getdevnode(), "|%s| " fmt, \
-					__func__, ##args);\
-	} while (0)
-
-#define KGSL_LOG_INFO(lvl, fmt, args...) \
+#define KGSL_LOG_INFO(dev, lvl, fmt, args...) \
 	do { \
 		if ((lvl) >= 6)  \
-			dev_info(kgsl_driver_getdevnode(), "|%s| " fmt, \
+			dev_info(dev, "|%s| " fmt, \
 					__func__, ##args);\
 	} while (0)
 
-#define KGSL_LOG_WARN(lvl, fmt, args...) \
+#define KGSL_LOG_WARN(dev, lvl, fmt, args...) \
 	do { \
 		if ((lvl) >= 4)  \
-			dev_warn(kgsl_driver_getdevnode(), "|%s| " fmt, \
+			dev_warn(dev, "|%s| " fmt, \
 					__func__, ##args);\
 	} while (0)
 
-#define KGSL_LOG_ERR(lvl, fmt, args...) \
+#define KGSL_LOG_ERR(dev, lvl, fmt, args...) \
 	do { \
 		if ((lvl) >= 3)  \
-			dev_err(kgsl_driver_getdevnode(), "|%s| " fmt, \
+			dev_err(dev, "|%s| " fmt, \
 					__func__, ##args);\
 	} while (0)
 
-#define KGSL_LOG_FATAL(lvl, fmt, args...) \
+#define KGSL_LOG_CRIT(dev, lvl, fmt, args...) \
 	do { \
 		if ((lvl) >= 2) \
-			dev_crit(kgsl_driver_getdevnode(), "|%s| " fmt, \
+			dev_crit(dev, "|%s| " fmt, \
 					__func__, ##args);\
 	} while (0)
 
-#define KGSL_LOG_POSTMORTEM_WRITE(fmt, args...) \
-	do { \
-		dev_crit(kgsl_driver_getdevnode(), fmt, \
-			##args);\
-	} while (0)
+#define KGSL_LOG_POSTMORTEM_WRITE(_dev, fmt, args...) \
+	do { dev_crit(_dev->dev, fmt, ##args); } while (0)
 
-#define KGSL_LOG_DUMP(fmt, args...)	pr_err(fmt, ##args)
+#define KGSL_LOG_DUMP(_dev, fmt, args...)	dev_err(_dev->dev, fmt, ##args)
 
-#define KGSL_DRV_VDBG(fmt, args...) KGSL_LOG_VDBG(kgsl_drv_log, fmt, ##args)
-#define KGSL_DRV_DBG(fmt, args...)  KGSL_LOG_DBG(kgsl_drv_log, fmt, ##args)
-#define KGSL_DRV_INFO(fmt, args...) KGSL_LOG_INFO(kgsl_drv_log, fmt, ##args)
-#define KGSL_DRV_WARN(fmt, args...) KGSL_LOG_WARN(kgsl_drv_log, fmt, ##args)
-#define KGSL_DRV_ERR(fmt, args...)  KGSL_LOG_ERR(kgsl_drv_log, fmt, ##args)
-#define KGSL_DRV_FATAL(fmt, args...) KGSL_LOG_FATAL(kgsl_drv_log, fmt, ##args)
+#define KGSL_DRV_INFO(_dev, fmt, args...) \
+KGSL_LOG_INFO(_dev->dev, _dev->drv_log, fmt, ##args)
+#define KGSL_DRV_WARN(_dev, fmt, args...) \
+KGSL_LOG_WARN(_dev->dev, _dev->drv_log, fmt, ##args)
+#define KGSL_DRV_ERR(_dev, fmt, args...)  \
+KGSL_LOG_ERR(_dev->dev, _dev->drv_log, fmt, ##args)
+#define KGSL_DRV_CRIT(_dev, fmt, args...) \
+KGSL_LOG_CRIT(_dev->dev, _dev->drv_log, fmt, ##args)
 
-#define KGSL_CMD_VDBG(fmt, args...) KGSL_LOG_VDBG(kgsl_cmd_log, fmt, ##args)
-#define KGSL_CMD_DBG(fmt, args...)  KGSL_LOG_DBG(kgsl_cmd_log, fmt, ##args)
-#define KGSL_CMD_INFO(fmt, args...) KGSL_LOG_INFO(kgsl_cmd_log, fmt, ##args)
-#define KGSL_CMD_WARN(fmt, args...) KGSL_LOG_WARN(kgsl_cmd_log, fmt, ##args)
-#define KGSL_CMD_ERR(fmt, args...)  KGSL_LOG_ERR(kgsl_cmd_log, fmt, ##args)
-#define KGSL_CMD_FATAL(fmt, args...) KGSL_LOG_FATAL(kgsl_cmd_log, fmt, ##args)
+#define KGSL_CMD_INFO(_dev, fmt, args...) \
+KGSL_LOG_INFO(_dev->dev, _dev->cmd_log, fmt, ##args)
+#define KGSL_CMD_WARN(_dev, fmt, args...) \
+KGSL_LOG_WARN(_dev->dev, _dev->cmd_log, fmt, ##args)
+#define KGSL_CMD_ERR(_dev, fmt, args...) \
+KGSL_LOG_ERR(_dev->dev, _dev->cmd_log, fmt, ##args)
+#define KGSL_CMD_CRIT(_dev, fmt, args...) \
+KGSL_LOG_CRIT(_dev->dev, _dev->cmd_log, fmt, ##args)
 
-#define KGSL_CTXT_VDBG(fmt, args...) KGSL_LOG_VDBG(kgsl_ctxt_log, fmt, ##args)
-#define KGSL_CTXT_DBG(fmt, args...)  KGSL_LOG_DBG(kgsl_ctxt_log, fmt, ##args)
-#define KGSL_CTXT_INFO(fmt, args...) KGSL_LOG_INFO(kgsl_ctxt_log, fmt, ##args)
-#define KGSL_CTXT_WARN(fmt, args...) KGSL_LOG_WARN(kgsl_ctxt_log, fmt, ##args)
-#define KGSL_CTXT_ERR(fmt, args...)  KGSL_LOG_ERR(kgsl_ctxt_log, fmt, ##args)
-#define KGSL_CTXT_FATAL(fmt, args...) KGSL_LOG_FATAL(kgsl_ctxt_log, fmt, ##args)
+#define KGSL_CTXT_INFO(_dev, fmt, args...) \
+KGSL_LOG_INFO(_dev->dev, _dev->ctxt_log, fmt, ##args)
+#define KGSL_CTXT_WARN(_dev, fmt, args...) \
+KGSL_LOG_WARN(_dev->dev, _dev->ctxt_log, fmt, ##args)
+#define KGSL_CTXT_ERR(_dev, fmt, args...)  \
+KGSL_LOG_ERR(_dev->dev, _dev->ctxt_log, fmt, ##args)
+#define KGSL_CTXT_CRIT(_dev, fmt, args...) \
+KGSL_LOG_CRIT(_dev->dev, _dev->ctxt_log, fmt, ##args)
 
-#define KGSL_MEM_VDBG(fmt, args...) KGSL_LOG_VDBG(kgsl_mem_log, fmt, ##args)
-#define KGSL_MEM_DBG(fmt, args...)  KGSL_LOG_DBG(kgsl_mem_log, fmt, ##args)
-#define KGSL_MEM_INFO(fmt, args...) KGSL_LOG_INFO(kgsl_mem_log, fmt, ##args)
-#define KGSL_MEM_WARN(fmt, args...) KGSL_LOG_WARN(kgsl_mem_log, fmt, ##args)
-#define KGSL_MEM_ERR(fmt, args...)  KGSL_LOG_ERR(kgsl_mem_log, fmt, ##args)
-#define KGSL_MEM_FATAL(fmt, args...) KGSL_LOG_FATAL(kgsl_mem_log, fmt, ##args)
+#define KGSL_MEM_INFO(_dev, fmt, args...) \
+KGSL_LOG_INFO(_dev->dev, _dev->mem_log, fmt, ##args)
+#define KGSL_MEM_WARN(_dev, fmt, args...) \
+KGSL_LOG_WARN(_dev->dev, _dev->mem_log, fmt, ##args)
+#define KGSL_MEM_ERR(_dev, fmt, args...)  \
+KGSL_LOG_ERR(_dev->dev, _dev->mem_log, fmt, ##args)
+#define KGSL_MEM_CRIT(_dev, fmt, args...) \
+KGSL_LOG_CRIT(_dev->dev, _dev->mem_log, fmt, ##args)
+
+#define KGSL_PWR_INFO(_dev, fmt, args...) \
+KGSL_LOG_INFO(_dev->dev, _dev->pwr_log, fmt, ##args)
+#define KGSL_PWR_WARN(_dev, fmt, args...) \
+KGSL_LOG_WARN(_dev->dev, _dev->pwr_log, fmt, ##args)
+#define KGSL_PWR_ERR(_dev, fmt, args...) \
+KGSL_LOG_ERR(_dev->dev, _dev->pwr_log, fmt, ##args)
+#define KGSL_PWR_CRIT(_dev, fmt, args...) \
+KGSL_LOG_CRIT(_dev->dev, _dev->pwr_log, fmt, ##args)
+
+/* Core error messages - these are for core KGSL functions that have
+   no device associated with them (such as memory) */
+
+#define KGSL_CORE_ERR(fmt, args...) \
+pr_err("kgsl: %s: " fmt, __func__, ##args)
+
+void kgsl_device_log_init(struct kgsl_device *device);
+int kgsl_yamato_debugfs_init(struct kgsl_device *device);
+int kgsl_debug_init(struct dentry *);
 
 #endif /* _GSL_LOG_H */

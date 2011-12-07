@@ -42,8 +42,8 @@
 #include "kgsl_device.h"
 #include "kgsl_sharedmem.h"
 
-#define DRIVER_NAME "kgsl"
-#define CLASS_NAME "msm_kgsl"
+#define KGSL_NAME "kgsl"
+
 #define CHIP_REV_251 0x020501
 
 /* Flags to control whether to flush or invalidate a cached memory range */
@@ -70,14 +70,19 @@
 /* Extra accounting entries needed in the pagetable */
 #define KGSL_PT_EXTRA_ENTRIES      16
 
-#define KGSL_PAGETABLE_ENTRIES(_sz) (((_sz) >> KGSL_PAGESIZE_SHIFT) + \
+#define KGSL_PAGETABLE_ENTRIES(_sz) (((_sz) >> PAGE_SHIFT) + \
 				     KGSL_PT_EXTRA_ENTRIES)
+
+#define KGSL_PAGETABLE_SIZE \
+ALIGN(KGSL_PAGETABLE_ENTRIES(CONFIG_MSM_KGSL_PAGE_TABLE_SIZE) * \
+KGSL_PAGETABLE_ENTRY_SIZE, PAGE_SIZE)
 
 #ifdef CONFIG_KGSL_PER_PROCESS_PAGE_TABLE
 #define KGSL_PAGETABLE_COUNT (CONFIG_MSM_KGSL_PAGE_TABLE_COUNT)
 #else
 #define KGSL_PAGETABLE_COUNT 1
 #endif
+extern int kgsl_pagetable_count;
 
 /* Casting using container_of() for structures that kgsl owns. */
 #define KGSL_CONTAINER_OF(ptr, type, member) \
@@ -87,13 +92,24 @@
 #define KGSL_G12_DEVICE(device) \
 		KGSL_CONTAINER_OF(device, struct kgsl_g12_device, dev)
 
+/* A macro for memory statistics - add the new size to the stat and if
+   the statisic is greater then _max, set _max
+*/
+
+#define KGSL_STATS_ADD(_size, _stat, _max) \
+	do { _stat += (_size); if (_stat > _max) _max = _stat; } while (0)
+
 struct kgsl_driver {
 	struct cdev cdev;
-	dev_t dev_num;
+	dev_t major;
 	struct class *class;
+	/* Virtual device for managing the core */
+	struct device virtdev;
+	/* Kobjects for storing pagetable and process statistics */
+	struct kobject *ptkobj;
+	struct kobject *prockobj;
+	atomic_t device_count;
 	struct kgsl_device *devp[KGSL_DEVICE_MAX];
-	int num_devs;
-	struct platform_device *pdev;
 
 	uint32_t flags_debug;
 
@@ -106,13 +122,18 @@ struct kgsl_driver {
 	/* Mutex for accessing the process list */
 	struct mutex process_mutex;
 
-	struct kgsl_pagetable *global_pt;
-
-	/* Size (in bytes) for each pagetable */
-	unsigned int ptsize;
+	/* Mutex for protecting the device list */
+	struct mutex devlock;
 
 	struct kgsl_ptpool ptpool;
 
+	struct {
+		unsigned int vmalloc;
+		unsigned int vmalloc_max;
+		unsigned int coherent;
+		unsigned int coherent_max;
+		unsigned int histogram[16];
+	} stats;
 };
 
 extern struct kgsl_driver kgsl_driver;
@@ -126,14 +147,6 @@ struct kgsl_mem_entry {
 	* allocation is made */
 	struct kgsl_process_private *priv;
 };
-
-enum kgsl_status {
-	KGSL_SUCCESS = 0,
-	KGSL_FAILURE = 1
-};
-
-#define KGSL_TRUE 1
-#define KGSL_FALSE 0
 
 #ifdef CONFIG_MSM_KGSL_MMU_PAGE_FAULT
 #define MMU_CONFIG 2
@@ -167,15 +180,15 @@ static inline void kgsl_regwrite(struct kgsl_device *device,
 }
 
 static inline void kgsl_regread_isr(struct kgsl_device *device,
-				    unsigned int offsetwords,
-				    unsigned int *value)
+				unsigned int offsetwords,
+				unsigned int *value)
 {
 	device->ftbl.device_regread_isr(device, offsetwords, value);
 }
 
 static inline void kgsl_regwrite_isr(struct kgsl_device *device,
-				      unsigned int offsetwords,
-				      unsigned int value)
+				 unsigned int offsetwords,
+				 unsigned int value)
 {
 	device->ftbl.device_regwrite_isr(device, offsetwords, value);
 }
@@ -191,6 +204,21 @@ int kgsl_register_ts_notifier(struct kgsl_device *device,
 
 int kgsl_unregister_ts_notifier(struct kgsl_device *device,
 				struct notifier_block *nb);
+
+int kgsl_device_probe(struct kgsl_device *device,
+		irqreturn_t (*dev_isr) (int, void*));
+void kgsl_device_remove(struct kgsl_device *device);
+
+int kgsl_suspend(struct device *dev);
+int kgsl_resume(struct device *dev);
+int kgsl_runtime_suspend(struct device *dev);
+int kgsl_runtime_resume(struct device *dev);
+extern const struct dev_pm_ops kgsl_pm_ops;
+
+int kgsl_suspend_driver(struct platform_device *pdev, pm_message_t state);
+int kgsl_resume_driver(struct platform_device *pdev);
+void kgsl_early_suspend_driver(struct early_suspend *h);
+void kgsl_late_resume_driver(struct early_suspend *h);
 
 #ifdef CONFIG_MSM_KGSL_DRM
 extern int kgsl_drm_init(struct platform_device *dev);
@@ -229,5 +257,10 @@ static inline struct kgsl_device *kgsl_device_from_dev(struct device *dev)
 	return NULL;
 }
 
+static inline bool timestamp_cmp(unsigned int new, unsigned int old)
+{
+	int ts_diff = new - old;
+	return (ts_diff >= 0) || (ts_diff < -20000);
+}
 
 #endif /* _GSL_DRIVER_H */

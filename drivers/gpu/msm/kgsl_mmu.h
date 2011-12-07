@@ -36,9 +36,6 @@
 /* Per process page tables will probably pass in the thread group
    as an identifier */
 
-#define KGSL_PAGETABLE_INIT_NUMBER 0xaaaa0000
-#define KGSL_PAGETABLE_POISON_NUMBER 0xbdbdbdbd
-
 #define KGSL_MMU_GLOBAL_PT 0
 
 #define GSL_PT_SUPER_PTE 8
@@ -86,7 +83,6 @@ struct kgsl_tlbflushfilter {
 };
 
 struct kgsl_pagetable {
-	unsigned int magic_number;
 	spinlock_t lock;
 	unsigned int   refcnt;
 	struct kgsl_memdesc  base;
@@ -100,6 +96,14 @@ struct kgsl_pagetable {
 	/* Maintain filter to manage tlb flushing */
 	struct kgsl_tlbflushfilter tlbflushfilter;
 	unsigned int tlb_flags;
+	struct kobject *kobj;
+
+	struct {
+		unsigned int entries;
+		unsigned int mapped;
+		unsigned int max_mapped;
+		unsigned int max_entries;
+	} stats;
 };
 
 struct kgsl_mmu_reg {
@@ -115,6 +119,7 @@ struct kgsl_mmu_reg {
 	uint32_t interrupt_mask;
 	uint32_t interrupt_status;
 	uint32_t interrupt_clear;
+	uint32_t axi_error;
 };
 
 struct kgsl_mmu {
@@ -125,17 +130,11 @@ struct kgsl_mmu {
 	uint32_t        mpu_base;
 	int              mpu_range;
 	struct kgsl_memdesc    dummyspace;
+	struct kgsl_mmu_reg    reg;
 	/* current page table object being used by device mmu */
 	struct kgsl_pagetable  *defaultpagetable;
 	struct kgsl_pagetable  *hwpagetable;
 };
-
-
-static inline int
-kgsl_mmu_isenabled(struct kgsl_mmu *mmu)
-{
-	return ((mmu)->flags & KGSL_FLAGS_STARTED) ? 1 : 0;
-}
 
 struct kgsl_ptpool_chunk {
 	size_t size;
@@ -166,8 +165,7 @@ int kgsl_mmu_stop(struct kgsl_device *device);
 
 int kgsl_mmu_close(struct kgsl_device *device);
 
-struct kgsl_pagetable *kgsl_mmu_getpagetable(struct kgsl_mmu *mmu,
-					     unsigned long name);
+struct kgsl_pagetable *kgsl_mmu_getpagetable(unsigned long name);
 
 void kgsl_mmu_putpagetable(struct kgsl_pagetable *pagetable);
 
@@ -187,7 +185,6 @@ static inline unsigned int kgsl_pt_get_flags(struct kgsl_pagetable *pt,
 	return result;
 }
 
-
 #ifdef CONFIG_MSM_KGSL_MMU
 int kgsl_mmu_map(struct kgsl_pagetable *pagetable,
 		 unsigned int address,
@@ -205,7 +202,11 @@ void kgsl_ptpool_destroy(struct kgsl_ptpool *pool);
 
 int kgsl_ptpool_init(struct kgsl_ptpool *pool, int ptsize, int entries);
 
-int kgsl_get_ptname_from_ptbase(unsigned int pt_base);
+static inline int
+kgsl_mmu_isenabled(struct kgsl_mmu *mmu)
+{
+	return ((mmu)->flags & KGSL_FLAGS_STARTED) ? 1 : 0;
+}
 
 #else
 static inline int kgsl_mmu_map(struct kgsl_pagetable *pagetable,
@@ -223,6 +224,8 @@ static inline int kgsl_mmu_unmap(struct kgsl_pagetable *pagetable,
 					unsigned int gpuaddr, int range)
 { return 0; }
 
+static inline int kgsl_mmu_isenabled(struct kgsl_mmu *mmu) { return 0; }
+
 static inline int kgsl_ptpool_init(struct kgsl_ptpool *pool, int ptsize,
 				    int entries)
 {
@@ -230,8 +233,6 @@ static inline int kgsl_ptpool_init(struct kgsl_ptpool *pool, int ptsize,
 }
 
 static inline void kgsl_ptpool_free(struct kgsl_ptpool *pool) { }
-
-static inline int kgsl_get_ptname_from_ptbase(unsigned int pt_base) { }
 
 #endif
 

@@ -438,32 +438,15 @@ static int bad_syscall(int n, struct pt_regs *regs)
 
 #define  MAGIC_CACHE_INVALIDATE   0x50414C4D
 
-#ifdef CONFIG_MSM_KGSL_MMU
-void kgsl_palm_cache_inv_range(unsigned long addr, int size);
-#endif
-
 static inline void
 do_cache_op(unsigned long start, unsigned long end, int flags)
 {
 	struct mm_struct *mm = current->active_mm;
 	struct vm_area_struct *vma;
 
-	if (end < start)
+	if (end < start || flags)
 		return;
 
-	if (flags == MAGIC_CACHE_INVALIDATE) {
-#ifdef CONFIG_MSM_KGSL_MMU
-		start &= PAGE_MASK;
-		kgsl_palm_cache_inv_range(start, PAGE_ALIGN(end - start));
-#else
-		printk(KERN_WARNING "do_cache_op: MAGIC_CACHE_INVALIDATE not implemented\n");
-#endif
-		return;
-	}
-    
-	if (flags)
-		return;
-    
 	down_read(&mm->mmap_sem);
 	vma = find_vma(mm, start);
 	if (vma && vma->vm_start < end) {

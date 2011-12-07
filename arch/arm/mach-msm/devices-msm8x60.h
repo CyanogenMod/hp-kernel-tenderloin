@@ -57,6 +57,11 @@ extern struct platform_device msm_bus_cpss_fpb;
 #endif
 
 extern struct platform_device msm_device_smd;
+extern struct platform_device msm_kgsl_3d0;
+#ifdef CONFIG_MSM_KGSL_2D
+extern struct platform_device msm_kgsl_2d0;
+extern struct platform_device msm_kgsl_2d1;
+#endif
 extern struct platform_device msm_device_kgsl;
 extern struct platform_device msm_device_gpio;
 extern struct platform_device msm_device_vidc;
@@ -68,7 +73,9 @@ extern struct platform_device msm_device_rng;
 #endif
 
 void __init msm8x60_init_irq(void);
+#ifdef CONFIG_MSM_KGSL_2D
 void __init msm8x60_check_2d_hardware(void);
+#endif
 
 #ifdef CONFIG_WEBCAM_MT9M113
 extern struct platform_device msm_camera_sensor_webcam_mt9m113;

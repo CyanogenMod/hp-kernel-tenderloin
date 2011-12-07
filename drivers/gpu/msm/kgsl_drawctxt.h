@@ -47,14 +47,12 @@
 #define CTXT_FLAGS_SHADER_SAVE		0x00002000
 /* shader can be restored from shadow */
 #define CTXT_FLAGS_SHADER_RESTORE	0x00004000
+/* Context has caused a GPU hang */
+#define CTXT_FLAGS_GPU_HANG		0x00008000
 
 #include <linux/msm_kgsl.h>
 #include "kgsl_sharedmem.h"
 #include "yamato_reg.h"
-
-#define KGSL_MAX_GMEM_SHADOW_BUFFERS	2
-#define KGSL_CONTEXT_INIT_NUMBER 0x26262626
-#define KGSL_CONTEXT_POISON_NUMBER 0x13131313
 
 struct kgsl_device;
 struct kgsl_yamato_device;
@@ -76,11 +74,6 @@ struct gmem_shadow_t {
 	unsigned int width;	/* Width of surface used to store GMEM */
 	unsigned int height;	/* Height of surface used to store GMEM */
 	unsigned int pitch;	/* Pitch of surface used to store GMEM */
-	int offset;
-	unsigned int offset_x;
-	unsigned int offset_y;
-	unsigned int gmem_offset_x;
-	unsigned int gmem_offset_y;
 	unsigned int gmem_pitch;	/* Pitch value used for GMEM */
 	unsigned int *gmem_save_commands;
 	unsigned int *gmem_restore_commands;
@@ -91,7 +84,6 @@ struct gmem_shadow_t {
 };
 
 struct kgsl_yamato_context {
-	unsigned int ctxt_magic_number;
 	uint32_t         flags;
 	struct kgsl_pagetable *pagetable;
 	struct kgsl_memdesc       gpustate;
@@ -104,8 +96,6 @@ struct kgsl_yamato_context {
 	unsigned int 	    bin_base_offset;
 	/* Information of the GMEM shadow that is created in context create */
 	struct gmem_shadow_t context_gmem_shadow;
-	/* User defined GMEM shadow buffers */
-	struct gmem_shadow_t user_gmem_shadow[KGSL_MAX_GMEM_SHADOW_BUFFERS];
 };
 
 
@@ -116,21 +106,9 @@ int kgsl_drawctxt_create(struct kgsl_device_private *dev_priv,
 int kgsl_drawctxt_destroy(struct kgsl_device *device,
 			  struct kgsl_context *context);
 
-int kgsl_drawctxt_init(struct kgsl_device *device);
-
-int kgsl_drawctxt_close(struct kgsl_device *device);
-
 void kgsl_drawctxt_switch(struct kgsl_yamato_device *yamato_device,
 				struct kgsl_yamato_context *drawctxt,
 				unsigned int flags);
-int kgsl_drawctxt_bind_gmem_shadow(struct kgsl_yamato_device *yamato_device,
-			struct kgsl_context *context,
-			const struct kgsl_gmem_desc *gmem_desc,
-			unsigned int shadow_x,
-			unsigned int shadow_y,
-			const struct kgsl_buffer_desc
-			*shadow_buffer, unsigned int buffer_id);
-
 int kgsl_drawctxt_set_bin_base_offset(struct kgsl_device *device,
 				      struct kgsl_context *context,
 					unsigned int offset);

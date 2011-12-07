@@ -32,8 +32,6 @@
 #include <linux/mutex.h>
 #include "yamato_reg.h"
 
-#define GSL_STATS_RINGBUFFER
-
 #define GSL_RB_USE_MEM_RPTR
 #define GSL_RB_USE_MEM_TIMESTAMP
 #define GSL_DEVICE_SHADOW_MEMSTORE_TO_USER
@@ -83,14 +81,6 @@ struct kgsl_rbmemptrs {
 #define GSL_RB_MEMPTRS_WPTRPOLL_OFFSET \
 	(offsetof(struct kgsl_rbmemptrs, wptr_poll))
 
-#ifdef GSL_STATS_RINGBUFFER
-struct kgsl_rbstats {
-	int64_t issues;
-	int64_t words_total;
-};
-#endif /* GSL_STATS_RINGBUFFER */
-
-
 struct kgsl_ringbuffer {
 	struct kgsl_device *device;
 	uint32_t flags;
@@ -107,11 +97,6 @@ struct kgsl_ringbuffer {
 	unsigned int wptr; /* write pointer offset in dwords from baseaddr */
 	unsigned int rptr; /* read pointer offset in dwords from baseaddr */
 	uint32_t timestamp;
-
-#ifdef GSL_STATS_RINGBUFFER
-	struct kgsl_rbstats stats;
-#endif /* GSL_STATS_RINGBUFFER */
-
 };
 
 /* dword base address of the GFX decode space */
@@ -169,13 +154,6 @@ struct kgsl_ringbuffer {
 #define GSL_RB_UPDATE_WPTR_POLLING(rb)
 #endif	/* GSL_RB_USE_WPTR_POLLING */
 
-/* stats */
-#ifdef GSL_STATS_RINGBUFFER
-#define GSL_RB_STATS(x) x
-#else
-#define GSL_RB_STATS(x)
-#endif /* GSL_STATS_RINGBUFFER */
-
 int kgsl_ringbuffer_issueibcmds(struct kgsl_device_private *dev_priv,
 				struct kgsl_context *context,
 				struct kgsl_ibdesc *ibdesc, unsigned int numibs,
@@ -201,12 +179,27 @@ int kgsl_ringbuffer_gettimestampshadow(struct kgsl_device *device,
 
 void kgsl_cp_intrcallback(struct kgsl_device *device);
 
+int kgsl_ringbuffer_extract(struct kgsl_ringbuffer *rb,
+				unsigned int *temp_rb_buffer,
+				int *rb_size);
+
+void
+kgsl_ringbuffer_restore(struct kgsl_ringbuffer *rb, unsigned int *rb_buff,
+			int num_rb_contents);
+
 static inline int kgsl_ringbuffer_count(struct kgsl_ringbuffer *rb,
 	unsigned int rptr)
 {
 	if (rb->wptr >= rptr)
 		return rb->wptr - rptr;
 	return rb->wptr + rb->sizedwords - rptr;
+}
+
+/* Increment a value by 4 bytes with wrap-around based on size */
+static inline unsigned int adreno_ringbuffer_inc_wrapped(unsigned int val,
+							unsigned int size)
+{
+	return (val + sizeof(unsigned int)) % size;
 }
 
 #endif  /* __GSL_RINGBUFFER_H */

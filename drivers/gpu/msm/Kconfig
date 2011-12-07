@@ -56,16 +56,6 @@ config MSM_KGSL_PSTMRTMDMP_RB_HEX
 	  Use hex version for the ring-buffer in the post-mortem dump, instead
 	  of the human readable version.
 
-config MSM_KGSL_PSTMRTMDMP_NO_REG_DUMP
-	bool "Disable dumping of most registers in post-mortem dump"
-	default n
-	depends on MSM_KGSL
-	---help---
-	  For a more compact kernel log the extensive register hex dump
-	  can be turned off with this option.  The register dump takes up
-	  so much space that vital other information gets cut from the
-	  post-mortem dump.
-
 config MSM_KGSL_2D
 	bool "Enable the 2D core. Required for OpenVG"
 	default n
@@ -77,7 +67,7 @@ config MSM_KGSL_DRM
 
 config MSM_KGSL_MMU
 	bool "Enable the GPU MMU in the MSM_KGSL driver"
-	depends on MSM_KGSL && MMU
+	depends on MSM_KGSL && MMU && !MSM_KGSL_CFF_DUMP
 	default y
 
 config KGSL_PER_PROCESS_PAGE_TABLE
