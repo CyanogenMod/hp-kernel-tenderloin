@@ -107,7 +107,7 @@
 #include <linux/mfd/wm8994/core.h>
 #endif
 
-#ifdef CONFIG_USB_ANDROID
+#ifdef CONFIG_USB_G_ANDROID
 #include <linux/usb/android_composite.h>
 #endif
 
@@ -815,7 +815,7 @@ static irqreturn_t pmic_id_on_irq(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-#ifdef CONFIG_USB_ANDROID
+#ifdef CONFIG_USB_G_ANDROID
 
 static struct usb_ether_platform_data rndis_pdata = {
 	/* ethaddr is filled by board_serialno_setup */
@@ -6908,8 +6908,8 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
 	}
 #endif
 
-#ifdef CONFIG_USB_ANDROID
-    platform_device_register(&usb_diag_device);
+#ifdef CONFIG_USB_G_ANDROID
+//    platform_device_register(&usb_diag_device);
     android_usb_pdata.products[0].product_id =
 		android_usb_pdata.product_id;
     platform_device_register(&usb_mass_storage_device);

@@ -18,7 +18,7 @@
 void msm_hsusb_8x50_phy_reset(void);
 #endif
 
-#ifdef CONFIG_USB_ANDROID
+#ifdef CONFIG_USB_G_ANDROID
 #ifdef ERROR
 #undef ERROR
 #endif
@@ -33,12 +33,12 @@ static char *usb_functions_adb[] = {
 	"adb",
 };
 
-#ifdef CONFIG_USB_ANDROID_ECM
+#ifdef CONFIG_USB_G_ANDROID_ECM
 static char *usb_functions_ecm[] = {
 	"cdc_ethernet",
 };
 #endif
-#ifdef CONFIG_USB_ANDROID_RNDIS
+#ifdef CONFIG_USB_G_ANDROID_RNDIS
 static char *usb_functions_rndis[] = {
 	"rndis",
 };
@@ -46,11 +46,11 @@ static char *usb_functions_rndis_adb[] = {
 	"rndis",
 	"adb",
 };
-#if defined(CONFIG_USB_ANDROID_DIAG) || defined(CONFIG_USB_ANDROID_QCT_DIAG)
+#if defined(CONFIG_USB_G_ANDROID_DIAG) || defined(CONFIG_USB_G_ANDROID_QCT_DIAG)
 static char *usb_functions_rndis_diag[] = {
 	"rndis",
 	"diag",
-#if defined(CONFIG_USB_ANDROID_LTE_DIAG)
+#if defined(CONFIG_USB_G_ANDROID_LTE_DIAG)
 	"diag_mdm",
 #endif
 };
@@ -58,14 +58,14 @@ static char *usb_functions_rndis_adb_diag[] = {
 	"rndis",
 	"adb",
 	"diag",
-#if defined(CONFIG_USB_ANDROID_LTE_DIAG)
+#if defined(CONFIG_USB_G_ANDROID_LTE_DIAG)
 	"diag_mdm",
 #endif
 };
 #endif
 #endif
 
-#ifdef CONFIG_USB_ANDROID_PROJECTOR
+#ifdef CONFIG_USB_G_ANDROID_PROJECTOR
 static char *usb_functions_projector[] = {
 	"usb_mass_storage",
 	"projector",
@@ -75,24 +75,24 @@ static char *usb_functions_adb_projector[] = {
 	"adb",
 	"projector",
 };
-#if defined(CONFIG_USB_ANDROID_DIAG) || defined(CONFIG_USB_ANDROID_QCT_DIAG)
+#if defined(CONFIG_USB_G_ANDROID_DIAG) || defined(CONFIG_USB_G_ANDROID_QCT_DIAG)
 static char *usb_function_adb_diag_projector[] = {
 	"usb_mass_storage",
 	"adb",
 	"diag",
 	"projector",
-#if defined(CONFIG_USB_ANDROID_LTE_DIAG)
+#if defined(CONFIG_USB_G_ANDROID_LTE_DIAG)
 	"diag_mdm",
 #endif
 };
-#ifdef CONFIG_USB_ANDROID_SERIAL
+#ifdef CONFIG_USB_G_ANDROID_SERIAL
 static char *usb_function_adb_diag_modem_projector[] = {
 	"usb_mass_storage",
 	"adb",
 	"diag",
 	"modem",
 	"projector",
-#if defined(CONFIG_USB_ANDROID_LTE_DIAG)
+#if defined(CONFIG_USB_G_ANDROID_LTE_DIAG)
 	"diag_mdm",
 #endif
 };
@@ -100,7 +100,7 @@ static char *usb_function_adb_diag_modem_projector[] = {
 #endif
 #endif
 
-#if defined(CONFIG_USB_ANDROID_MTP36) || defined(CONFIG_USB_ANDROID_MTP)
+#if defined(CONFIG_USB_G_ANDROID_MTP36) || defined(CONFIG_USB_G_ANDROID_MTP)
 static char *usb_functions_mtp[] = {
 	"mtp",
 };
@@ -111,7 +111,7 @@ static char *usb_functions_mtp_adb[] = {
 };
 #endif
 
-#if defined(CONFIG_USB_ANDROID_MTP36) && defined(CONFIG_USB_ANDROID_MTP)
+#if defined(CONFIG_USB_G_ANDROID_MTP36) && defined(CONFIG_USB_G_ANDROID_MTP)
 static char *usb_functions_mtp36[] = {
 	"mtp36",
 };
@@ -122,11 +122,11 @@ static char *usb_functions_mtp36_adb[] = {
 };
 #endif
 
-#if defined(CONFIG_USB_ANDROID_DIAG) || defined(CONFIG_USB_ANDROID_QCT_DIAG)
+#if defined(CONFIG_USB_G_ANDROID_DIAG) || defined(CONFIG_USB_G_ANDROID_QCT_DIAG)
 static char *usb_functions_diag[] = {
 	"usb_mass_storage",
 	"diag",
-#if defined(CONFIG_USB_ANDROID_LTE_DIAG)
+#if defined(CONFIG_USB_G_ANDROID_LTE_DIAG)
 	"diag_mdm",
 #endif
 };
@@ -134,13 +134,13 @@ static char *usb_functions_adb_diag[] = {
 	"usb_mass_storage",
 	"adb",
 	"diag",
-#if defined(CONFIG_USB_ANDROID_LTE_DIAG)
+#if defined(CONFIG_USB_G_ANDROID_LTE_DIAG)
 	"diag_mdm",
 #endif
 };
 #endif
 
-#ifdef CONFIG_USB_ANDROID_SERIAL
+#ifdef CONFIG_USB_G_ANDROID_SERIAL
 static char *usb_functions_adb_serial[] = {
 	"usb_mass_storage",
 	"adb",
@@ -156,12 +156,12 @@ static char *usb_functions_adb_modem[] = {
 	"adb",
 	"modem",
 };
-#if defined(CONFIG_USB_ANDROID_DIAG) || defined(CONFIG_USB_ANDROID_QCT_DIAG)
+#if defined(CONFIG_USB_G_ANDROID_DIAG) || defined(CONFIG_USB_G_ANDROID_QCT_DIAG)
 static char *usb_functions_diag_modem[] = {
 	"usb_mass_storage",
 	"diag",
 	"modem",
-#if defined(CONFIG_USB_ANDROID_LTE_DIAG)
+#if defined(CONFIG_USB_G_ANDROID_LTE_DIAG)
 	"diag_mdm",
 #endif
 };
@@ -170,7 +170,7 @@ static char *usb_functions_adb_diag_modem[] = {
 	"adb",
 	"diag",
 	"modem",
-#if defined(CONFIG_USB_ANDROID_LTE_DIAG)
+#if defined(CONFIG_USB_G_ANDROID_LTE_DIAG)
 	"diag_mdm",
 #endif
 };
@@ -179,7 +179,7 @@ static char *usb_functions_adb_diag_serial[] = {
 	"adb",
 	"diag",
 	"serial",
-#if defined(CONFIG_USB_ANDROID_LTE_DIAG)
+#if defined(CONFIG_USB_G_ANDROID_LTE_DIAG)
 	"diag_mdm",
 #endif
 };
@@ -187,7 +187,7 @@ static char *usb_functions_diag_serial[] = {
 	"usb_mass_storage",
 	"diag",
 	"serial",
-#if defined(CONFIG_USB_ANDROID_LTE_DIAG)
+#if defined(CONFIG_USB_G_ANDROID_LTE_DIAG)
 	"diag_mdm",
 #endif
 };
@@ -197,7 +197,7 @@ static char *usb_functions_adb_diag_serial_modem[] = {
 	"diag",
 	"modem",
 	"serial",
-#if defined(CONFIG_USB_ANDROID_LTE_DIAG)
+#if defined(CONFIG_USB_G_ANDROID_LTE_DIAG)
 	"diag_mdm",
 #endif
 };
@@ -206,14 +206,14 @@ static char *usb_functions_diag_serial_modem[] = {
 	"diag",
 	"modem",
 	"serial",
-#if defined(CONFIG_USB_ANDROID_LTE_DIAG)
+#if defined(CONFIG_USB_G_ANDROID_LTE_DIAG)
 	"diag_mdm",
 #endif
 };
 #endif
 #endif
 
-#ifdef CONFIG_USB_ANDROID_ACM
+#ifdef CONFIG_USB_G_ANDROID_ACM
 static char *usb_functions_adb_acm[] = {
 	"usb_mass_storage",
 	"adb",
@@ -225,13 +225,13 @@ static char *usb_functions_acm[] = {
 #endif
 
 
-#ifdef CONFIG_USB_ANDROID_RMNET_SDIO
+#ifdef CONFIG_USB_G_ANDROID_RMNET_SDIO
 static char *usb_functions_adb_diag_modem_rment[] = {
 	"usb_mass_storage",
 	"adb",
 	"diag",
 	"modem",
-#if defined(CONFIG_USB_ANDROID_LTE_DIAG)
+#if defined(CONFIG_USB_G_ANDROID_LTE_DIAG)
 	"diag_mdm",
 #endif
 	"rmnet",
@@ -241,7 +241,7 @@ static char *usb_functions_diag_modem_rment[] = {
 	"usb_mass_storage",
 	"diag",
 	"modem",
-#if defined(CONFIG_USB_ANDROID_LTE_DIAG)
+#if defined(CONFIG_USB_G_ANDROID_LTE_DIAG)
 	"diag_mdm",
 #endif
 	"rmnet",
@@ -251,7 +251,7 @@ static char *usb_functions_adb_diag_rment[] = {
 	"usb_mass_storage",
 	"adb",
 	"diag",
-#if defined(CONFIG_USB_ANDROID_LTE_DIAG)
+#if defined(CONFIG_USB_G_ANDROID_LTE_DIAG)
 	"diag_mdm",
 #endif
 	"rmnet",
@@ -260,7 +260,7 @@ static char *usb_functions_adb_diag_rment[] = {
 static char *usb_functions_diag_rment[] = {
 	"usb_mass_storage",
 	"diag",
-#if defined(CONFIG_USB_ANDROID_LTE_DIAG)
+#if defined(CONFIG_USB_G_ANDROID_LTE_DIAG)
 	"diag_mdm",
 #endif
 	"rmnet",
@@ -280,36 +280,36 @@ static char *usb_functions_rment[] = {
 #endif
 
 static char *usb_functions_all[] = {
-#ifdef CONFIG_USB_ANDROID_RNDIS
+#ifdef CONFIG_USB_G_ANDROID_RNDIS
 	"rndis",
 #endif
-#if defined(CONFIG_USB_ANDROID_MTP36) || defined(CONFIG_USB_ANDROID_MTP)
+#if defined(CONFIG_USB_G_ANDROID_MTP36) || defined(CONFIG_USB_G_ANDROID_MTP)
 	"mtp",
 #endif
-#if defined(CONFIG_USB_ANDROID_MTP36) && defined(CONFIG_USB_ANDROID_MTP)
+#if defined(CONFIG_USB_G_ANDROID_MTP36) && defined(CONFIG_USB_G_ANDROID_MTP)
 	"mtp36",
 #endif
 	"usb_mass_storage",
 	"adb",
-#ifdef CONFIG_USB_ANDROID_ECM
+#ifdef CONFIG_USB_G_ANDROID_ECM
 	"cdc_ethernet",
 #endif
-#if defined(CONFIG_USB_ANDROID_DIAG) || defined(CONFIG_USB_ANDROID_QCT_DIAG)
+#if defined(CONFIG_USB_G_ANDROID_DIAG) || defined(CONFIG_USB_G_ANDROID_QCT_DIAG)
 	"diag",
 #endif
-#ifdef CONFIG_USB_ANDROID_SERIAL
+#ifdef CONFIG_USB_G_ANDROID_SERIAL
 	"serial",
 #endif
-#ifdef CONFIG_USB_ANDROID_PROJECTOR
+#ifdef CONFIG_USB_G_ANDROID_PROJECTOR
 	"projector",
 #endif
-#ifdef CONFIG_USB_ANDROID_ACM
+#ifdef CONFIG_USB_G_ANDROID_ACM
 	"acm",
 #endif
-#if defined(CONFIG_USB_ANDROID_LTE_DIAG)
+#if defined(CONFIG_USB_G_ANDROID_LTE_DIAG)
 	"diag_mdm",
 #endif
-#ifdef CONFIG_USB_ANDROID_RMNET_SDIO
+#ifdef CONFIG_USB_G_ANDROID_RMNET_SDIO
 	"rmnet",
 #endif
 };
@@ -325,7 +325,7 @@ static struct android_usb_product usb_products[] = {
 		.num_functions	= ARRAY_SIZE(usb_functions_ums),
 		.functions	= usb_functions_ums,
 	},
-#ifdef CONFIG_USB_ANDROID_ACM
+#ifdef CONFIG_USB_G_ANDROID_ACM
 	{
 		.product_id	= 0x0ff4,
 		.num_functions	= ARRAY_SIZE(usb_functions_acm),
@@ -337,14 +337,14 @@ static struct android_usb_product usb_products[] = {
 		.functions	= usb_functions_adb_acm,
 	},
 #endif
-#ifdef CONFIG_USB_ANDROID_ECM
+#ifdef CONFIG_USB_G_ANDROID_ECM
 	{
 		.product_id	= 0x0ff8,
 		.num_functions	= ARRAY_SIZE(usb_functions_ecm),
 		.functions	= usb_functions_ecm,
 	},
 #endif
-#ifdef CONFIG_USB_ANDROID_SERIAL
+#ifdef CONFIG_USB_G_ANDROID_SERIAL
 	{
 		.product_id	= 0x0fd1,
 		.num_functions	= ARRAY_SIZE(usb_functions_adb_serial),
@@ -361,8 +361,8 @@ static struct android_usb_product usb_products[] = {
 		.num_functions	= ARRAY_SIZE(usb_functions_adb_modem),
 		.functions	= usb_functions_adb_modem,
 	},
-#if defined(CONFIG_USB_ANDROID_DIAG) || defined(CONFIG_USB_ANDROID_QCT_DIAG)
-#if defined(CONFIG_USB_ANDROID_LTE_DIAG)
+#if defined(CONFIG_USB_G_ANDROID_DIAG) || defined(CONFIG_USB_G_ANDROID_QCT_DIAG)
+#if defined(CONFIG_USB_G_ANDROID_LTE_DIAG)
 	{
 		.product_id	= 0x0fde,
 		.num_functions	= ARRAY_SIZE(usb_functions_adb_diag_modem),
@@ -427,7 +427,7 @@ static struct android_usb_product usb_products[] = {
 #endif
 #endif
 #endif
-#ifdef CONFIG_USB_ANDROID_PROJECTOR
+#ifdef CONFIG_USB_G_ANDROID_PROJECTOR
 	{
 		.product_id	= 0x0c05,
 		.num_functions	= ARRAY_SIZE(usb_functions_projector),
@@ -438,14 +438,14 @@ static struct android_usb_product usb_products[] = {
 		.num_functions	= ARRAY_SIZE(usb_functions_adb_projector),
 		.functions	= usb_functions_adb_projector,
 	},
-#if defined(CONFIG_USB_ANDROID_DIAG) || defined(CONFIG_USB_ANDROID_QCT_DIAG)
-#if defined(CONFIG_USB_ANDROID_LTE_DIAG)
+#if defined(CONFIG_USB_G_ANDROID_DIAG) || defined(CONFIG_USB_G_ANDROID_QCT_DIAG)
+#if defined(CONFIG_USB_G_ANDROID_LTE_DIAG)
 	{
 		.product_id	= 0x0FE3,
 		.num_functions	= ARRAY_SIZE(usb_function_adb_diag_projector),
 		.functions	= usb_function_adb_diag_projector,
 	},
-#ifdef CONFIG_USB_ANDROID_SERIAL
+#ifdef CONFIG_USB_G_ANDROID_SERIAL
 	{
 		.product_id	= 0x0FE4,
 		.num_functions	= ARRAY_SIZE(usb_function_adb_diag_modem_projector),
@@ -458,7 +458,7 @@ static struct android_usb_product usb_products[] = {
 		.num_functions	= ARRAY_SIZE(usb_function_adb_diag_projector),
 		.functions	= usb_function_adb_diag_projector,
 	},
-#ifdef CONFIG_USB_ANDROID_SERIAL
+#ifdef CONFIG_USB_G_ANDROID_SERIAL
 	{
 		.product_id	= 0x0FF2,
 		.num_functions	= ARRAY_SIZE(usb_function_adb_diag_modem_projector),
@@ -469,8 +469,8 @@ static struct android_usb_product usb_products[] = {
 
 #endif
 #endif
-#if defined(CONFIG_USB_ANDROID_DIAG) || defined(CONFIG_USB_ANDROID_QCT_DIAG)
-#if defined(CONFIG_USB_ANDROID_LTE_DIAG)
+#if defined(CONFIG_USB_G_ANDROID_DIAG) || defined(CONFIG_USB_G_ANDROID_QCT_DIAG)
+#if defined(CONFIG_USB_G_ANDROID_LTE_DIAG)
 	{
 		.product_id	= 0x0FDC,
 		.num_functions	= ARRAY_SIZE(usb_functions_adb_diag),
@@ -494,7 +494,7 @@ static struct android_usb_product usb_products[] = {
 	},
 #endif
 #endif
-#if defined(CONFIG_USB_ANDROID_MTP36) || defined(CONFIG_USB_ANDROID_MTP)
+#if defined(CONFIG_USB_G_ANDROID_MTP36) || defined(CONFIG_USB_G_ANDROID_MTP)
 	{
 		.product_id	= 0x0ca8,
 		.num_functions	= ARRAY_SIZE(usb_functions_mtp_adb),
@@ -506,7 +506,7 @@ static struct android_usb_product usb_products[] = {
 		.functions	= usb_functions_mtp,
 	},
 #endif
-#if defined(CONFIG_USB_ANDROID_MTP36) && defined(CONFIG_USB_ANDROID_MTP)
+#if defined(CONFIG_USB_G_ANDROID_MTP36) && defined(CONFIG_USB_G_ANDROID_MTP)
 	{
 		.product_id	= 0x0ca8,
 		.num_functions	= ARRAY_SIZE(usb_functions_mtp36_adb),
@@ -518,7 +518,7 @@ static struct android_usb_product usb_products[] = {
 		.functions	= usb_functions_mtp36,
 	},
 #endif
-#ifdef CONFIG_USB_ANDROID_RNDIS
+#ifdef CONFIG_USB_G_ANDROID_RNDIS
 	{
 		.product_id	= 0x0ffe,
 		.num_functions	= ARRAY_SIZE(usb_functions_rndis),
@@ -529,8 +529,8 @@ static struct android_usb_product usb_products[] = {
 		.num_functions	= ARRAY_SIZE(usb_functions_rndis_adb),
 		.functions	= usb_functions_rndis_adb,
 	},
-#if defined(CONFIG_USB_ANDROID_DIAG) || defined(CONFIG_USB_ANDROID_QCT_DIAG)
-#if defined(CONFIG_USB_ANDROID_LTE_DIAG)
+#if defined(CONFIG_USB_G_ANDROID_DIAG) || defined(CONFIG_USB_G_ANDROID_QCT_DIAG)
+#if defined(CONFIG_USB_G_ANDROID_LTE_DIAG)
 	{
 		.product_id	= 0x0fe5,
 		.num_functions	= ARRAY_SIZE(usb_functions_rndis_adb_diag),
@@ -556,7 +556,7 @@ static struct android_usb_product usb_products[] = {
 #endif
 #endif
 
-#ifdef CONFIG_USB_ANDROID_RMNET_SDIO
+#ifdef CONFIG_USB_G_ANDROID_RMNET_SDIO
 	{
 		.product_id	= 0x0fd2,
 		.num_functions	= ARRAY_SIZE(usb_functions_adb_diag_modem_rment),
