@@ -520,7 +520,7 @@ void mdp4_overlay_vg_setup(struct mdp4_overlay_pipe *pipe)
 		src_size = ((pipe->src_h << 16) | ALIGN(pipe->src_w, 16));
 	}
 	format = mdp4_overlay_format(pipe);
-	pattern = mdp4_overlay_unpack_pattern2(pipe);
+	pattern = mdp4_overlay_unpack_pattern(pipe);
 
 	/* not RGB use VG pipe, pure VG pipe */
 	if (ptype != OVERLAY_TYPE_RGB)
@@ -1693,10 +1693,10 @@ static int mdp4_overlay_req2pipe(struct mdp_overlay *req, int mixer,
 
 	pipe->op_mode = 0;
 
-	if (req->flags & MDP_FLIP_LR)
+//	if (req->flags & MDP_FLIP_LR)
 		pipe->op_mode |= MDP4_OP_FLIP_LR;
 
-	if (req->flags & MDP_FLIP_UD)
+//	if (req->flags & MDP_FLIP_UD)
 		pipe->op_mode |= MDP4_OP_FLIP_UD;
 
 	if (req->flags & MDP_DITHER)
