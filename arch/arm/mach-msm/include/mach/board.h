@@ -243,6 +243,17 @@ struct msm_adspdec_database {
 	struct dec_instance_table *dec_instance_list;
 };
 
+enum msm_mdp_hw_revision {
+	MDP_REV_20 = 1,
+	MDP_REV_22,
+	MDP_REV_30,
+	MDP_REV_303,
+	MDP_REV_31,
+	MDP_REV_40,
+	MDP_REV_41,
+	MDP_REV_42,
+};
+
 struct msm_panel_common_pdata {
 	uintptr_t hw_revision_addr;
 	int gpio;
@@ -258,6 +269,8 @@ struct msm_panel_common_pdata {
 #ifdef CONFIG_MSM_BUS_SCALING
 	struct msm_bus_scale_pdata *mdp_bus_scale_table;
 #endif
+    int mdp_rev;
+	int (*writeback_offset)(void);
 };
 
 struct lcdc_platform_data {

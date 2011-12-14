@@ -1058,8 +1058,8 @@ struct mdp_blit_req *req, struct file *p_src_file, struct file *p_dst_file)
 			ppp_operation_reg |= PPP_OP_FLIP_UD;
 		}
 	}
-
-	src0_ystride = src_width * inpBpp;
+	
+    src0_ystride = src_width * inpBpp;
 	dest0_ystride = iBuf->ibuf_width * iBuf->bpp;
 
 	/* no need to care about rotation since it's the real-XY. */
@@ -1387,9 +1387,9 @@ int mdp_ppp_blit(struct fb_info *info, struct mdp_blit_req *req)
 	}
 
 	/* rotation check */
-	if (req->flags & MDP_FLIP_LR)
+//	if (req->flags & MDP_FLIP_LR)
 		iBuf.mdpImg.mdpOp |= MDPOP_LR;
-	if (req->flags & MDP_FLIP_UD)
+//	if (req->flags & MDP_FLIP_UD)
 		iBuf.mdpImg.mdpOp |= MDPOP_UD;
 	if (req->flags & MDP_ROT_90)
 		iBuf.mdpImg.mdpOp |= MDPOP_ROT90;

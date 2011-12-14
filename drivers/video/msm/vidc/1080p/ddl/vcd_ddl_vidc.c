@@ -50,10 +50,10 @@ void ddl_vidc_core_init(struct ddl_context *ddl_context)
 		vidc_1080p_decode_frame_start_ch0;
 	ddl_context->vidc_decode_frame_start[1] =
 		vidc_1080p_decode_frame_start_ch1;
-	ddl_context->vidc_set_divx3_resolution[0] =
-		vidc_1080p_set_divx3_resolution_ch0;
-	ddl_context->vidc_set_divx3_resolution[1] =
-		vidc_1080p_set_divx3_resolution_ch1;
+	ddl_context->vidc_set_dec_resolution[0] =
+		vidc_1080p_set_dec_resolution_ch0;
+	ddl_context->vidc_set_dec_resolution[1] =
+		vidc_1080p_set_dec_resolution_ch1;
 	ddl_context->vidc_encode_seq_start[0] =
 		vidc_1080p_encode_seq_start_ch0;
 	ddl_context->vidc_encode_seq_start[1] =
@@ -111,6 +111,8 @@ void ddl_vidc_channel_set(struct ddl_client_context *ddl)
 	u32 pix_cache_ctrl, ctxt_mem_offset, ctxt_mem_size;
 
 	if (ddl->decoding) {
+		if (vidc_msg_timing)
+			ddl_set_core_start_time(__func__, DEC_OP_TIME);
 		vcd_codec = &(ddl->codec_data.decoder.codec.codec);
 		pix_cache_ctrl = (u32)dec_pix_cache;
 		ctxt_mem_offset = DDL_ADDR_OFFSET(ddl_context->dram_base_a,
@@ -195,6 +197,8 @@ void ddl_vidc_decode_init_codec(struct ddl_client_context *ddl)
 	struct vidc_1080p_dec_seq_start_param seq_start_param;
 	u32 seq_size;
 
+	if (vidc_msg_timing)
+		ddl_set_core_start_time(__func__, DEC_OP_TIME);
 	vidc_1080p_set_decode_mpeg4_pp_filter(decoder->post_filter.post_filter);
 
 	ddl_vidc_metadata_enable(ddl);
@@ -203,12 +207,17 @@ void ddl_vidc_decode_init_codec(struct ddl_client_context *ddl)
 		DDL_ADDR_OFFSET(ddl_context->dram_base_a,
 		ddl->codec_data.decoder.meta_data_input));
 
-	if ((decoder->codec.codec == VCD_CODEC_DIVX_3))
-		ddl_context->vidc_set_divx3_resolution
+	vidc_sm_set_idr_decode_only(&ddl->shared_mem[ddl->command_channel],
+			decoder->idr_only_decoding);
+
+	if ((decoder->codec.codec == VCD_CODEC_DIVX_3) ||
+	   (decoder->codec.codec == VCD_CODEC_VC1_RCV ||
+		decoder->codec.codec == VCD_CODEC_VC1))
+		ddl_context->vidc_set_dec_resolution
 		[ddl->command_channel](decoder->client_frame_size.width,
 		decoder->client_frame_size.height);
 	else
-	ddl_context->vidc_set_divx3_resolution
+	ddl_context->vidc_set_dec_resolution
 	[ddl->command_channel](0x0, 0x0);
 	DDL_MSG_LOW("HEADER-PARSE-START");
 	DDL_MSG_LOW("ddl_state_transition: %s ~~>"
@@ -785,6 +794,8 @@ u32 ddl_vidc_decode_set_buffers(struct ddl_client_context *ddl)
 	struct ddl_decoder_data *decoder = &(ddl->codec_data.decoder);
 	u32 vcd_status = VCD_S_SUCCESS;
 	struct vidc_1080p_dec_init_buffers_param init_buf_param;
+	u32 size_y = 0;
+	u32 size_c = 0;
 
 	if (!DDLCLIENT_STATE_IS(ddl, DDL_CLIENT_WAIT_FOR_DPB)) {
 		DDL_MSG_ERROR("STATE-CRITICAL");
@@ -804,16 +815,31 @@ u32 ddl_vidc_decode_set_buffers(struct ddl_client_context *ddl)
 #ifdef DDL_BUF_LOG
 	ddl_list_buffers(ddl);
 #endif
+	if (vidc_msg_timing)
+		ddl_set_core_start_time(__func__, DEC_OP_TIME);
 	ddl_decoder_dpb_transact(decoder, NULL, DDL_DPB_OP_INIT);
 	ddl_decoder_dpb_init(ddl);
 	DDL_MSG_LOW("ddl_state_transition: %s ~~> DDL_CLIENT_WAIT_FOR_DPBDONE",
 	ddl_get_state_string(ddl->client_state));
 	ddl->client_state = DDL_CLIENT_WAIT_FOR_DPBDONE;
 	ddl->cmd_state = DDL_CMD_DECODE_SET_DPB;
-	vidc_sm_set_allocated_dpb_size(
-		&ddl->shared_mem[ddl->command_channel],
-		decoder->dpb_buf_size.size_y,
-		decoder->dpb_buf_size.size_c);
+	if (decoder->cont_mode) {
+		size_y = ddl_get_yuv_buf_size(decoder->client_frame_size.width,
+				decoder->client_frame_size.height,
+				DDL_YUV_BUF_TYPE_TILE);
+		size_c = ddl_get_yuv_buf_size(decoder->client_frame_size.width,
+				(decoder->client_frame_size.height >> 1),
+				DDL_YUV_BUF_TYPE_TILE);
+		vidc_sm_set_allocated_dpb_size(
+			&ddl->shared_mem[ddl->command_channel],
+			size_y,
+			size_c);
+	} else {
+		vidc_sm_set_allocated_dpb_size(
+			&ddl->shared_mem[ddl->command_channel],
+			decoder->dpb_buf_size.size_y,
+			decoder->dpb_buf_size.size_c);
+	}
 	init_buf_param.cmd_seq_num = ++ddl_context->cmd_seq_num;
 	init_buf_param.inst_id = ddl->instance_id;
 	init_buf_param.shared_mem_addr_offset = DDL_ADDR_OFFSET(
@@ -835,7 +861,10 @@ void ddl_vidc_decode_frame_run(struct ddl_client_context *ddl)
 	struct ddl_mask *dpb_mask = &ddl->codec_data.decoder.dpb_mask;
 	struct vidc_1080p_dec_frame_start_param dec_param;
 	u32 dpb_addr_y[32], index;
-
+	if (vidc_msg_timing) {
+		ddl_set_core_start_time(__func__, DEC_OP_TIME);
+		ddl_set_core_start_time(__func__, DEC_IP_TIME);
+	}
 	if ((!bit_stream->data_len) || (!bit_stream->physical)) {
 		ddl_vidc_decode_eos_run(ddl);
 		return;

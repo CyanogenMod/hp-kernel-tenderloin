@@ -21,6 +21,8 @@
 #define VIDC_SM_EXTENDED_DECODE_STATUS_ADDR    0x0000
 #define VIDC_SM_EXT_DEC_STATUS_RESOLUTION_CHANGE_BMSK 0x1
 #define VIDC_SM_EXT_DEC_STATUS_RESOLUTION_CHANGE_SHFT 0x0
+#define VIDC_SM_EXT_DEC_STATUS_MORE_FIELD_NEEDED_BMSK 0x4
+#define VIDC_SM_EXT_DEC_STATUS_MORE_FIELD_NEEDED_SHFT 0x2
 
 #define VIDC_SM_SET_FRAME_TAG_ADDR             0x0004
 #define VIDC_SM_GET_FRAME_TAG_TOP_ADDR         0x0008
@@ -54,6 +56,10 @@
 #define VIDC_SM_FREE_LUMA_DPB_ADDR                          0x00c4
 #define VIDC_SM_FREE_LUMA_DPB_BMSK                          0xffffffff
 #define VIDC_SM_FREE_LUMA_DPB_SHFT                          0
+
+#define VIDC_SM_FREE_LUMA_DPB_DEC_ORDER_ADDR                0x00fc
+#define VIDC_SM_FREE_LUMA_DPB_DEC_ORDER_BMSK                0xffffffff
+#define VIDC_SM_FREE_LUMA_DPB_DEC_ORDER_SHFT                0
 
 #define VIDC_SM_DEC_ORDER_WIDTH_ADDR                        0x00e8
 #define VIDC_SM_DEC_ORDER_WIDTH_BMSK                        0xffffffff
@@ -221,10 +227,21 @@ static u32 ddl_mem_read_32(u32 *addr)
 }
 
 void vidc_sm_get_extended_decode_status(struct ddl_buf_addr *shared_mem,
-	u32 *pn_decode_status)
+	u32 *more_field_needed,
+	u32 *resl_change)
 {
-	*pn_decode_status = DDL_MEM_READ_32(shared_mem,
+	u32 decode_status = DDL_MEM_READ_32(shared_mem,
 					VIDC_SM_EXTENDED_DECODE_STATUS_ADDR);
+	if (more_field_needed)
+		*more_field_needed =
+				VIDC_GETFIELD(decode_status,
+				VIDC_SM_EXT_DEC_STATUS_MORE_FIELD_NEEDED_BMSK,
+				VIDC_SM_EXT_DEC_STATUS_MORE_FIELD_NEEDED_SHFT);
+	if (resl_change)
+		*resl_change =
+				VIDC_GETFIELD(decode_status,
+				VIDC_SM_EXT_DEC_STATUS_RESOLUTION_CHANGE_BMSK,
+				VIDC_SM_EXT_DEC_STATUS_RESOLUTION_CHANGE_SHFT);
 }
 
 void vidc_sm_set_frame_tag(struct ddl_buf_addr *shared_mem,
@@ -291,6 +308,14 @@ void vidc_sm_get_available_luma_dpb_address(struct ddl_buf_addr
 {
 	*pn_free_luma_dpb_address = DDL_MEM_READ_32(shared_mem,
 		VIDC_SM_FREE_LUMA_DPB_ADDR);
+}
+
+void vidc_sm_get_available_luma_dpb_dec_order_address(
+	struct ddl_buf_addr	*shared_mem,
+	u32 *pn_free_luma_dpb_address)
+{
+	*pn_free_luma_dpb_address = DDL_MEM_READ_32(shared_mem,
+		VIDC_SM_FREE_LUMA_DPB_DEC_ORDER_ADDR);
 }
 
 void vidc_sm_get_dec_order_resl(
@@ -586,18 +611,26 @@ void vidc_sm_set_pand_b_frame_qp(struct ddl_buf_addr *shared_mem,
 
 
 void vidc_sm_get_profile_info(struct ddl_buf_addr *shared_mem,
-	u32 *pn_disp_profile_info, u32 *pn_disp_level_info)
+	struct ddl_profile_info_type *ddl_profile_info)
 {
 	u32 disp_pic_profile;
 
 	disp_pic_profile = DDL_MEM_READ_32(shared_mem,
-				VIDC_SM_DISP_PIC_PROFILE_ADDR);
-	*pn_disp_profile_info = VIDC_GETFIELD(disp_pic_profile,
-			VIDC_SM_DISP_PIC_PROFILE_DISP_PIC_PROFILE_BMASK,
-			VIDC_SM_DISP_PIC_PROFILE_DISP_PIC_PROFILE_SHFT);
-	*pn_disp_level_info = VIDC_GETFIELD(disp_pic_profile,
-			VIDC_SM_DISP_PIC_PROFILE_DISP_PIC_LEVEL_BMASK,
-			VIDC_SM_DISP_PIC_PROFILE_DISP_PIC_LEVEL_SHFT);
+		VIDC_SM_DISP_PIC_PROFILE_ADDR);
+	ddl_profile_info->bit_depth_chroma_minus8 =
+		(disp_pic_profile  & 0x00380000) >> 19;
+	ddl_profile_info->bit_depth_luma_minus8 =
+		(disp_pic_profile & 0x00070000) >> 16;
+	ddl_profile_info->pic_profile = VIDC_GETFIELD(
+		disp_pic_profile,
+		VIDC_SM_DISP_PIC_PROFILE_DISP_PIC_PROFILE_BMASK,
+		VIDC_SM_DISP_PIC_PROFILE_DISP_PIC_PROFILE_SHFT);
+	ddl_profile_info->pic_level = VIDC_GETFIELD(
+		disp_pic_profile,
+		VIDC_SM_DISP_PIC_PROFILE_DISP_PIC_LEVEL_BMASK,
+		VIDC_SM_DISP_PIC_PROFILE_DISP_PIC_LEVEL_SHFT);
+	ddl_profile_info->chroma_format_idc =
+		(disp_pic_profile & 0x60) >> 5;
 }
 
 void vidc_sm_set_encoder_new_bit_rate(struct ddl_buf_addr *shared_mem,
@@ -626,7 +659,6 @@ void vidc_sm_set_encoder_init_rc_value(struct ddl_buf_addr *shared_mem,
 	DDL_MEM_WRITE_32(shared_mem, 0x011C, new_rc_value);
 
 }
-
 void vidc_sm_set_idr_decode_only(struct ddl_buf_addr *shared_mem,
 	u32 enable)
 {

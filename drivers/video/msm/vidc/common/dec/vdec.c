@@ -32,7 +32,6 @@
 #include <linux/workqueue.h>
 #include <linux/android_pmem.h>
 #include <linux/clk.h>
-#include <linux/switch.h>
 #include <linux/timer.h>
 
 #include "vidc_type.h"
@@ -43,24 +42,15 @@
 
 
 #if DEBUG
-#define DBG(x...) printk(KERN_DEBUG "[VID] " x)
+#define DBG(x...) printk(KERN_DEBUG x)
 #else
 #define DBG(x...)
 #endif
 
-#define INFO(x...) printk(KERN_INFO "[VID] " x)
-#define ERR(x...) printk(KERN_ERR "[VID] " x)
+#define INFO(x...) printk(KERN_INFO x)
+#define ERR(x...) printk(KERN_ERR x)
 
 #define VID_DEC_NAME		"msm_vidc_dec"
-
-//extern int wlan_ioprio_idle;
-
-static struct switch_dev vdec_switch = {
-	.name = "vdec", /* This is not typo. We use same uevent as encoder */
-};
-
-#define VDEC_STATE_OFF 0
-#define VDEC_STATE_ON  (1 << 0)
 
 static struct vid_dec_dev *vid_dec_device_p;
 static dev_t vid_dec_dev_num;
@@ -91,6 +81,8 @@ u32 vid_dec_get_status(u32 status)
 	switch (status) {
 	case VCD_ERR_SEQHDR_PARSE_FAIL:
 	case VCD_ERR_BITSTREAM_ERR:
+		vdec_status = VDEC_S_INPUT_BITSTREAM_ERR;
+		break;
 	case VCD_S_SUCCESS:
 		vdec_status = VDEC_S_SUCCESS;
 		break;
@@ -151,6 +143,42 @@ void vid_dec_vcd_open_done(struct video_client_ctx *client_ctx,
 		vid_dec_notify_client(client_ctx);
 	} else
 		ERR("%s(): ERROR. client_ctx is NULL\n", __func__);
+}
+
+static void vid_dec_handle_field_drop(struct video_client_ctx *client_ctx,
+	u32 event, u32 status, int64_t time_stamp)
+{
+	struct vid_dec_msg *vdec_msg;
+
+	if (!client_ctx) {
+		ERR("%s() NULL pointer\n", __func__);
+		return;
+	}
+
+	vdec_msg = kzalloc(sizeof(struct vid_dec_msg), GFP_KERNEL);
+	if (!vdec_msg) {
+		ERR("%s(): cannot allocate vid_dec_msg "
+			" buffer\n", __func__);
+		return;
+	}
+	vdec_msg->vdec_msg_info.status_code = vid_dec_get_status(status);
+	if (event == VCD_EVT_IND_INFO_FIELD_DROPPED) {
+		vdec_msg->vdec_msg_info.msgcode =
+			VDEC_MSG_EVT_INFO_FIELD_DROPPED;
+		vdec_msg->vdec_msg_info.msgdata.output_frame.time_stamp
+		= time_stamp;
+		DBG("Send FIELD_DROPPED message to client = %p\n", client_ctx);
+	} else {
+		ERR("vid_dec_input_frame_done(): invalid event type: "
+			"%d\n", event);
+		vdec_msg->vdec_msg_info.msgcode = VDEC_MSG_INVALID;
+	}
+	vdec_msg->vdec_msg_info.msgdatasize =
+		sizeof(struct vdec_output_frameinfo);
+	mutex_lock(&client_ctx->msg_queue_lock);
+	list_add_tail(&vdec_msg->list, &client_ctx->msg_queue);
+	mutex_unlock(&client_ctx->msg_queue_lock);
+	wake_up(&client_ctx->msg_wait);
 }
 
 static void vid_dec_input_frame_done(struct video_client_ctx *client_ctx,
@@ -270,6 +298,15 @@ static void vid_dec_output_frame_done(struct video_client_ctx *client_ctx,
 			vcd_frame_data->dec_op_prop.disp_frm.right;
 		vdec_msg->vdec_msg_info.msgdata.output_frame.framesize.top =
 			vcd_frame_data->dec_op_prop.disp_frm.top;
+		if (vcd_frame_data->interlaced) {
+			vdec_msg->vdec_msg_info.msgdata.
+				output_frame.interlaced_format =
+				VDEC_InterlaceInterleaveFrameTopFieldFirst;
+		} else {
+			vdec_msg->vdec_msg_info.msgdata.
+				output_frame.interlaced_format =
+				VDEC_InterlaceFrameProgressive;
+		}
 		/* Decoded picture type */
 		switch (vcd_frame_data->frame) {
 		case VCD_FRAME_I:
@@ -363,6 +400,12 @@ static void vid_dec_lean_event(struct video_client_ctx *client_ctx,
 			 " to client");
 		vdec_msg->vdec_msg_info.msgcode = VDEC_MSG_RESP_PAUSE_DONE;
 		break;
+	case VCD_EVT_IND_INFO_OUTPUT_RECONFIG:
+		INFO("msm_vidc_dec: Sending VDEC_MSG_EVT_INFO_CONFIG_CHANGED"
+			 " to client");
+		vdec_msg->vdec_msg_info.msgcode =
+			 VDEC_MSG_EVT_INFO_CONFIG_CHANGED;
+		break;
 	default:
 		ERR("%s() : unknown event type\n", __func__);
 		break;
@@ -409,6 +452,13 @@ void vid_dec_vcd_cb(u32 event, u32 status,
 		vid_dec_input_frame_done(client_ctx, event, status,
 					 (struct vcd_frame_data *)info);
 		break;
+	case VCD_EVT_IND_INFO_FIELD_DROPPED:
+		if (info)
+			vid_dec_handle_field_drop(client_ctx, event,
+			status,	*((int64_t *)info));
+		else
+			pr_err("Wrong Payload for Field dropped\n");
+		break;
 	case VCD_EVT_RESP_OUTPUT_DONE:
 	case VCD_EVT_RESP_OUTPUT_FLUSHED:
 		vid_dec_output_frame_done(client_ctx, event, status,
@@ -421,6 +471,7 @@ void vid_dec_vcd_cb(u32 event, u32 status,
 	case VCD_EVT_IND_OUTPUT_RECONFIG:
 	case VCD_EVT_IND_HWERRFATAL:
 	case VCD_EVT_IND_RESOURCES_LOST:
+	case VCD_EVT_IND_INFO_OUTPUT_RECONFIG:
 		vid_dec_lean_event(client_ctx, event, status);
 		break;
 	case VCD_EVT_RESP_START:
@@ -460,8 +511,14 @@ static u32 vid_dec_set_codec(struct video_client_ctx *client_ctx,
 	case VDEC_CODECTYPE_DIVX_3:
 		codec.codec = VCD_CODEC_DIVX_3;
 		break;
+	case VDEC_CODECTYPE_DIVX_4:
+		codec.codec = VCD_CODEC_DIVX_4;
+		break;
 	case VDEC_CODECTYPE_DIVX_5:
 		codec.codec = VCD_CODEC_DIVX_5;
+		break;
+	case VDEC_CODECTYPE_DIVX_6:
+		codec.codec = VCD_CODEC_DIVX_6;
 		break;
 	case VDEC_CODECTYPE_XVID:
 		codec.codec = VCD_CODEC_XVID;
@@ -668,6 +725,22 @@ static u32 vid_dec_set_extradata(struct video_client_ctx *client_ctx,
 		return true;
 }
 
+static u32 vid_dec_set_idr_only_decoding(struct video_client_ctx *client_ctx)
+{
+	struct vcd_property_hdr vcd_property_hdr;
+	u32 vcd_status = VCD_ERR_FAIL;
+	u32 enable = true;
+	if (!client_ctx)
+		return false;
+	vcd_property_hdr.prop_id = VCD_I_DEC_PICTYPE;
+	vcd_property_hdr.sz = sizeof(u32);
+	vcd_status = vcd_set_property(client_ctx->vcd_handle,
+			&vcd_property_hdr, &enable);
+	if (vcd_status)
+		return false;
+	return true;
+}
+
 static u32 vid_dec_set_h264_mv_buffers(struct video_client_ctx *client_ctx,
 					struct vdec_h264_mv *mv_data)
 {
@@ -710,6 +783,22 @@ static u32 vid_dec_set_h264_mv_buffers(struct video_client_ctx *client_ctx,
 		return false;
 	else
 		return true;
+}
+
+static u32 vid_dec_set_cont_on_reconfig(struct video_client_ctx *client_ctx)
+{
+	struct vcd_property_hdr vcd_property_hdr;
+	u32 vcd_status = VCD_ERR_FAIL;
+	u32 enable = true;
+	if (!client_ctx)
+		return false;
+	vcd_property_hdr.prop_id = VCD_I_CONT_ON_RECONFIG;
+	vcd_property_hdr.sz = sizeof(u32);
+	vcd_status = vcd_set_property(client_ctx->vcd_handle,
+		&vcd_property_hdr, &enable);
+	if (vcd_status)
+		return false;
+	return true;
 }
 
 static u32 vid_dec_get_h264_mv_buffer_size(struct video_client_ctx *client_ctx,
@@ -871,7 +960,7 @@ static u32 vid_dec_pause_resume(struct video_client_ctx *client_ctx, u32 pause)
   u32 vcd_status;
 
 	if (!client_ctx) {
-		ERR("%s(): Invalid client_ctx", __func__);
+		ERR("\n %s(): Invalid client_ctx", __func__);
 		return false;
 	}
 
@@ -899,7 +988,7 @@ static u32 vid_dec_start_stop(struct video_client_ctx *client_ctx, u32 start)
 
 	INFO("msm_vidc_dec: Inside %s()", __func__);
 	if (!client_ctx) {
-		ERR("Invalid client_ctx");
+		ERR("\n Invalid client_ctx");
 		return false;
 	}
 
@@ -1059,7 +1148,7 @@ static u32 vid_dec_flush(struct video_client_ctx *client_ctx,
 	INFO("msm_vidc_dec: %s() called with dir = %u", __func__,
 		 flush_dir);
 	if (!client_ctx) {
-		ERR("Invalid client_ctx");
+		ERR("\n Invalid client_ctx");
 		return false;
 	}
 
@@ -1324,16 +1413,12 @@ static int vid_dec_ioctl(struct inode *inode, struct file *file,
 		result = vid_dec_start_stop(client_ctx, true);
 		if (!result)
 			return -EIO;
-		switch_set_state(&vdec_switch, VDEC_STATE_ON);
-		//wlan_ioprio_idle = 1;
 		break;
 	}
 	case VDEC_IOCTL_CMD_STOP:
 	{
 		DBG("VDEC_IOCTL_CMD_STOP\n");
 		result = vid_dec_start_stop(client_ctx, false);
-		switch_set_state(&vdec_switch, VDEC_STATE_OFF);
-		//wlan_ioprio_idle = 0;
 		if (!result)
 			return -EIO;
 		break;
@@ -1583,6 +1668,20 @@ static int vid_dec_ioctl(struct inode *inode, struct file *file,
 			return -EIO;
 		break;
 	}
+	case VDEC_IOCTL_SET_IDR_ONLY_DECODING:
+	{
+		result = vid_dec_set_idr_only_decoding(client_ctx);
+		if (!result)
+			return -EIO;
+		break;
+	}
+	case VDEC_IOCTL_SET_CONT_ON_RECONFIG:
+	{
+		result = vid_dec_set_cont_on_reconfig(client_ctx);
+		if (!result)
+			return -EIO;
+		break;
+	}
 	default:
 		ERR("%s(): Unsupported ioctl\n", __func__);
 		return -ENOTTY;
@@ -1599,7 +1698,7 @@ static u32 vid_dec_close_client(struct video_client_ctx *client_ctx)
 
 	INFO("msm_vidc_dec: Inside %s()", __func__);
 	if (!client_ctx || (!client_ctx->vcd_handle)) {
-		ERR("Invalid client_ctx");
+		ERR("\n Invalid client_ctx");
 		return false;
 	}
 
@@ -1608,10 +1707,10 @@ static u32 vid_dec_close_client(struct video_client_ctx *client_ctx)
 		client_ctx->stop_called = true;
 		client_ctx->stop_sync_cb = true;
 		vcd_status = vcd_stop(client_ctx->vcd_handle);
-		DBG("Stuck at the stop call");
+		DBG("\n Stuck at the stop call");
 		if (!vcd_status)
 			wait_for_completion(&client_ctx->event);
-		DBG("Came out of wait event");
+		DBG("\n Came out of wait event");
 	}
 	mutex_lock(&client_ctx->msg_queue_lock);
 	while (!list_empty(&client_ctx->msg_queue)) {
@@ -1657,16 +1756,12 @@ static int vid_dec_open(struct inode *inode, struct file *file)
 	DBG(" Virtual Address of ioremap is %p\n", vid_dec_device_p->virt_base);
 	if (!vid_dec_device_p->num_clients) {
 		if (!vidc_load_firmware())
-			{
-			mutex_unlock(&vid_dec_device_p->lock);
 			return -ENODEV;
-			}
 	}
 
 	client_index = vid_dec_get_empty_client_index();
 	if (client_index == -1) {
 		ERR("%s() : No free clients client_index == -1\n", __func__);
-		mutex_unlock(&vid_dec_device_p->lock);
 		return -ENODEV;
 	}
 	client_ctx = &vid_dec_device_p->vdec_clients[client_index];
@@ -1710,8 +1805,6 @@ static int vid_dec_release(struct inode *inode, struct file *file)
 #ifndef USE_RES_TRACKER
 	vidc_disable_clk();
 #endif
-	switch_set_state(&vdec_switch, VDEC_STATE_OFF);
-	//wlan_ioprio_idle = 0;
 	INFO("msm_vidc_dec: Return from %s()", __func__);
 	return 0;
 }
@@ -1834,9 +1927,6 @@ static int __init vid_dec_init(void)
 		goto error_vid_dec_cdev_add;
 	}
 	vid_dec_vcd_init();
-	if (switch_dev_register(&vdec_switch) < 0) {
-		printk(KERN_ERR "vdec: fail to register vdec switch!\n");
-	}
 	return 0;
 
 error_vid_dec_cdev_add:

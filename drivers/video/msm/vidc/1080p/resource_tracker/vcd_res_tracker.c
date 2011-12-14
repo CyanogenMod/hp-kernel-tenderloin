@@ -290,6 +290,10 @@ int res_trk_update_bus_perf_level(struct vcd_dev_ctxt *dev_ctxt, u32 perf_level)
 		bus_clk_index = 1;
 	else
 		bus_clk_index = 2;
+
+	if (dev_ctxt->reqd_perf_lvl + dev_ctxt->curr_perf_lvl == 0)
+		bus_clk_index = 2;
+
 	bus_clk_index = (bus_clk_index << 1) + (client_type + 1);
 	VCDRES_MSG_LOW("%s(), bus_clk_index = %d", __func__, bus_clk_index);
 	VCDRES_MSG_LOW("%s(),context.pcl = %x", __func__, resource_context.pcl);
@@ -318,6 +322,9 @@ u32 res_trk_set_perf_level(u32 req_perf_lvl, u32 *pn_set_perf_lvl,
 	}
 
 #endif
+	if (dev_ctxt->reqd_perf_lvl + dev_ctxt->curr_perf_lvl == 0)
+		req_perf_lvl = RESTRK_1080P_MAX_PERF_LEVEL;
+
 	if (req_perf_lvl <= RESTRK_1080P_VGA_PERF_LEVEL) {
 		vidc_freq = vidc_clk_table[0];
 		*pn_set_perf_lvl = RESTRK_1080P_VGA_PERF_LEVEL;
@@ -329,11 +336,11 @@ u32 res_trk_set_perf_level(u32 req_perf_lvl, u32 *pn_set_perf_lvl,
 		*pn_set_perf_lvl = RESTRK_1080P_MAX_PERF_LEVEL;
 	}
 	resource_context.perf_level = *pn_set_perf_lvl;
-	VCDRES_MSG_HIGH("VIDC: vidc_freq = %u, req_perf_lvl = %u\n",
+	VCDRES_MSG_MED("VIDC: vidc_freq = %u, req_perf_lvl = %u\n",
 		vidc_freq, req_perf_lvl);
 #ifdef USE_RES_TRACKER
     if (req_perf_lvl != RESTRK_1080P_MIN_PERF_LEVEL) {
-		VCDRES_MSG_HIGH("%s(): Setting vidc freq to %u\n",
+		VCDRES_MSG_MED("%s(): Setting vidc freq to %u\n",
 			__func__, vidc_freq);
 		if (!res_trk_sel_clk_rate(vidc_freq)) {
 			VCDRES_MSG_ERROR("%s(): res_trk_sel_clk_rate FAILED\n",
@@ -343,7 +350,7 @@ u32 res_trk_set_perf_level(u32 req_perf_lvl, u32 *pn_set_perf_lvl,
 		}
 	}
 #endif
-	VCDRES_MSG_HIGH("%s() set perl level : %d", __func__, *pn_set_perf_lvl);
+	VCDRES_MSG_MED("%s() set perl level : %d", __func__, *pn_set_perf_lvl);
 	return true;
 }
 

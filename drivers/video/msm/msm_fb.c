@@ -1305,21 +1305,10 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 	return ret;
 }
 
-/*jonpry: *HACK* something is trying to open us early. Probably v4l or some console remnant. 
-		Since it quickly decides to close us. This results in shutdown of the lcd
-		and boot anim, and ugly blankness on the screen. To fix this we simply fail
-		on the first open. Would be nice to just not be opened instead */
-static int first=1;
 static int msm_fb_open(struct fb_info *info, int user)
 {
 	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)info->par;
 	int result;
-
-	if(first)
-	{
-		first = 0;
-		return -1;
-	}
 
 	result = pm_runtime_get_sync(info->dev);
 
@@ -2666,6 +2655,11 @@ static void msmfb_set_color_conv(struct mdp_ccs *p)
 		mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
 	}
 }
+#else
+static void msmfb_set_color_conv(struct mdp_csc *p)
+{
+	mdp4_vg_csc_update(p);
+}
 #endif
 
 static int msmfb_notify_update(struct fb_info *info, unsigned long *argp)
@@ -2702,6 +2696,8 @@ static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 	struct mdp_histogram hist;
 #ifndef CONFIG_FB_MSM_MDP40
 	struct mdp_ccs ccs_matrix;
+#else
+	struct mdp_csc csc_matrix;
 #endif
 	struct mdp_page_protection fb_page_protection;
 	int ret = 0;
@@ -2781,7 +2777,16 @@ static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 		msmfb_set_color_conv(&ccs_matrix) ;
 		up(&msm_fb_ioctl_ppp_sem);
 #else
-		ret = -EINVAL;
+		ret = copy_from_user(&csc_matrix, argp, sizeof(csc_matrix));
+		if (ret) {
+			pr_err("%s:MSMFB_SET_CSC_MATRIX ioctl failed\n",
+				__func__);
+			return ret;
+		}
+		down(&msm_fb_ioctl_ppp_sem);
+		msmfb_set_color_conv(&csc_matrix);
+		up(&msm_fb_ioctl_ppp_sem);
+
 #endif
 
 		break;

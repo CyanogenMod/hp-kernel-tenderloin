@@ -120,7 +120,7 @@ void mdp4_mipi_vsync_enable(struct msm_fb_data_type *mfd,
 void mdp4_overlay_update_dsi_cmd(struct msm_fb_data_type *mfd)
 {
 	MDPIBUF *iBuf = &mfd->ibuf;
-	struct fb_info *fbi;
+	struct fb_info *fbi = mfd->fbi;
 	uint8 *src;
 	int ptype;
 	struct mdp4_overlay_pipe *pipe;
@@ -139,7 +139,7 @@ void mdp4_overlay_update_dsi_cmd(struct msm_fb_data_type *mfd)
 		ptype = mdp4_overlay_format2type(mfd->fb_imgType);
 		if (ptype < 0)
 			printk(KERN_INFO "%s: format2type failed\n", __func__);
-		pipe = mdp4_overlay_pipe_alloc(ptype, MDP4_MIXER0, 0);
+		pipe = mdp4_overlay_pipe_alloc(ptype, MDP4_MIXER0);
 		if (pipe == NULL)
 			printk(KERN_INFO "%s: pipe_alloc failed\n", __func__);
 		pipe->pipe_used++;
@@ -160,22 +160,23 @@ void mdp4_overlay_update_dsi_cmd(struct msm_fb_data_type *mfd)
 
 		dsi_pipe = pipe; /* keep it */
 
-		fbi = mfd->fbi;
-		bpp = fbi->var.bits_per_pixel / 8;
-		src = (uint8 *) iBuf->buf;
-		writeback_offset = mdp4_overlay_writeback_setup(
-						fbi, pipe, src, bpp);
-
-		/*
-		 * configure dsi stream id
-		 * dma_p = 0, dma_s = 1
-		 */
-		MDP_OUTP(MDP_BASE + 0x000a0, 0x10);
-		/* enable dsi trigger on dma_p */
-		MDP_OUTP(MDP_BASE + 0x000a4, 0x01);
+		writeback_offset = mdp4_writeback_offset();
+		if (writeback_offset > 0) {
+			pipe->blt_base = (ulong)fbi->fix.smem_start;
+			pipe->blt_base += writeback_offset;
+		} else {
+			pipe->blt_base  = 0;
+		}
 	} else {
 		pipe = dsi_pipe;
 	}
+	/*
+	 * configure dsi stream id
+	 * dma_p = 0, dma_s = 1
+	 */
+	MDP_OUTP(MDP_BASE + 0x000a0, 0x10);
+	/* disable dsi trigger */
+	MDP_OUTP(MDP_BASE + 0x000a4, 0x00);
 
 	/* whole screen for base layer */
 	src = (uint8 *) iBuf->buf;
@@ -311,6 +312,11 @@ int mdp4_dsi_overlay_blt_start(struct msm_fb_data_type *mfd)
 
 	pr_debug("%s: blt_end=%d blt_addr=%x pid=%d\n",
 	__func__, dsi_pipe->blt_end, (int)dsi_pipe->blt_addr, current->pid);
+
+	if (dsi_pipe->blt_base == 0) {
+		pr_info("%s: no blt_base assigned\n", __func__);
+		return -EBUSY;
+	}
 
 	if (dsi_pipe->blt_addr == 0) {
 		mdp4_dsi_cmd_dma_busy_wait(mfd);
@@ -463,7 +469,7 @@ void mdp4_dma_p_done_dsi(struct mdp_dma_data *dma)
 	outpdw(MDP_BASE + 0x000c, 0x0);
 	wmb();
 	/* trigger dsi cmd engine */
-	mipi_dsi_cmd_mdp_sw_trigger();
+	mipi_dsi_cmd_mdp_start();
 
 	mdp_pipe_ctrl(MDP_OVERLAY0_BLOCK, MDP_BLOCK_POWER_OFF, TRUE);
 }
@@ -525,7 +531,7 @@ void mdp4_overlay0_done_dsi_cmd(struct mdp_dma_data *dma)
 	outpdw(MDP_BASE + 0x000c, 0x0);
 	wmb();
 	/* trigger dsi cmd engine */
-	mipi_dsi_cmd_mdp_sw_trigger();
+	mipi_dsi_cmd_mdp_start();
 	mdp_disable_irq_nosync(MDP_OVERLAY0_TERM);
 }
 
@@ -640,6 +646,11 @@ void mdp4_dsi_cmd_overlay_kickoff(struct msm_fb_data_type *mfd,
 	/* change mdp clk */
 	mdp4_set_perf_level();
 
+	mipi_dsi_mdp_busy_wait(mfd);
+
+	if (dsi_pipe->blt_addr == 0)
+		mipi_dsi_cmd_mdp_start();
+
 	mdp4_overlay_dsi_state_set(ST_DSI_PLAYING);
 
 	spin_lock_irqsave(&mdp_spin_lock, flag);
@@ -652,12 +663,6 @@ void mdp4_dsi_cmd_overlay_kickoff(struct msm_fb_data_type *mfd,
 	spin_unlock_irqrestore(&mdp_spin_lock, flag);
 	/* start OVERLAY pipe */
 	mdp_pipe_kickoff(MDP_OVERLAY0_TERM, mfd);
-	wmb();
-
-	if (dsi_pipe->blt_addr == 0) {
-		/* trigger dsi cmd engine */
-		mipi_dsi_cmd_mdp_sw_trigger();
-	}
 }
 
 void mdp4_dsi_cmd_overlay(struct msm_fb_data_type *mfd)

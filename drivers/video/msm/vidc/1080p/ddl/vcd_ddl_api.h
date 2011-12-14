@@ -61,6 +61,10 @@
 #define DDL_I_FRAME_PROC_UNITS   (VCD_I_CUSTOM_DDL_BASE + 0x9)
 #define DDL_I_SEQHDR_PRESENT     (VCD_I_CUSTOM_DDL_BASE + 0xA)
 
+#define DDL_FRAME_VGA_SIZE     (640*480)
+#define DDL_FRAME_720P_WIDTH   1280
+#define DDL_FRAME_720P_HEIGHT  720
+
 struct vcd_property_rc_level{
 	u32 frame_level_rc;
 	u32 mb_level_rc;

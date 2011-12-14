@@ -129,7 +129,7 @@ int mdp4_dsi_video_on(struct platform_device *pdev)
 		ptype = mdp4_overlay_format2type(mfd->fb_imgType);
 		if (ptype < 0)
 			printk(KERN_INFO "%s: format2type failed\n", __func__);
-		pipe = mdp4_overlay_pipe_alloc(ptype, MDP4_MIXER0, 0);
+		pipe = mdp4_overlay_pipe_alloc(ptype, MDP4_MIXER0);
 		if (pipe == NULL) {
 			printk(KERN_INFO "%s: pipe_alloc failed\n", __func__);
 			return -EBUSY;
@@ -146,8 +146,14 @@ int mdp4_dsi_video_on(struct platform_device *pdev)
 		dsi_pipe = pipe; /* keep it */
 		init_completion(&dsi_video_comp);
 
-		writeback_offset = mdp4_overlay_writeback_setup(
-						fbi, pipe, buf, bpp);
+		writeback_offset = mdp4_writeback_offset();
+
+		if (writeback_offset > 0) {
+			pipe->blt_base = (ulong)fbi->fix.smem_start;
+			pipe->blt_base += writeback_offset;
+		} else {
+			pipe->blt_base  = 0;
+		}
 	} else {
 		pipe = dsi_pipe;
 	}
@@ -473,6 +479,29 @@ void mdp4_overlay_dsi_video_set_perf(struct msm_fb_data_type *mfd)
 	mdp4_set_perf_level();
 }
 
+static void mdp4_overlay_dsi_video_prefill(struct msm_fb_data_type *mfd)
+{
+	unsigned long flag;
+
+	if (dsi_pipe->blt_addr) {
+		mdp4_overlay_dsi_video_dma_busy_wait(mfd);
+
+		mdp4_dsi_video_blt_ov_update(dsi_pipe);
+		dsi_pipe->ov_cnt++;
+
+		spin_lock_irqsave(&mdp_spin_lock, flag);
+		outp32(MDP_INTR_CLEAR, INTR_OVERLAY0_DONE);
+		mdp_intr_mask |= INTR_OVERLAY0_DONE;
+		outp32(MDP_INTR_ENABLE, mdp_intr_mask);
+		mdp_enable_irq(MDP_OVERLAY0_TERM);
+		mfd->dma->busy = TRUE;
+		mb();	/* make sure all registers updated */
+		spin_unlock_irqrestore(&mdp_spin_lock, flag);
+		outpdw(MDP_BASE + 0x0004, 0); /* kickoff overlay engine */
+		mb();
+	}
+}
+
 void mdp4_overlay_dsi_video_vsync_push(struct msm_fb_data_type *mfd,
 			struct mdp4_overlay_pipe *pipe)
 {
@@ -526,6 +555,10 @@ void mdp4_dma_p_done_dsi_video(void)
 void mdp4_overlay0_done_dsi_video(struct mdp_dma_data *dma)
 {
 	spin_lock(&mdp_spin_lock);
+	if (dsi_pipe->blt_addr == 0) {
+		spin_unlock(&mdp_spin_lock);
+		return;
+	}
 	dma->busy = FALSE;
 	mdp4_dsi_video_blt_dmap_update(dsi_pipe);
 	dsi_pipe->dmap_cnt++;
@@ -544,6 +577,11 @@ static void mdp4_dsi_video_do_blt(struct msm_fb_data_type *mfd, int enable)
 	unsigned long flag;
 	int data;
 	int change = 0;
+
+	if (dsi_pipe->blt_base == 0) {
+		pr_info("%s: no blt_base assigned\n", __func__);
+		return;
+	}
 
 	spin_lock_irqsave(&mdp_spin_lock, flag);
 	if (enable && dsi_pipe->blt_addr == 0) {
@@ -579,10 +617,12 @@ static void mdp4_dsi_video_do_blt(struct msm_fb_data_type *mfd, int enable)
 	mdp4_overlay_dmap_xy(dsi_pipe);
 
 	if (data) {	/* timing generator enabled */
-		MDP_OUTP(MDP_BASE + DSI_VIDEO_BASE, 1);
-		mdp4_overlay_dsi_video_wait4event(mfd, INTR_DMA_P_DONE);
-		mdp4_overlay_dsi_video_wait4event(mfd, INTR_DMA_P_DONE);
-		MDP_OUTP(MDP_BASE + DSI_VIDEO_BASE, 0);
+		if (dsi_pipe->blt_addr) {
+			MDP_OUTP(MDP_BASE + DSI_VIDEO_BASE, 1);
+			mdp4_overlay_dsi_video_prefill(mfd);
+			mdp4_overlay_dsi_video_prefill(mfd);
+			MDP_OUTP(MDP_BASE + DSI_VIDEO_BASE, 0);
+		}
 		mipi_dsi_sw_reset();
 		mipi_dsi_controller_cfg(1);
 		MDP_OUTP(MDP_BASE + DSI_VIDEO_BASE, 1);

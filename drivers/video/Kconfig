@@ -2228,6 +2228,10 @@ config FB_MSM_LCDC_HW
 	bool
 	default n
 
+config FB_MSM_TRIPLE_BUFFER
+	bool "Support for triple frame buffer"
+	default n
+
 choice
 	prompt "MDP HW version"
 	default FB_MSM_MDP22
@@ -2377,6 +2381,16 @@ config FB_MSM_LCDC_SAMSUNG_WSVGA
 	select FB_MSM_LCDC_PANEL
 	default n
 
+config FB_MSM_LCDC_LG_XGA
+	bool
+	select FB_MSM_LCDC_PANEL
+	default n
+
+config FB_MSM_LCDC_CHIMEI_WXGA
+	bool
+	select FB_MSM_LCDC_PANEL
+	default n
+
 config FB_MSM_LCDC_GORDON_VGA
 	bool
 	select FB_MSM_LCDC_PANEL
@@ -2392,22 +2406,17 @@ config FB_MSM_LCDC_SHARP_WVGA_PT
 	select FB_MSM_LCDC_PANEL
 	default n
 
+config FB_MSM_LCDC_AUO_WVGA
+	bool
+	select FB_MSM_LCDC_PANEL
+	default n
+
 config FB_MSM_LCDC_SAMSUNG_OLED_PT
 	bool
 	select FB_MSM_LCDC_PANEL
 	default n
 
 config FB_MSM_LCDC_WXGA
-	bool
-	select FB_MSM_LCDC_PANEL
-	default n
-	
-config FB_MSM_LCDC_LG_XGA
-	bool
-	select FB_MSM_LCDC_PANEL
-	default n
-
-config FB_MSM_LCDC_HITACHI_XGA
 	bool
 	select FB_MSM_LCDC_PANEL
 	default n
@@ -2427,6 +2436,12 @@ config FB_MSM_MIPI_NOVATEK_CMD_QHD_PT
 	select FB_MSM_MIPI_DSI_NOVATEK
 	default n
 
+config FB_MSM_OVERLAY_WRITEBACK
+	depends on FB_MSM_OVERLAY
+        bool "MDP overlay write back mode enable"
+	---help---
+	  Support for MDP4 OVERLAY write back mode
+
 choice
 	prompt "LCD Panel"
 	default FB_MSM_MDDI_AUTO_DETECT
@@ -2444,6 +2459,20 @@ config FB_MSM_LCDC_SAMSUNG_WSVGA_PANEL
 	select FB_MSM_LCDC_SAMSUNG_WSVGA
 	---help---
 	  Support for LCDC Samsung WSVGA (1024x600) panel
+
+config FB_MSM_LCDC_LG_XGA_PANEL
+    depends on FB_MSM_LCDC_HW
+    bool "LCDC LG XGA Panel"
+    select FB_MSM_LCDC_LG_XGA
+    ---help---
+      Support for LCDC LG XGA (1024x768) panel
+
+config FB_MSM_LCDC_CHIMEI_WXGA_PANEL
+	depends on FB_MSM_LCDC_HW
+	bool "LCDC Chimei WXGA Panel"
+	select FB_MSM_LCDC_CHIMEI_WXGA
+	---help---
+	  Support for LCDC Chimei WXGA (1366x768) panel
 
 config FB_MSM_LCDC_GORDON_VGA_PANEL
 	depends on FB_MSM_LCDC_HW
@@ -2465,20 +2494,16 @@ config FB_MSM_LCDC_SHARP_WVGA_PT_PANEL
 	select FB_MSM_LCDC_SHARP_WVGA_PT
 	---help---
 	  Support for LCDC Sharp WVGA PT (480x800) panel
-	  
-config FB_MSM_LCDC_LG_XGA_PANEL
+
+config FB_MSM_LCDC_AUO_WVGA_PANEL
 	depends on FB_MSM_LCDC_HW
-	bool "LCDC LG XGA Panel"
-	select FB_MSM_LCDC_LG_XGA
+	bool "LCDC AUO WVGA Panel"
+	select FB_MSM_LCDC_AUO_WVGA
 	---help---
-	  Support for LCDC LG XGA (1024x768) panel
-
-config FB_MSM_PANEL_LG_HITACHI_COMBO
-	depends on FB_MSM_LCDC_HW
-	bool "LCDC HITACHI XGA + LCDC LG XGA"
-	select FB_MSM_LCDC_LG_XGA
-	select FB_MSM_LCDC_HITACHI_XGA
-
+	  Support for LCDC AUO WVGA(480x800) panel
+	  .
+	  .
+	  .
 config FB_MSM_LCDC_SAMSUNG_OLED_PT_PANEL
 	depends on FB_MSM_LCDC_HW
 	bool "LCDC Samsung OLED PT Panel"
@@ -2509,6 +2534,7 @@ config FB_MSM_MIPI_PANEL_DETECT
 	select FB_MSM_MIPI_TOSHIBA_VIDEO_WVGA_PT
 	select FB_MSM_LCDC_AUTO_DETECT
 	select FB_MSM_LCDC_SAMSUNG_WSVGA
+	select FB_MSM_LCDC_AUO_WVGA
 	select FB_MSM_LCDC_SAMSUNG_OLED_PT
 
 config FB_MSM_MDDI_PANEL_AUTO_DETECT
@@ -2521,6 +2547,7 @@ config FB_MSM_LCDC_PANEL_AUTO_DETECT
 	bool "LCDC Panel Auto Detect"
 	select FB_MSM_LCDC_AUTO_DETECT
 	select FB_MSM_LCDC_SAMSUNG_WSVGA
+	select FB_MSM_LCDC_AUO_WVGA
 	select FB_MSM_LCDC_SAMSUNG_OLED_PT
 	---help---
 	  Support for LCDC panel auto detect
@@ -2639,45 +2666,6 @@ config FB_MSM_HDMI_ADV7520_PANEL
         ---help---
         Support for LCDC 720p HDMI panel attached to ADV7520
 
-config FB_MSM_FLIP_UD
-       bool
-       default n
-
-config FB_MSM_FLIP_LR
-       bool
-       default n
-
-choice
-	depends on (FB_MSM_MDP40 && FB_MSM_OVERLAY)
-	prompt "Display flipping/rotation"
-	default FB_MSM_FLIP_NONE
-
-config FB_MSM_ROTATE_180
-	bool "Rotate display 180 degrees"
-	select FB_MSM_FLIP_LR
-	select FB_MSM_FLIP_UD
-	---help---
-	Rotate all mdp overlay layers 180 degrees
-
-config FB_MSM_FLIP_VERT
-	bool "Flip the display vertically"
-	select FB_MSM_FLIP_UD
-	---help---
-	Flips all mdp overlay layers vertically
-
-config FB_MSM_FLIP_HORIZ
-	bool "Flip the display horizontally"
-	select FB_MSM_FLIP_LR
-	---help---
-	Flips all mdp overlay layers horizontally
-
-config FB_MSM_FLIP_NONE
-	bool "No flipping"
-	---help---
-	No display flipping
-
-endchoice
-
 config FB_MSM_HDMI_ADV7520_PANEL_HDCP_SUPPORT
         depends on FB_MSM_HDMI_ADV7520_PANEL
         bool "Use HDCP mode"
@@ -2704,6 +2692,14 @@ config FB_MSM_HDMI_MSM_PANEL_DVI_SUPPORT
 	default n
 	---help---
 	  Support for DVI mode for MSM HDMI 1080p Panel
+
+config FB_MSM_HDMI_MSM_PANEL_CEC_SUPPORT
+	depends on FB_MSM_HDMI_MSM_PANEL
+	bool "Enable CEC"
+	default n
+	---help---
+	  Support for HDMI CEC Feature
+	  Choose to enable CEC
 
 config FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
 	depends on FB_MSM_HDMI_MSM_PANEL

@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -18,11 +18,13 @@
 #include "vcd_ddl_utils.h"
 #include "vcd_ddl.h"
 
-#ifdef DDL_PROFILE
-static unsigned int ddl_dec_t1, ddl_enc_t1;
-static unsigned int ddl_dec_ttotal, ddl_enc_ttotal;
-static unsigned int ddl_dec_count, ddl_enc_count;
-#endif
+struct time_data {
+	unsigned int ddl_t1;
+	unsigned int ddl_ttotal;
+	unsigned int ddl_count;
+};
+static struct time_data proc_time[MAX_TIME_DATA];
+#define DDL_MSG_TIME(x...) printk(KERN_DEBUG x)
 
 #define DDL_FW_CHANGE_ENDIAN
 
@@ -38,7 +40,7 @@ static void ddl_print_buffer_port(struct ddl_context *ddl_context,
 void *ddl_pmem_alloc(struct ddl_buf_addr *addr, size_t sz, u32 alignment)
 {
 	u32 alloc_size, offset = 0;
-
+	DBG_PMEM("\n%s() IN: Requested alloc size(%u)", __func__, (u32)sz);
 	alloc_size = (sz + alignment);
 	addr->physical_base_addr = (u8 *) pmem_kalloc(alloc_size,
 		PMEM_MEMTYPE_SMI | PMEM_ALIGNMENT_4K);
@@ -64,16 +66,19 @@ void *ddl_pmem_alloc(struct ddl_buf_addr *addr, size_t sz, u32 alignment)
 			addr->physical_base_addr);
 	addr->align_virtual_addr = addr->virtual_base_addr + offset;
 	addr->buffer_size = sz;
-	DDL_MSG_LOW("%s() : pmem alloc physical aligned addr/sz 0x%x/ %d\n",\
-		__func__, (u32)addr->align_physical_addr, sz);
-	DDL_MSG_LOW("%s() : pmem alloc virtual aligned addr/sz 0x%x / %d\n",\
-		__func__, (u32)addr->virtual_base_addr, sz);
+	DDL_MSG_LOW("\n%s() : alig_phy_addr(%p) alig_vir_addr(%p)",
+		__func__, addr->align_physical_addr, addr->align_virtual_addr);
+	DBG_PMEM("\n%s() OUT: phy_addr(%p) vir_addr(%p) size(%u)",
+		__func__, addr->physical_base_addr, addr->virtual_base_addr,
+		addr->buffer_size);
 	return addr->virtual_base_addr;
 }
 
 void ddl_pmem_free(struct ddl_buf_addr *addr)
 {
-	DDL_MSG_LOW("ddl_pmem_free:");
+	DBG_PMEM("\n%s() IN: phy_addr(%p) vir_addr(%p) size(%u)",
+		__func__, addr->physical_base_addr, addr->virtual_base_addr,
+		addr->buffer_size);
 	if (addr->virtual_base_addr)
 		iounmap((void *)addr->virtual_base_addr);
 	if ((addr->physical_base_addr) &&
@@ -81,6 +86,9 @@ void ddl_pmem_free(struct ddl_buf_addr *addr)
 		DDL_MSG_LOW("\n %s(): Error in Freeing Physical Address %p",\
 			__func__, addr->physical_base_addr);
 	}
+	DBG_PMEM("\n%s() OUT: phy_addr(%p) vir_addr(%p) size(%u)",
+		__func__, addr->physical_base_addr, addr->virtual_base_addr,
+		addr->buffer_size);
 	addr->physical_base_addr   = NULL;
 	addr->virtual_base_addr    = NULL;
 	addr->align_virtual_addr   = NULL;
@@ -238,18 +246,16 @@ u32 ddl_fw_init(struct ddl_buf_addr *dram_base)
 
 	u8 *dest_addr;
 
-	pr_info("enter ddl_fw_init()");
 	dest_addr = DDL_GET_ALIGNED_VITUAL(*dram_base);
-	if (vidc_video_codec_fw_size > dram_base->buffer_size || !vidc_video_codec_fw) {
-		pr_info("ddl_fw_init() failed");
+	if (vidc_video_codec_fw_size > dram_base->buffer_size ||
+		!vidc_video_codec_fw)
 		return false;
-	}
-	pr_info("FW Addr / FW Size : %x/%d", (u32)vidc_video_codec_fw, vidc_video_codec_fw_size);
-	memcpy(dest_addr, vidc_video_codec_fw, vidc_video_codec_fw_size);
+	DDL_MSG_LOW("FW Addr / FW Size : %x/%d", (u32)vidc_video_codec_fw,
+		vidc_video_codec_fw_size);
+	memcpy(dest_addr, vidc_video_codec_fw,
+		vidc_video_codec_fw_size);
 #ifdef DDL_FW_CHANGE_ENDIAN
-	pr_info("before ddl_fw_change_endian()");
 	ddl_fw_change_endian(dest_addr, vidc_video_codec_fw_size);
-	pr_info("leave ddl_fw_init()");
 #endif
 	return true;
 }
@@ -259,64 +265,43 @@ void ddl_fw_release(void)
 
 }
 
-#ifdef DDL_PROFILE
-void ddl_get_core_start_time(u8 codec)
+void ddl_set_core_start_time(const char *func_name, u32 index)
 {
-	u32 *ddl_t1 = NULL;
-	if (!codec)
-		ddl_t1 = &ddl_dec_t1;
-	else if (codec == 1)
-		ddl_t1 = &ddl_enc_t1;
-
-	if (!*ddl_t1) {
-		struct timeval ddl_tv;
-		do_gettimeofday(&ddl_tv);
-		*ddl_t1 = (ddl_tv.tv_sec * 1000) + (ddl_tv.tv_usec / 1000);
+	u32 act_time;
+	struct timeval ddl_tv;
+	struct time_data *time_data = &proc_time[index];
+	do_gettimeofday(&ddl_tv);
+	act_time = (ddl_tv.tv_sec * 1000) + (ddl_tv.tv_usec / 1000);
+	if (!time_data->ddl_t1) {
+		time_data->ddl_t1 = act_time;
+		DDL_MSG_LOW("\n%s(): Start Time (%u)", func_name, act_time);
+	} else {
+		DDL_MSG_TIME("\n%s(): Timer already started! St(%u) Act(%u)",
+			func_name, time_data->ddl_t1, act_time);
 	}
 }
 
-void ddl_calc_core_time(u8 codec)
+void ddl_calc_core_proc_time(const char *func_name, u32 index)
 {
-	u32 *ddl_t1 = NULL, *ddl_ttotal = NULL,
-		*ddl_count = NULL;
-	if (!codec) {
-		DDL_MSG_ERROR("\n1080p Core Decode ");
-		ddl_t1 = &ddl_dec_t1;
-		ddl_ttotal = &ddl_dec_ttotal;
-		ddl_count = &ddl_dec_count;
-	} else if (codec == 1) {
-		DDL_MSG_ERROR("\n1080p Core Encode ");
-		ddl_t1 = &ddl_enc_t1;
-		ddl_ttotal = &ddl_enc_ttotal;
-		ddl_count = &ddl_enc_count;
-	}
-
-	if (*ddl_t1) {
+	struct time_data *time_data = &proc_time[index];
+	if (time_data->ddl_t1) {
 		int ddl_t2;
 		struct timeval ddl_tv;
 		do_gettimeofday(&ddl_tv);
 		ddl_t2 = (ddl_tv.tv_sec * 1000) + (ddl_tv.tv_usec / 1000);
-		*ddl_ttotal += (ddl_t2 - *ddl_t1);
-		*ddl_count = *ddl_count + 1;
-		DDL_MSG_ERROR("time %u, average time %u, count %u",
-			ddl_t2 - *ddl_t1, (*ddl_ttotal)/(*ddl_count),
-			*ddl_count);
-		*ddl_t1 = 0;
+		time_data->ddl_ttotal += (ddl_t2 - time_data->ddl_t1);
+		time_data->ddl_count++;
+		DDL_MSG_TIME("\n%s(): cnt(%u) End Time (%u) Diff(%u) Avg(%u)",
+			func_name, time_data->ddl_count, ddl_t2,
+			ddl_t2 - time_data->ddl_t1,
+			time_data->ddl_ttotal/time_data->ddl_count);
+		time_data->ddl_t1 = 0;
 	}
 }
 
-void ddl_reset_time_variables(u8 codec)
+void ddl_reset_core_time_variables(u32 index)
 {
-	if (!codec) {
-		DDL_MSG_ERROR("\n Reset Decoder time variables");
-		ddl_dec_t1 = 0;
-		ddl_dec_ttotal = 0;
-		ddl_dec_count = 0;
-	} else if (codec == 1) {
-		DDL_MSG_ERROR("\n Reset Encoder time variables ");
-		ddl_enc_t1 = 0;
-		ddl_enc_ttotal = 0;
-		ddl_enc_count = 0;
-	}
+	proc_time[index].ddl_t1 = 0;
+	proc_time[index].ddl_ttotal = 0;
+	proc_time[index].ddl_count = 0;
 }
-#endif

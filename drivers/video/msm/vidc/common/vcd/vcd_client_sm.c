@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -374,7 +374,8 @@ static u32 vcd_flush_in_invalid(struct vcd_clnt_ctxt *cctxt,
 			cctxt->status.mask |= (mode & VCD_FLUSH_ALL);
 			vcd_send_flush_done(cctxt, VCD_S_SUCCESS);
 		}
-	}
+	} else
+		cctxt->status.mask |= (mode & VCD_FLUSH_ALL);
 	return rc;
 }
 
@@ -701,10 +702,24 @@ static u32 vcd_fill_output_buffer_cmn
 	struct vcd_buffer_entry *buf_entry;
 	u32 result = true;
 	u32 handled = true;
-
+	if (!cctxt || !buffer) {
+		VCD_MSG_ERROR("%s(): Inavlid params cctxt %p buffer %p",
+					__func__, cctxt, buffer);
+		return VCD_ERR_BAD_POINTER;
+	}
 	VCD_MSG_LOW("vcd_fill_output_buffer_cmn in %d:",
 		    cctxt->clnt_state.state);
-
+	if (cctxt->status.mask & VCD_IN_RECONFIG) {
+		buffer->time_stamp = 0;
+		buffer->data_len = 0;
+		VCD_MSG_LOW("In reconfig: Return output buffer");
+		cctxt->callback(VCD_EVT_RESP_OUTPUT_DONE,
+			VCD_S_SUCCESS,
+			buffer,
+			sizeof(struct vcd_frame_data),
+			cctxt, cctxt->client_data);
+		return rc;
+	}
 	buf_entry = vcd_check_fill_output_buffer(cctxt, buffer);
 	if (!buf_entry)
 		return VCD_ERR_BAD_POINTER;
@@ -886,6 +901,11 @@ static void vcd_clnt_cb_in_run
 				VCD_EVT_IND_HWERRFATAL, status);
 			 break;
 		}
+	case VCD_EVT_IND_INFO_OUTPUT_RECONFIG:
+		{
+			vcd_handle_ind_info_output_reconfig(cctxt, status);
+			break;
+		}
 	default:
 		{
 			VCD_MSG_ERROR
@@ -979,6 +999,11 @@ static void vcd_clnt_cb_in_eos
 		{
 			vcd_handle_ind_hw_err_fatal(cctxt,
 				VCD_EVT_IND_HWERRFATAL,	status);
+			break;
+		}
+	case VCD_EVT_IND_INFO_OUTPUT_RECONFIG:
+		{
+			vcd_handle_ind_info_output_reconfig(cctxt, status);
 			break;
 		}
 	default:
@@ -1205,14 +1230,14 @@ static void vcd_clnt_cb_in_stopping
 		}
 		if (frm_trans_end && !cctxt->status.frame_submitted) {
 				VCD_MSG_HIGH
-				    ("All pending frames recvd from DDL");
+					("All pending frames recvd from DDL");
 				vcd_flush_bframe_buffers(cctxt,
 							VCD_FLUSH_INPUT);
 				vcd_flush_output_buffers(cctxt);
 				cctxt->status.mask &= ~VCD_FLUSH_ALL;
 				vcd_release_all_clnt_frm_transc(cctxt);
 				VCD_MSG_HIGH
-				    ("All buffers flushed. Enqueuing stop cmd");
+				("All buffers flushed. Enqueuing stop cmd");
 				vcd_client_cmd_flush_and_en_q(cctxt,
 						VCD_CMD_CODEC_STOP);
 		}
@@ -1381,6 +1406,15 @@ static void  vcd_clnt_cb_in_invalid(
 		}
 	case VCD_EVT_RESP_EOS_DONE:
 		{
+			vcd_mark_frame_channel(cctxt->dev_ctxt);
+			break;
+		}
+	case VCD_EVT_IND_OUTPUT_RECONFIG:
+		{
+			if (cctxt->status.frame_submitted > 0)
+				cctxt->status.frame_submitted--;
+			else
+				cctxt->status.frame_delayed--;
 			vcd_mark_frame_channel(cctxt->dev_ctxt);
 			break;
 		}

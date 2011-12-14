@@ -319,7 +319,6 @@ static int mdp_copy_hist_data(struct mdp_histogram *hist)
 	uint32 r_data_offset = 0x100, g_data_offset = 0x200;
 	uint32 b_data_offset = 0x300;
 	int ret = 0;
-	unsigned long tout = 0;
 
 	mutex_lock(&mdp_hist_mutex);
 	if (mdp_rev >= MDP_REV_42) {
@@ -1052,6 +1051,18 @@ void mdp_hw_version(void)
 				__func__, mdp_hw_revision);
 }
 
+int mdp4_writeback_offset(void)
+{
+	int off = 0;
+
+	if (mdp_pdata->writeback_offset)
+		off = mdp_pdata->writeback_offset();
+
+	pr_debug("%s: writeback_offset=%d %x\n", __func__, off, off);
+
+	return off;
+}
+
 #ifdef CONFIG_FB_MSM_MDP40
 static void configure_mdp_core_clk_table(uint32 min_clk_rate)
 {
@@ -1107,8 +1118,6 @@ int mdp_set_core_clk(uint16 perf_level)
 			printk(KERN_ERR "%s invalid perf level\n", __func__);
 		else {
 			mutex_lock(&mdp_clk_lock);
-			if (mdp4_extn_disp)
-				perf_level = 1;
 			ret = clk_set_rate(mdp_clk,
 				mdp_pdata->
 				mdp_core_clk_table[mdp_pdata->num_mdp_clk
@@ -1144,8 +1153,6 @@ unsigned long mdp_perf_level2clk_rate(uint32 perf_level)
 			printk(KERN_ERR "%s invalid perf level\n", __func__);
 			clk_rate = mdp_get_core_clk();
 		} else {
-			if (mdp4_extn_disp)
-				perf_level = 1;
 			clk_rate = mdp_pdata->
 				mdp_core_clk_table[mdp_pdata->num_mdp_clk
 					- perf_level];

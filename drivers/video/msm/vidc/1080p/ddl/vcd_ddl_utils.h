@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -33,6 +33,22 @@
 #include <linux/delay.h>
 #include "vidc_type.h"
 
+extern u32 vidc_msg_pmem;
+extern u32 vidc_msg_timing;
+
+enum timing_data {
+	DEC_OP_TIME,
+	DEC_IP_TIME,
+	ENC_OP_TIME,
+	MAX_TIME_DATA
+};
+
+#define DBG_PMEM(x...) \
+do { \
+	if (vidc_msg_pmem) \
+		printk(KERN_DEBUG x); \
+} while (0)
+
 #ifdef DDL_MSG_LOG
 #define DDL_MSG_LOW(x...)    printk(KERN_INFO x)
 #define DDL_MSG_MED(x...)    printk(KERN_INFO x)
@@ -66,10 +82,8 @@
 #define DDL_MIN(x, y)  ((x < y) ? x : y)
 #define DDL_MAX(x, y)  ((x > y) ? x : y)
 
-#ifdef DDL_PROFILE
-void ddl_get_core_start_time(u8 codec);
-void ddl_calc_core_time(u8 codec);
-void ddl_reset_time_variables(u8 codec);
-#endif
+void ddl_set_core_start_time(const char *func_name, u32 index);
+void ddl_calc_core_proc_time(const char *func_name, u32 index);
+void ddl_reset_core_time_variables(u32 index);
 
 #endif

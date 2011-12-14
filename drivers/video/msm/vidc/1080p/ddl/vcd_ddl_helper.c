@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -17,6 +17,7 @@
  */
 
 #include "vcd_ddl.h"
+#include "vcd_ddl_shared_mem.h"
 
 struct ddl_context *ddl_get_context(void)
 {
@@ -246,11 +247,22 @@ u32 ddl_decoder_dpb_init(struct ddl_client_context *ddl)
 	luma_size = ddl_get_yuv_buf_size(decoder->frame_size.width,
 			decoder->frame_size.height, DDL_YUV_BUF_TYPE_TILE);
 	dpb = decoder->dp_buf.no_of_dec_pic_buf;
-
+	DDL_MSG_LOW("%s Decoder num DPB buffers = %u Luma Size = %u"
+				 __func__, dpb, luma_size);
+	if (dpb > DDL_MAX_BUFFER_COUNT)
+		dpb = DDL_MAX_BUFFER_COUNT;
 	for (i = 0; i < dpb; i++) {
+		if (frame[i].vcd_frm.virtual) {
+			memset(frame[i].vcd_frm.virtual, 0x10101010, luma_size);
+			memset(frame[i].vcd_frm.virtual + luma_size, 0x80808080,
+					frame[i].vcd_frm.alloc_len - luma_size);
+		}
+
 		luma[i] = DDL_OFFSET(ddl_context->dram_base_a.
 			align_physical_addr, frame[i].vcd_frm.physical);
 		chroma[i] = luma[i] + luma_size;
+		DDL_MSG_LOW("%s Decoder Luma address = %x Chroma address = %x"
+					__func__, luma[i], chroma[i]);
 	}
 	switch (decoder->codec.codec) {
 	case VCD_CODEC_MPEG1:

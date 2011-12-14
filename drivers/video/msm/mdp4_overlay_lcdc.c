@@ -119,7 +119,7 @@ int mdp_lcdc_on(struct platform_device *pdev)
 		ptype = mdp4_overlay_format2type(mfd->fb_imgType);
 		if (ptype < 0)
 			printk(KERN_INFO "%s: format2type failed\n", __func__);
-		pipe = mdp4_overlay_pipe_alloc(ptype, MDP4_MIXER0, 0);
+		pipe = mdp4_overlay_pipe_alloc(ptype, MDP4_MIXER0);
 		if (pipe == NULL)
 			printk(KERN_INFO "%s: pipe_alloc failed\n", __func__);
 		pipe->pipe_used++;
@@ -133,8 +133,14 @@ int mdp_lcdc_on(struct platform_device *pdev)
 		lcdc_pipe = pipe; /* keep it */
 		init_completion(&lcdc_comp);
 
-		writeback_offset = mdp4_overlay_writeback_setup(
-						fbi, pipe, buf, bpp);
+		writeback_offset = mdp4_writeback_offset();
+
+		if (writeback_offset > 0) {
+			pipe->blt_base = (ulong)fbi->fix.smem_start;
+			pipe->blt_base += writeback_offset;
+		} else {
+			pipe->blt_base  = 0;
+		}
 	} else {
 		pipe = lcdc_pipe;
 	}
@@ -450,6 +456,10 @@ void mdp4_dma_p_done_lcdc(void)
 void mdp4_overlay0_done_lcdc(struct mdp_dma_data *dma)
 {
 	spin_lock(&mdp_spin_lock);
+	if (lcdc_pipe->blt_addr == 0) {
+		spin_unlock(&mdp_spin_lock);
+		return;
+	}
 	dma->busy = FALSE;
 	mdp4_lcdc_blt_dmap_update(lcdc_pipe);
 	lcdc_pipe->dmap_cnt++;
@@ -467,6 +477,11 @@ static void mdp4_lcdc_do_blt(struct msm_fb_data_type *mfd, int enable)
 {
 	unsigned long flag;
 	int change = 0;
+
+	if (lcdc_pipe->blt_base == 0) {
+		pr_debug("%s: no blt_base assigned\n", __func__);
+		return;
+	}
 
 	spin_lock_irqsave(&mdp_spin_lock, flag);
 	if (enable && lcdc_pipe->blt_addr == 0) {

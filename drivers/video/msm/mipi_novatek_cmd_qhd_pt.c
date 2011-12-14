@@ -72,6 +72,9 @@ static int __init mipi_cmd_novatek_blue_qhd_pt_init(void)
 	pinfo.lcd.vsync_enable = TRUE;
 	pinfo.lcd.hw_vsync_mode = TRUE;
 	pinfo.lcd.refx100 = 6000; /* adjust refx100 to prevent tearing */
+	pinfo.lcd.v_back_porch = 11;
+	pinfo.lcd.v_front_porch = 10;
+	pinfo.lcd.v_pulse_width = 5;
 
 	pinfo.mipi.mode = DSI_CMD_MODE;
 	pinfo.mipi.dst_format = DSI_CMD_DST_FORMAT_RGB888;
@@ -84,7 +87,7 @@ static int __init mipi_cmd_novatek_blue_qhd_pt_init(void)
 	pinfo.mipi.t_clk_post = 0x22;
 	pinfo.mipi.t_clk_pre = 0x3f;
 	pinfo.mipi.stream = 0;	/* dma_p */
-	pinfo.mipi.mdp_trigger = DSI_CMD_TRIGGER_SW;
+	pinfo.mipi.mdp_trigger = DSI_CMD_TRIGGER_NONE;
 	pinfo.mipi.dma_trigger = DSI_CMD_TRIGGER_SW;
 	pinfo.mipi.te_sel = 1; /* TE from vsycn gpio */
 	pinfo.mipi.interleave_max = 1;

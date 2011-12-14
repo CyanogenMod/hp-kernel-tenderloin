@@ -479,6 +479,7 @@ static int mipi_dsi_off(struct platform_device *pdev)
 	if (mfd->panel_info.type == MIPI_CMD_PANEL) {
 		mdp4_dsi_cmd_dma_busy_wait(mfd);
 		mdp4_dsi_blt_dmap_busy_wait(mfd);
+		mipi_dsi_mdp_busy_wait(mfd);
 	}
 
 	/* change to DSI_CMD_MODE since it needed to

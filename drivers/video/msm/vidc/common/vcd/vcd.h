@@ -403,4 +403,7 @@ void vcd_handle_clnt_fatal(struct vcd_clnt_ctxt *cctxt, u32 trans_end);
 void vcd_handle_clnt_fatal_input_done(struct vcd_clnt_ctxt *cctxt,
 	u32 trans_end);
 
+void vcd_handle_ind_info_output_reconfig
+	(struct vcd_clnt_ctxt *cctxt, u32 status);
+
 #endif
