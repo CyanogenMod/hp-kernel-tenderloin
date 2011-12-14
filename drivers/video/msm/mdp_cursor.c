@@ -214,6 +214,7 @@ int mdp_hw_cursor_update(struct fb_info *info, struct fb_cursor *cursor)
 	    (img->depth != 32))
 		return -EINVAL;
 
+	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
 	if (cursor->set & FB_CUR_SETPOS)
 		MDP_OUTP(MDP_BASE + 0x9004c, (img->dy << 16) | img->dx);
 
@@ -262,6 +263,7 @@ int mdp_hw_cursor_update(struct fb_info *info, struct fb_cursor *cursor)
 		MDP_OUTP(MDP_BASE + 0x90060,
 			 inp32(MDP_BASE + 0x90060) & (~0x1));
 	}
+	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
 
 	return 0;
 }

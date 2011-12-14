@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -100,9 +100,11 @@
 ((DDL_NO_OF_MB(width, height) <= DDL_720P_MBS) \
  && (((width) <= DDL_MAX_FRAME_WIDTH) &&            \
      ((height) <= DDL_MAX_FRAME_WIDTH))            \
- && ((width) >= 32 && (height) >= 32)               \
- && (!((width) & DDL_FRAMESIZE_DIV_FACTOR) &&       \
-     !((height) & DDL_FRAMESIZE_DIV_FACTOR)))
+ && ((width) >= 32 && (height) >= 32))
+
+#define DDL_VALIDATE_ENC_FRAMESIZE(width, height) \
+	(!((width) & DDL_FRAMESIZE_DIV_FACTOR) &&     \
+     !((height) & DDL_FRAMESIZE_DIV_FACTOR))
 
 #define DDL_TILE_ALIGN_WIDTH     128
 #define DDL_TILE_ALIGN_HEIGHT    32

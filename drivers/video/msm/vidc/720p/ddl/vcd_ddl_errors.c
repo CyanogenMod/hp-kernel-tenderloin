@@ -364,6 +364,10 @@ static u32 ddl_handle_core_recoverable_errors(struct ddl_context \
 			vcd_status = VCD_ERR_BITSTREAM_ERR;
 			break;
 		}
+	case PROFILE_UNKOWN:
+		if (ddl->decoding)
+			vcd_status = VCD_ERR_BITSTREAM_ERR;
+		break;
 	}
 
 	if (!vcd_status && vcd_event == VCD_EVT_RESP_INPUT_DONE)
@@ -547,11 +551,23 @@ u32 ddl_handle_seqhdr_fail_error(struct ddl_context *ddl_context)
 		DDLCLIENT_STATE_IS(ddl, DDL_CLIENT_WAIT_FOR_INITCODECDONE)) {
 		switch (ddl_context->cmd_err_status) {
 		case UNSUPPORTED_FEATURE_IN_PROFILE:
-		case RESOLUTION_NOT_SUPPORTED:
 		case HEADER_NOT_FOUND:
 		case INVALID_SPS_ID:
 		case INVALID_PPS_ID:
+		case RESOLUTION_NOT_SUPPORTED:
+		case PROFILE_UNKOWN:
 			ERR("SEQ-HDR-FAILED!!!");
+			if ((ddl_context->cmd_err_status ==
+				 RESOLUTION_NOT_SUPPORTED) &&
+				(decoder->codec.codec == VCD_CODEC_H264 ||
+				decoder->codec.codec == VCD_CODEC_H263 ||
+				decoder->codec.codec == VCD_CODEC_MPEG4 ||
+				decoder->codec.codec == VCD_CODEC_VC1_RCV ||
+				decoder->codec.codec == VCD_CODEC_VC1)) {
+				ddl_client_fatal_cb(ddl_context);
+				status = true;
+				break;
+			}
 			if (decoder->header_in_start) {
 				decoder->header_in_start = false;
 				ddl_context->ddl_callback(VCD_EVT_RESP_START,

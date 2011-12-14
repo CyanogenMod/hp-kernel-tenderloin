@@ -19,9 +19,10 @@
 #include "msm_fb.h"
 #include "mipi_dsi.h"
 #include "mipi_novatek.h"
+#include "mdp4.h"
 
 
-static struct msm_panel_common_pdata *mipi_novatek_pdata;
+static struct mipi_dsi_novatek_platform_data *mipi_novatek_pdata;
 
 static struct dsi_buf novatek_tx_buf;
 static struct dsi_buf novatek_rx_buf;
@@ -97,9 +98,6 @@ static char display_config_set_threelane[] = {
 	0xae, 0x05, 0x15, 0x80
 };
 
-static char led_pwm2[] = {0x53, 0x24}; /* DTYPE_DCS_LWRITE */
-static char led_pwm3[] = {0x55, 0x00}; /* DTYPE_DCS_LWRITE */
-
 #else
 
 static char sw_reset[2] = {0x01, 0x00}; /* DTYPE_DCS_WRITE */
@@ -130,13 +128,13 @@ static char set_height[5] = { /* DTYPE_DCS_LWRITE */
 	0x2B, 0x00, 0x00, 0x03, 0xBF}; /* 960 - 1 */
 #endif
 
-#ifdef NOVATEK_BACKLIGHT
-static char led_pwm1[2] = {0x51, 0x0};	/* DTYPE_DCS_LWRITE */
+static char led_pwm1[2] = {0x51, 0x0};	/* DTYPE_DCS_WRITE1 */
+static char led_pwm2[2] = {0x53, 0x24}; /* DTYPE_DCS_WRITE1 */
+static char led_pwm3[2] = {0x55, 0x00}; /* DTYPE_DCS_WRITE1 */
 
 static struct dsi_cmd_desc novatek_cmd_backlight_cmds[] = {
 	{DTYPE_DCS_LWRITE, 1, 0, 0, 1, sizeof(led_pwm1), led_pwm1},
 };
-#endif
 
 static struct dsi_cmd_desc novatek_video_on_cmds[] = {
 	{DTYPE_DCS_WRITE, 1, 0, 0, 50,
@@ -148,7 +146,11 @@ static struct dsi_cmd_desc novatek_video_on_cmds[] = {
 	{DTYPE_DCS_WRITE1, 1, 0, 0, 10,
 		sizeof(set_num_of_lanes), set_num_of_lanes},
 	{DTYPE_DCS_WRITE1, 1, 0, 0, 10,
-		sizeof(rgb_888), rgb_888}
+		sizeof(rgb_888), rgb_888},
+	{DTYPE_DCS_WRITE1, 1, 0, 0, 10,
+		sizeof(led_pwm2), led_pwm2},
+	{DTYPE_DCS_WRITE1, 1, 0, 0, 10,
+		sizeof(led_pwm3), led_pwm3},
 };
 
 static struct dsi_cmd_desc novatek_cmd_on_cmds[] = {
@@ -158,8 +160,6 @@ static struct dsi_cmd_desc novatek_cmd_on_cmds[] = {
 		sizeof(exit_sleep), exit_sleep},
 	{DTYPE_DCS_WRITE, 1, 0, 0, 10,
 		sizeof(display_on), display_on},
-	{DTYPE_MAX_PKTSIZE, 1, 0, 0, 0,
-		sizeof(max_pktsize), max_pktsize},
 	{DTYPE_DCS_WRITE1, 1, 0, 0, 50,
 		sizeof(novatek_f4), novatek_f4},
 	{DTYPE_DCS_LWRITE, 1, 0, 0, 50,
@@ -173,7 +173,11 @@ static struct dsi_cmd_desc novatek_cmd_on_cmds[] = {
 	{DTYPE_DCS_LWRITE, 1, 0, 0, 50,
 		sizeof(set_height), set_height},
 	{DTYPE_DCS_WRITE1, 1, 0, 0, 10,
-		sizeof(rgb_888), rgb_888}
+		sizeof(rgb_888), rgb_888},
+	{DTYPE_DCS_WRITE1, 1, 0, 0, 1,
+		sizeof(led_pwm2), led_pwm2},
+	{DTYPE_DCS_WRITE1, 1, 0, 0, 1,
+		sizeof(led_pwm3), led_pwm3},
 };
 
 static struct dsi_cmd_desc novatek_display_off_cmds[] = {
@@ -206,10 +210,44 @@ static uint32 mipi_novatek_manufacture_id(struct msm_fb_data_type *mfd)
 	return *lp;
 }
 
+static int fpga_addr;
+static bool support_3d;
+
+void mipi_novatek_3d_init(int addr)
+{
+	fpga_addr = addr;
+}
+
+void mipi_dsi_enable_3d_barrier(int mode)
+{
+	void *fpga_ptr;
+	uint32_t ptr_value = 0;
+
+	if (!fpga_addr && support_3d) {
+		pr_err("%s: fpga_addr not set. Failed to enable 3D barrier\n",
+					__func__);
+		return;
+	}
+
+	fpga_ptr = ioremap_nocache(fpga_addr, sizeof(uint32_t));
+	if (fpga_ptr != 0)
+		ptr_value = readl_relaxed(fpga_ptr);
+	if (mode == LANDSCAPE)
+		writel_relaxed(((0xFFFF0000 & ptr_value) | 1), fpga_ptr);
+	else if (mode == PORTRAIT)
+		writel_relaxed(((0xFFFF0000 & ptr_value) | 3), fpga_ptr);
+	else
+		writel_relaxed((0xFFFF0000 & ptr_value), fpga_ptr);
+
+	dsb();
+	iounmap(fpga_ptr);
+}
+
 static int mipi_novatek_lcd_on(struct platform_device *pdev)
 {
 	struct msm_fb_data_type *mfd;
 	struct mipi_panel_info *mipi;
+	struct msm_panel_info *pinfo;
 
 	mfd = platform_get_drvdata(pdev);
 	if (!mfd)
@@ -217,9 +255,12 @@ static int mipi_novatek_lcd_on(struct platform_device *pdev)
 	if (mfd->key != MFD_KEY)
 		return -EINVAL;
 
+	pinfo = &mfd->panel_info;
+	if (pinfo->is_3d_panel)
+		support_3d = TRUE;
+
 	mipi  = &mfd->panel_info.mipi;
 
-	mutex_lock(&mfd->dma->ov_mutex);
 	if (mipi->mode == DSI_VIDEO_MODE) {
 		mipi_dsi_cmds_tx(mfd, &novatek_tx_buf, novatek_video_on_cmds,
 			ARRAY_SIZE(novatek_video_on_cmds));
@@ -227,11 +268,8 @@ static int mipi_novatek_lcd_on(struct platform_device *pdev)
 		mipi_dsi_cmds_tx(mfd, &novatek_tx_buf, novatek_cmd_on_cmds,
 			ARRAY_SIZE(novatek_cmd_on_cmds));
 
-		mipi_dsi_cmd_bta_sw_trigger(); /* clean up ack_err_status */
-
 		mipi_novatek_manufacture_id(mfd);
 	}
-	mutex_unlock(&mfd->dma->ov_mutex);
 
 	return 0;
 }
@@ -247,47 +285,58 @@ static int mipi_novatek_lcd_off(struct platform_device *pdev)
 	if (mfd->key != MFD_KEY)
 		return -EINVAL;
 
-	mutex_lock(&mfd->dma->ov_mutex);
 	mipi_dsi_cmds_tx(mfd, &novatek_tx_buf, novatek_display_off_cmds,
 			ARRAY_SIZE(novatek_display_off_cmds));
-	mutex_unlock(&mfd->dma->ov_mutex);
 
 	return 0;
 }
 
-#ifdef NOVATEK_BACKLIGHT
-static int mipi_dsi_cmd_set_backlight(struct msm_fb_data_type *mfd)
+
+
+static void mipi_novatek_set_backlight(struct msm_fb_data_type *mfd)
 {
 	struct mipi_panel_info *mipi;
 	static int bl_level_old;
 
 	mipi  = &mfd->panel_info.mipi;
 	if (bl_level_old == mfd->bl_level)
-		return 0;
-
-	led_pwm1[1] = (unsigned char)(mfd->bl_level);
+		return;
 
 	mutex_lock(&mfd->dma->ov_mutex);
-	if (mipi->mode == DSI_CMD_MODE) {
-		mipi_dsi_cmds_tx(mfd, &novatek_tx_buf,
-				novatek_cmd_backlight_cmds,
-				ARRAY_SIZE(novatek_cmd_backlight_cmds));
-		bl_level_old = mfd->bl_level;
-	}
+	/* mdp4_dsi_cmd_busy_wait: will turn on dsi clock also */
+	mdp4_dsi_cmd_dma_busy_wait(mfd);
+	mdp4_dsi_blt_dmap_busy_wait(mfd);
+
+	led_pwm1[1] = (unsigned char)(mfd->bl_level);
+	mipi_dsi_cmds_tx(mfd, &novatek_tx_buf, novatek_cmd_backlight_cmds,
+			ARRAY_SIZE(novatek_cmd_backlight_cmds));
+	bl_level_old = mfd->bl_level;
 	mutex_unlock(&mfd->dma->ov_mutex);
-	return 0;
+	return;
 }
-#endif
+
+static int mipi_dsi_3d_barrier_sysfs_register(struct device *dev);
+static int barrier_mode;
 
 static int __devinit mipi_novatek_lcd_probe(struct platform_device *pdev)
 {
 	if (pdev->id == 0) {
 		mipi_novatek_pdata = pdev->dev.platform_data;
+
+	if (mipi_novatek_pdata && mipi_novatek_pdata->fpga_3d_config_addr)
+		mipi_novatek_3d_init(mipi_novatek_pdata->fpga_3d_config_addr);
+
+		/* create sysfs to control 3D barrier for the Sharp panel */
+		if (mipi_dsi_3d_barrier_sysfs_register(&pdev->dev)) {
+			pr_err("%s: Failed to register 3d Barrier sysfs\n",
+						__func__);
+			return -ENODEV;
+		}
+		barrier_mode = 0;
+
 		return 0;
 	}
-
 	msm_fb_add_device(pdev);
-
 	return 0;
 }
 
@@ -301,7 +350,62 @@ static struct platform_driver this_driver = {
 static struct msm_fb_panel_data novatek_panel_data = {
 	.on		= mipi_novatek_lcd_on,
 	.off		= mipi_novatek_lcd_off,
+	.set_backlight = mipi_novatek_set_backlight,
 };
+
+static ssize_t mipi_dsi_3d_barrier_read(struct device *dev,
+				struct device_attribute *attr,
+				char *buf)
+{
+	return snprintf((char *)buf, sizeof(buf), "%u\n", barrier_mode);
+}
+
+static ssize_t mipi_dsi_3d_barrier_write(struct device *dev,
+				struct device_attribute *attr,
+				const char *buf,
+				size_t count)
+{
+	int ret = -1;
+	u32 data = 0;
+
+	if (sscanf((char *)buf, "%u", &data) != 1) {
+		dev_err(dev, "%s\n", __func__);
+		ret = -EINVAL;
+	} else {
+		barrier_mode = data;
+		if (data == 1)
+			mipi_dsi_enable_3d_barrier(LANDSCAPE);
+		else if (data == 2)
+			mipi_dsi_enable_3d_barrier(PORTRAIT);
+		else
+			mipi_dsi_enable_3d_barrier(0);
+	}
+
+	return count;
+}
+
+static struct device_attribute mipi_dsi_3d_barrier_attributes[] = {
+	__ATTR(enable_3d_barrier, 0666, mipi_dsi_3d_barrier_read,
+					 mipi_dsi_3d_barrier_write),
+};
+
+static int mipi_dsi_3d_barrier_sysfs_register(struct device *dev)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(mipi_dsi_3d_barrier_attributes); i++)
+		if (device_create_file(dev, mipi_dsi_3d_barrier_attributes + i))
+			goto error;
+
+	return 0;
+
+error:
+	for (; i >= 0 ; i--)
+		device_remove_file(dev, mipi_dsi_3d_barrier_attributes + i);
+	pr_err("%s: Unable to create interface\n", __func__);
+
+	return -ENODEV;
+}
 
 static int ch_used[3];
 

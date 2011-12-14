@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -25,11 +25,16 @@
 #define DBG(x...)
 #endif
 
+#define DBG_TIME(x...) printk(KERN_DEBUG x)
 #define ERR(x...) printk(KERN_ERR x)
 
-static unsigned int ddl_dec_t1, ddl_enc_t1;
-static unsigned int ddl_dec_ttotal, ddl_enc_ttotal;
-static unsigned int ddl_dec_count, ddl_enc_count;
+struct time_data {
+	unsigned int ddl_t1;
+	unsigned int ddl_ttotal;
+	unsigned int ddl_count;
+};
+
+static struct time_data proc_time[MAX_TIME_DATA];
 
 #ifdef NO_IN_KERNEL_PMEM
 
@@ -74,11 +79,11 @@ void ddl_pmem_alloc(struct ddl_buf_addr *buff_addr, size_t sz, u32 align)
 		     + align_offset);
 }
 
-void ddl_pmem_free(struct ddl_buf_addr buff_addr)
+void ddl_pmem_free(struct ddl_buf_addr *buff_addr)
 {
-	kfree(buff_addr.virtual_base_addr);
-	buff_addr.buffer_size = 0;
-	buff_addr.virtual_base_addr = NULL;
+	kfree(buff_addr->virtual_base_addr);
+	buff_addr->buffer_size = 0;
+	buff_addr->virtual_base_addr = NULL;
 }
 
 #else
@@ -89,9 +94,7 @@ void ddl_pmem_alloc(struct ddl_buf_addr *buff_addr, size_t sz, u32 align)
 	s32 physical_addr;
 	u32 align_offset;
 
-	DBG("\n%s() IN : phy_addr(%p) ker_addr(%p) size(%u)",
-		__func__, buff_addr->physical_base_addr,
-		buff_addr->virtual_base_addr, (u32)sz);
+	DBG_PMEM("\n%s() IN: Requested alloc size(%u)", __func__, (u32)sz);
 
 	if (align == DDL_LINEAR_BUFFER_ALIGN_BYTES) {
 
@@ -111,21 +114,20 @@ void ddl_pmem_alloc(struct ddl_buf_addr *buff_addr, size_t sz, u32 align)
 	if (IS_ERR((void *)physical_addr)) {
 		pr_err("%s(): could not allocte in kernel pmem buffers\n",
 		       __func__);
-		return;
+		goto bailout;
 	}
 
 	buff_addr->virtual_base_addr =
 	    (u32 *) ioremap((unsigned long)physical_addr,
 			    sz + guard_bytes);
-	memset(buff_addr->virtual_base_addr, 0 , sz + guard_bytes);
 	if (!buff_addr->virtual_base_addr) {
 
 		pr_err("%s: could not ioremap in kernel pmem buffers\n",
 		       __func__);
 		pmem_kfree(physical_addr);
-		return;
+		goto bailout;
 	}
-
+	memset(buff_addr->virtual_base_addr, 0 , sz + guard_bytes);
 	buff_addr->buffer_size = sz;
 
 	buff_addr->align_physical_addr =
@@ -138,90 +140,82 @@ void ddl_pmem_alloc(struct ddl_buf_addr *buff_addr, size_t sz, u32 align)
 	    (u32 *) ((u32) (buff_addr->virtual_base_addr)
 		     + align_offset);
 
-	DBG("\n%s() OUT : phy_addr(%p) ker_addr(%p) size(%u)", __func__,
+	DBG_PMEM("\n%s() OUT: phy_addr(%p) ker_addr(%p) size(%u)", __func__,
 		buff_addr->physical_base_addr, buff_addr->virtual_base_addr,
 		buff_addr->buffer_size);
 
 	return;
+bailout:
+	buff_addr->physical_base_addr = NULL;
+	buff_addr->virtual_base_addr = NULL;
+	buff_addr->buffer_size = 0;
 }
 
-void ddl_pmem_free(struct ddl_buf_addr buff_addr)
+void ddl_pmem_free(struct ddl_buf_addr *buff_addr)
 {
-	DBG("\n%s(): phy_addr %p ker_addr %p", __func__,
-		buff_addr.physical_base_addr, buff_addr.virtual_base_addr);
+	if (!buff_addr) {
+		ERR("\n %s() invalid arguments %p", __func__, buff_addr);
+		return;
+	}
+	DBG_PMEM("\n%s() IN: phy_addr(%p) ker_addr(%p) size(%u)", __func__,
+		buff_addr->physical_base_addr, buff_addr->virtual_base_addr,
+		buff_addr->buffer_size);
 
-	if (buff_addr.virtual_base_addr)
-		iounmap((void *)buff_addr.virtual_base_addr);
+	if (buff_addr->virtual_base_addr)
+		iounmap((void *)buff_addr->virtual_base_addr);
 
-	if ((buff_addr.physical_base_addr) &&
-		pmem_kfree((s32) buff_addr.physical_base_addr)) {
+	if ((buff_addr->physical_base_addr) &&
+		pmem_kfree((s32) buff_addr->physical_base_addr)) {
 		ERR("\n %s(): Error in Freeing ddl_pmem_free "
 		"Physical Address %p", __func__,
-		buff_addr.physical_base_addr);
+		buff_addr->physical_base_addr);
 	}
-
-	buff_addr.buffer_size = 0;
-	buff_addr.physical_base_addr = NULL;
-	buff_addr.virtual_base_addr = NULL;
+	DBG_PMEM("\n%s() OUT: phy_addr(%p) ker_addr(%p) size(%u)", __func__,
+		buff_addr->physical_base_addr, buff_addr->virtual_base_addr,
+		buff_addr->buffer_size);
+	buff_addr->buffer_size = 0;
+	buff_addr->physical_base_addr = NULL;
+	buff_addr->virtual_base_addr = NULL;
 }
 #endif
 
-void ddl_get_core_start_time(u8 codec)
+void ddl_set_core_start_time(const char *func_name, u32 index)
 {
-	u32 *ddl_t1 = NULL;
-	if (!codec)
-		ddl_t1 = &ddl_dec_t1;
-	else if (codec == 1)
-		ddl_t1 = &ddl_enc_t1;
-
-	if (!*ddl_t1) {
-		struct timeval ddl_tv;
-		do_gettimeofday(&ddl_tv);
-		*ddl_t1 = (ddl_tv.tv_sec * 1000) + (ddl_tv.tv_usec / 1000);
+	u32 act_time;
+	struct timeval ddl_tv;
+	struct time_data *time_data = &proc_time[index];
+	do_gettimeofday(&ddl_tv);
+	act_time = (ddl_tv.tv_sec * 1000) + (ddl_tv.tv_usec / 1000);
+	if (!time_data->ddl_t1) {
+		time_data->ddl_t1 = act_time;
+		DBG("\n%s(): Start Time (%u)", func_name, act_time);
+	} else {
+		DBG_TIME("\n%s(): Timer already started! St(%u) Act(%u)",
+			func_name, time_data->ddl_t1, act_time);
 	}
 }
 
-void ddl_calc_core_time(u8 codec)
+void ddl_calc_core_proc_time(const char *func_name, u32 index)
 {
-	u32 *ddl_t1 = NULL, *ddl_ttotal = NULL,
-		*ddl_count = NULL;
-	if (!codec) {
-		DBG("\n720p Core Decode ");
-		ddl_t1 = &ddl_dec_t1;
-		ddl_ttotal = &ddl_dec_ttotal;
-		ddl_count = &ddl_dec_count;
-	} else if (codec == 1) {
-		DBG("\n720p Core Encode ");
-		ddl_t1 = &ddl_enc_t1;
-		ddl_ttotal = &ddl_enc_ttotal;
-		ddl_count = &ddl_enc_count;
-	}
-
-	if (*ddl_t1) {
+	struct time_data *time_data = &proc_time[index];
+	if (time_data->ddl_t1) {
 		int ddl_t2;
 		struct timeval ddl_tv;
 		do_gettimeofday(&ddl_tv);
 		ddl_t2 = (ddl_tv.tv_sec * 1000) + (ddl_tv.tv_usec / 1000);
-		*ddl_ttotal += (ddl_t2 - *ddl_t1);
-		*ddl_count = *ddl_count + 1;
-		DBG("time %u, average time %u, count %u",
-			ddl_t2 - *ddl_t1, (*ddl_ttotal)/(*ddl_count),
-			*ddl_count);
-		*ddl_t1 = 0;
+		time_data->ddl_ttotal += (ddl_t2 - time_data->ddl_t1);
+		time_data->ddl_count++;
+		DBG_TIME("\n%s(): cnt(%u) Diff(%u) Avg(%u)",
+			func_name, time_data->ddl_count,
+			ddl_t2 - time_data->ddl_t1,
+			time_data->ddl_ttotal/time_data->ddl_count);
+		time_data->ddl_t1 = 0;
 	}
 }
 
-void ddl_reset_time_variables(u8 codec)
+void ddl_reset_core_time_variables(u32 index)
 {
-	if (!codec) {
-		DBG("\n Reset Decoder time variables");
-		ddl_dec_t1 = 0;
-		ddl_dec_ttotal = 0;
-		ddl_dec_count = 0;
-	} else if (codec == 1) {
-		DBG("\n Reset Encoder time variables ");
-		ddl_enc_t1 = 0;
-		ddl_enc_ttotal = 0;
-		ddl_enc_count = 0;
-	}
+	proc_time[index].ddl_t1 = 0;
+	proc_time[index].ddl_ttotal = 0;
+	proc_time[index].ddl_count = 0;
 }

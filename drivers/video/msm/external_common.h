@@ -22,7 +22,7 @@
 #ifndef DEV_DBG_PREFIX
 #define DEV_DBG_PREFIX "EXT_INTERFACE: "
 #endif
-#define DEV_DBG(args...)	pr_info(DEV_DBG_PREFIX args)
+#define DEV_DBG(args...)	pr_debug(DEV_DBG_PREFIX args)
 #else
 #define DEV_DBG(args...)	(void)0
 #endif /* DEBUG */
@@ -214,10 +214,13 @@ struct external_common_state_type {
 #ifdef CONFIG_FB_MSM_HDMI_COMMON
 	boolean hdcp_active;
 	boolean hpd_feature_on;
+	boolean hdmi_sink;
 	struct hdmi_disp_mode_list_type disp_mode_list;
 	uint8 speaker_allocation_block;
 	uint16 video_latency, audio_latency;
 	uint8 audio_data_block_cnt;
+	boolean present_3d;
+	boolean present_hdcp;
 	uint32 audio_data_blocks[16];
 	int (*read_edid_block)(int block, uint8 *edid_buf);
 	int (*hpd_feature)(int on);

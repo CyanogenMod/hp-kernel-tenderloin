@@ -163,6 +163,9 @@ struct msm_fb_data_type {
 
 	struct clk *ebi1_clk;
 	boolean dma_update_flag;
+	struct timer_list msmfb_no_update_notify_timer;
+	struct completion msmfb_update_notify;
+	struct completion msmfb_no_update_notify;
 };
 
 struct dentry *msm_fb_get_debugfs_root(void);
@@ -177,5 +180,8 @@ int msm_fb_detect_client(const char *name);
 #ifdef CONFIG_FB_BACKLIGHT
 void msm_fb_config_backlight(struct msm_fb_data_type *mfd);
 #endif
+
+void fill_black_screen(void);
+void unfill_black_screen(void);
 
 #endif /* MSM_FB_H */

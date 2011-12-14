@@ -54,6 +54,10 @@
 #define VIDC_1080P_SI_RG11_DECODE_STATUS_SHIFT   0
 #define VIDC_1080P_SI_RG11_DECODE_CODING_MASK    0x00000008
 #define VIDC_1080P_SI_RG11_DECODE_CODING_SHIFT   3
+#define VIDC_1080P_SI_RG11_DECODE_RES_MASK       0x000000C0
+#define VIDC_1080P_SI_RG11_DECODE_RES_SHIFT      6
+#define VIDC_1080P_SI_RG11_DECODE_CROPP_MASK     0x00000100
+#define VIDC_1080P_SI_RG11_DECODE_CROPP_SHIFT    8
 
 #define VIDC_1080P_BASE_OFFSET_SHIFT         11
 
@@ -438,21 +442,28 @@ void vidc_1080p_clear_returned_channel_inst_id(void)
 void vidc_1080p_get_decode_seq_start_result(
 	struct vidc_1080p_seq_hdr_info *seq_hdr_info)
 {
-	u32 display_result;
-
-
+	u32 dec_disp_result;
+	u32 frame = 0;
 	VIDC_HWIO_IN(REG_845544, &seq_hdr_info->img_size_y);
 	VIDC_HWIO_IN(REG_859906, &seq_hdr_info->img_size_x);
 	VIDC_HWIO_IN(REG_490078, &seq_hdr_info->min_num_dpb);
 	VIDC_HWIO_IN(REG_489688, &seq_hdr_info->dec_frm_size);
-	VIDC_HWIO_IN(REG_853667, &display_result);
-	seq_hdr_info->progressive = VIDC_GETFIELD(display_result,
+	VIDC_HWIO_IN(REG_853667, &dec_disp_result);
+	seq_hdr_info->disp_progressive = VIDC_GETFIELD(dec_disp_result,
 					VIDC_1080P_SI_RG7_DISPLAY_CODING_MASK,
 					VIDC_1080P_SI_RG7_DISPLAY_CODING_SHIFT);
-	seq_hdr_info->crop_exists  = VIDC_GETFIELD(display_result,
+	seq_hdr_info->disp_crop_exists  = VIDC_GETFIELD(dec_disp_result,
 		VIDC_1080P_SI_RG7_DISPLAY_CROP_MASK,
 		VIDC_1080P_SI_RG7_DISPLAY_CROP_SHIFT);
-
+	VIDC_HWIO_IN(REG_692991, &dec_disp_result);
+	seq_hdr_info->dec_progressive = VIDC_GETFIELD(dec_disp_result,
+					VIDC_1080P_SI_RG11_DECODE_CODING_MASK,
+					VIDC_1080P_SI_RG11_DECODE_CODING_SHIFT);
+	seq_hdr_info->dec_crop_exists  = VIDC_GETFIELD(dec_disp_result,
+		VIDC_1080P_SI_RG11_DECODE_CROPP_MASK,
+		VIDC_1080P_SI_RG11_DECODE_CROPP_SHIFT);
+	VIDC_HWIO_IN(REG_760102, &frame);
+	seq_hdr_info->data_partition = ((frame & 0x8) >> 3);
 }
 
 void vidc_1080p_get_decoded_frame_size(u32 *pn_decoded_size)
@@ -477,9 +488,12 @@ void vidc_1080p_get_display_frame_result(
 		(enum vidc_1080p_display_coding)
 	VIDC_GETFIELD(display_result, VIDC_1080P_SI_RG7_DISPLAY_CODING_MASK,
 		VIDC_1080P_SI_RG7_DISPLAY_CODING_SHIFT);
-	dec_disp_info->resl_change = VIDC_GETFIELD(display_result,
+	dec_disp_info->disp_resl_change = VIDC_GETFIELD(display_result,
 		VIDC_1080P_SI_RG7_DISPLAY_RES_MASK,
 		VIDC_1080P_SI_RG7_DISPLAY_RES_SHIFT);
+	dec_disp_info->disp_crop_exists = VIDC_GETFIELD(display_result,
+		VIDC_1080P_SI_RG7_DISPLAY_CROP_MASK,
+		VIDC_1080P_SI_RG7_DISPLAY_CROP_SHIFT);
 }
 
 void vidc_1080p_get_decode_frame(
@@ -508,6 +522,12 @@ void vidc_1080p_get_decode_frame_result(
 				VIDC_GETFIELD(decode_result,
 				VIDC_1080P_SI_RG11_DECODE_CODING_MASK,
 				VIDC_1080P_SI_RG11_DECODE_CODING_SHIFT);
+	dec_disp_info->dec_resl_change = VIDC_GETFIELD(decode_result,
+		VIDC_1080P_SI_RG11_DECODE_RES_MASK,
+		VIDC_1080P_SI_RG11_DECODE_RES_SHIFT);
+	dec_disp_info->dec_crop_exists = VIDC_GETFIELD(decode_result,
+		VIDC_1080P_SI_RG11_DECODE_CROPP_MASK,
+		VIDC_1080P_SI_RG11_DECODE_CROPP_SHIFT);
 }
 
 void vidc_1080p_decode_seq_start_ch0(

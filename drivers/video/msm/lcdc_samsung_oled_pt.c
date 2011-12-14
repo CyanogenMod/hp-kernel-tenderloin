@@ -468,8 +468,14 @@ static struct attribute_group fs_attr_group = {
 };
 #endif
 
-static int samsung_probe(struct platform_device *pdev)
+static struct msm_fb_panel_data samsung_panel_data = {
+	.on = lcdc_samsung_panel_on,
+	.off = lcdc_samsung_panel_off,
+};
+
+static int __devinit samsung_probe(struct platform_device *pdev)
 {
+	struct msm_panel_info *pinfo;
 #ifdef SYSFS_DEBUG_CMD
 	struct platform_device *fb_dev;
 	struct msm_fb_data_type *mfd;
@@ -477,10 +483,33 @@ static int samsung_probe(struct platform_device *pdev)
 #endif
 
 	pr_info("%s: id=%d\n", __func__, pdev->id);
-	if (pdev->id == 0) {
-		lcdc_samsung_pdata = pdev->dev.platform_data;
-		return 0;
-	}
+	lcdc_samsung_pdata = pdev->dev.platform_data;
+
+	pinfo = &samsung_panel_data.panel_info;
+	pinfo->xres = 480;
+	pinfo->yres = 800;
+	pinfo->type = LCDC_PANEL;
+	pinfo->pdest = DISPLAY_1;
+	pinfo->wait_cycle = 0;
+	pinfo->bpp = 24;
+	pinfo->fb_num = 2;
+	pinfo->clk_rate = 25600000; /* Max 27.77MHz */
+	pinfo->bl_max = 15;
+	pinfo->bl_min = 1;
+
+	/* AMS367PE02 Operation Manual, Page 7 */
+	pinfo->lcdc.h_back_porch = 16-2;	/* HBP-HLW */
+	pinfo->lcdc.h_front_porch = 16;
+	pinfo->lcdc.h_pulse_width = 2;
+	/* AMS367PE02 Operation Manual, Page 6 */
+	pinfo->lcdc.v_back_porch = 3-2;		/* VBP-VLW */
+	pinfo->lcdc.v_front_porch = 28;
+	pinfo->lcdc.v_pulse_width = 2;
+
+	pinfo->lcdc.border_clr = 0;
+	pinfo->lcdc.underflow_clr = 0xff;
+	pinfo->lcdc.hsync_skew = 0;
+	pdev->dev.platform_data = &samsung_panel_data;
 
 #ifndef SYSFS_DEBUG_CMD
 	msm_fb_add_device(pdev);
@@ -523,21 +552,9 @@ static struct platform_driver this_driver = {
 	.driver.name	= "lcdc_samsung_oled",
 };
 
-static struct msm_fb_panel_data samsung_panel_data = {
-	.on = lcdc_samsung_panel_on,
-	.off = lcdc_samsung_panel_off,
-};
-
-static struct platform_device this_device = {
-	.name	= "lcdc_samsung_oled",
-	.id	= 1,
-	.dev.platform_data = &samsung_panel_data,
-};
-
 static int __init lcdc_samsung_panel_init(void)
 {
 	int ret;
-	struct msm_panel_info *pinfo;
 
 #ifdef CONFIG_FB_MSM_LCDC_AUTO_DETECT
 	if (msm_fb_detect_client("lcdc_samsung_oled")) {
@@ -552,69 +569,27 @@ static int __init lcdc_samsung_panel_init(void)
 		return ret;
 	}
 
-	pinfo = &samsung_panel_data.panel_info;
-	pinfo->xres = 480;
-	pinfo->yres = 800;
-	pinfo->type = LCDC_PANEL;
-	pinfo->pdest = DISPLAY_1;
-	pinfo->wait_cycle = 0;
-	pinfo->bpp = 24;
-	pinfo->fb_num = 2;
-#ifdef CONFIG_ARCH_MSM7X30
-	pinfo->clk_rate = 30720000; /* Max 27.77MHz */
-#else
-	pinfo->clk_rate = 25600000; /* Max 27.77MHz */
-#endif
-	pinfo->bl_max = 15;
-	pinfo->bl_min = 1;
-
-	/* AMS367PE02 Operation Manual, Page 7 */
-	pinfo->lcdc.h_back_porch = 16-2;	/* HBP-HLW */
-	pinfo->lcdc.h_front_porch = 16;
-	pinfo->lcdc.h_pulse_width = 2;
-	/* AMS367PE02 Operation Manual, Page 6 */
-	pinfo->lcdc.v_back_porch = 3-2;		/* VBP-VLW */
-	pinfo->lcdc.v_front_porch = 28;
-	pinfo->lcdc.v_pulse_width = 2;
-
-	pinfo->lcdc.border_clr = 0;
-	pinfo->lcdc.underflow_clr = 0xff;
-	pinfo->lcdc.hsync_skew = 0;
-
-	ret = platform_device_register(&this_device);
-	if (ret) {
-		pr_err("%s: device register failed, rc=%d\n", __func__, ret);
-		goto fail_driver;
-	}
 #ifdef CONFIG_SPI_QUP
 	ret = spi_register_driver(&lcdc_samsung_spi_driver);
 
 	if (ret) {
 		pr_err("%s: spi register failed: rc=%d\n", __func__, ret);
-		goto fail_device;
-	}
-	pr_info("%s: SUCCESS (SPI)\n", __func__);
+		platform_driver_unregister(&this_driver);
+	} else
+		pr_info("%s: SUCCESS (SPI)\n", __func__);
 #else
 	pr_info("%s: SUCCESS (BitBang)\n", __func__);
 #endif
 	return ret;
-
-#ifdef CONFIG_SPI_QUP
-fail_device:
-	platform_device_unregister(&this_device);
-#endif
-fail_driver:
-	platform_driver_unregister(&this_driver);
-
-	return ret;
 }
 
 module_init(lcdc_samsung_panel_init);
-#ifdef CONFIG_SPI_QUP
 static void __exit lcdc_samsung_panel_exit(void)
 {
 	pr_info("%s\n", __func__);
+#ifdef CONFIG_SPI_QUP
 	spi_unregister_driver(&lcdc_samsung_spi_driver);
+#endif
+	platform_driver_unregister(&this_driver);
 }
 module_exit(lcdc_samsung_panel_exit);
-#endif

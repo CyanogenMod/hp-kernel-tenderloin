@@ -78,9 +78,6 @@ static struct platform_driver mipi_dsi_driver = {
 
 struct device dsi_dev;
 
-/* MIPI_DSI_MRPS, Maximum Return Packet Size */
-char max_pktsize[2] = {MIPI_DSI_MRPS, 0x00}; /* LSB tx first, 16 bytes */
-
 static void mipi_dsi_clk(struct dsi_clk_desc *clk, int clk_en)
 {
 	char	*cc, *ns, *md;
@@ -121,6 +118,7 @@ static void mipi_dsi_clk(struct dsi_clk_desc *clk, int clk_en)
 	} else
 		MIPI_OUTP_SECURE(cc, 0);
 
+	wmb();
 }
 
 static void mipi_dsi_sfpb_cfg(void)
@@ -173,6 +171,8 @@ static void mipi_dsi_pclk(struct dsi_clk_desc *clk, int clk_en)
 
 	} else
 		MIPI_OUTP_SECURE(cc, 0);
+
+	wmb();
 }
 
 static void mipi_dsi_ahb_en(void)
@@ -181,7 +181,7 @@ static void mipi_dsi_ahb_en(void)
 
 	ahb = mmss_cc_base + 0x08;
 
-	printk(KERN_INFO "%s: ahb=%x %x\n",
+	pr_debug("%s: ahb=%x %x\n",
 		__func__, (int) ahb, MIPI_INP_SECURE(ahb));
 }
 
@@ -420,6 +420,47 @@ void mipi_dsi_phy_init(int panel_ndx, struct msm_panel_info const *panel_info)
 	MIPI_OUTP(MIPI_DSI_BASE + 0x200, (pd->pll[0] | 0x01));
 }
 
+void mipi_dsi_clk_enable(void)
+{
+
+	if (mipi_dsi_clk_on) {
+		pr_err("%s: mipi_dsi_clk already ON\n", __func__);
+		return;
+	}
+
+	mipi_dsi_clk_on = 1;
+
+	clk_enable(amp_pclk); /* clock for AHB-master to AXI */
+	clk_enable(dsi_m_pclk);
+	clk_enable(dsi_s_pclk);
+	clk_enable(dsi_byte_div_clk);
+	clk_enable(dsi_esc_clk);
+	mipi_dsi_pclk(&dsi_pclk, 1);
+	mipi_dsi_clk(&dsicore_clk, 1);
+	mipi_dsi_ahb_en();
+	mipi_dsi_sfpb_cfg();
+}
+
+void mipi_dsi_clk_disable(void)
+{
+	if (mipi_dsi_clk_on == 0) {
+		pr_err("%s: mipi_dsi_clk already OFF\n", __func__);
+		return;
+	}
+
+	mipi_dsi_clk_on = 0;
+
+	MIPI_OUTP(MIPI_DSI_BASE + 0x0118, 0);
+
+	mipi_dsi_pclk(&dsi_pclk, 0);
+	mipi_dsi_clk(&dsicore_clk, 0);
+	clk_disable(dsi_esc_clk);
+	clk_disable(dsi_byte_div_clk);
+	clk_disable(dsi_m_pclk);
+	clk_disable(dsi_s_pclk);
+	clk_disable(amp_pclk); /* clock for AHB-master to AXI */
+}
+
 static int mipi_dsi_off(struct platform_device *pdev)
 {
 	int ret = 0;
@@ -429,26 +470,32 @@ static int mipi_dsi_off(struct platform_device *pdev)
 	mfd = platform_get_drvdata(pdev);
 	pinfo = &mfd->panel_info;
 
+	mutex_lock(&mfd->dma->ov_mutex);
+
+	mdp4_overlay_dsi_state_set(ST_DSI_SUSPEND);
+
+	/* need dsi clock to perform shutdown */
+	/* make sure mdp dma is not running */
+	if (mfd->panel_info.type == MIPI_CMD_PANEL) {
+		mdp4_dsi_cmd_dma_busy_wait(mfd);
+		mdp4_dsi_blt_dmap_busy_wait(mfd);
+	}
+
 	/* change to DSI_CMD_MODE since it needed to
 	 * tx DCS dsiplay off comamnd to panel
 	 */
 	mipi_dsi_op_mode_config(DSI_CMD_MODE);
 
-	if (pinfo->lcd.vsync_enable) {
-		if (pinfo->lcd.hw_vsync_mode && vsync_gpio > 0)
-			gpio_free(vsync_gpio);
+	if (mfd->panel_info.type == MIPI_CMD_PANEL) {
+		if (pinfo->lcd.vsync_enable) {
+			if (pinfo->lcd.hw_vsync_mode && vsync_gpio > 0)
+				gpio_free(vsync_gpio);
 
-		mipi_dsi_set_tear_off(mfd);
+			mipi_dsi_set_tear_off(mfd);
+		}
 	}
 
 	ret = panel_next_off(pdev);
-
-	mutex_lock(&mfd->dma->ov_mutex);
-
-	/* make sure mdp dma is not running */
-	if (mfd->panel_info.type == MIPI_CMD_PANEL)
-		mdp4_dsi_cmd_dma_busy_wait(mfd);
-
 
 #ifdef CONFIG_MSM_BUS_SCALING
 	mdp_bus_scale_update_request(0);
@@ -456,8 +503,6 @@ static int mipi_dsi_off(struct platform_device *pdev)
 	if (mfd->ebi1_clk)
 		clk_disable(mfd->ebi1_clk);
 #endif
-
-	disable_irq(DSI_IRQ);
 
 	/* DSIPHY_PLL_CTRL_5 */
 	MIPI_OUTP(MIPI_DSI_BASE + 0x0214, 0x05f);
@@ -483,15 +528,9 @@ static int mipi_dsi_off(struct platform_device *pdev)
 	/* disbale dsi clk */
 	MIPI_OUTP(MIPI_DSI_BASE + 0x0118, 0);
 
-	mipi_dsi_pclk(&dsi_pclk, 0);
-	mipi_dsi_clk(&dsicore_clk, 0);
-	clk_disable(dsi_esc_clk);
-	clk_disable(dsi_byte_div_clk);
-	clk_disable(dsi_m_pclk);
-	clk_disable(dsi_s_pclk);
-	clk_disable(amp_pclk); /* clock for AHB-master to AXI */
-
-	mipi_dsi_clk_on = 0;
+	local_bh_disable();
+	mipi_dsi_clk_disable();
+	local_bh_enable();
 
 	/* disbale dsi engine */
 	MIPI_OUTP(MIPI_DSI_BASE + 0x0000, 0);
@@ -523,6 +562,8 @@ static int mipi_dsi_on(struct platform_device *pdev)
 	var = &fbi->var;
 	pinfo = &mfd->panel_info;
 
+	mdp4_overlay_dsi_state_set(ST_DSI_RESUME);
+
 	if (mipi_dsi_pdata && mipi_dsi_pdata->dsi_power_save)
 		mipi_dsi_pdata->dsi_power_save(1);
 
@@ -533,11 +574,9 @@ static int mipi_dsi_on(struct platform_device *pdev)
 		printk(KERN_ERR "%s: clk_set_rate failed\n",
 			__func__);
 
-	clk_enable(amp_pclk); /* clock for AHB-master to AXI */
-	clk_enable(dsi_m_pclk);
-	clk_enable(dsi_s_pclk);
-	clk_enable(dsi_byte_div_clk);
-	clk_enable(dsi_esc_clk);
+	local_bh_disable();
+	mipi_dsi_clk_enable();
+	local_bh_enable();
 
 	hbp = var->left_margin;
 	hfp = var->right_margin;
@@ -547,12 +586,6 @@ static int mipi_dsi_on(struct platform_device *pdev)
 	vspw = var->vsync_len;
 	width = mfd->panel_info.xres;
 	height = mfd->panel_info.yres;
-
-	mipi_dsi_ahb_en();
-	mipi_dsi_sfpb_cfg();
-	mipi_dsi_clk(&dsicore_clk, 1);
-	mipi_dsi_pclk(&dsi_pclk, 1);
-	mipi_dsi_clk_on = 1;
 
 	/* DSIPHY_PLL_CTRL_5 */
 	MIPI_OUTP(MIPI_DSI_BASE + 0x0214, 0x050);
@@ -565,20 +598,18 @@ static int mipi_dsi_on(struct platform_device *pdev)
 
 	mipi_dsi_phy_init(0, &(mfd->panel_info));
 
-	enable_irq(DSI_IRQ);
-
 	mipi  = &mfd->panel_info.mipi;
 	if (mfd->panel_info.type == MIPI_VIDEO_PANEL) {
 		MIPI_OUTP(MIPI_DSI_BASE + 0x20,
-			((hbp + width - 1) << 16 | (hbp - 1)));
+			((hspw + hbp + width) << 16 | (hspw + hbp)));
 		MIPI_OUTP(MIPI_DSI_BASE + 0x24,
-			((vbp + height - 1) << 16 | (vbp - 1)));
+			((vspw + vbp + height) << 16 | (vspw + vbp)));
 		MIPI_OUTP(MIPI_DSI_BASE + 0x28,
-			(vbp + height + vfp - 1) << 16 |
-				(hbp + width + hfp - 1));
-		MIPI_OUTP(MIPI_DSI_BASE + 0x2c, (hspw - 1) << 16);
+			(vspw + vbp + height + vfp - 1) << 16 |
+				(hspw + hbp + width + hfp - 1));
+		MIPI_OUTP(MIPI_DSI_BASE + 0x2c, (hspw << 16));
 		MIPI_OUTP(MIPI_DSI_BASE + 0x30, 0);
-		MIPI_OUTP(MIPI_DSI_BASE + 0x34, (vspw - 1) << 16);
+		MIPI_OUTP(MIPI_DSI_BASE + 0x34, (vspw << 16));
 
 	} else {		/* command mode */
 		if (mipi->dst_format == DSI_CMD_DST_FORMAT_RGB888)
@@ -604,8 +635,6 @@ static int mipi_dsi_on(struct platform_device *pdev)
 	}
 
 	mipi_dsi_host_init(mipi);
-
-	mipi_dsi_cmd_bta_sw_trigger(); /* clean up ack_err_status */
 
 	ret = panel_next_on(pdev);
 
@@ -636,36 +665,6 @@ static int mipi_dsi_on(struct platform_device *pdev)
 	return ret;
 }
 
-void mipi_dsi_clk_enable(void)
-{
-
-	clk_enable(amp_pclk); /* clock for AHB-master to AXI */
-	clk_enable(dsi_m_pclk);
-	clk_enable(dsi_s_pclk);
-	clk_enable(dsi_byte_div_clk);
-	clk_enable(dsi_esc_clk);
-	mipi_dsi_pclk(&dsi_pclk, 1);
-	mipi_dsi_clk(&dsicore_clk, 1);
-
-	MIPI_OUTP(MIPI_DSI_BASE + 0x118, 0x23f); /* DSI_CLK_CTRL */
-
-	mipi_dsi_clk_on = 1;
-}
-
-void mipi_dsi_clk_disable(void)
-{
-	MIPI_OUTP(MIPI_DSI_BASE + 0x0118, 0);
-
-	mipi_dsi_pclk(&dsi_pclk, 0);
-	mipi_dsi_clk(&dsicore_clk, 0);
-	clk_disable(dsi_esc_clk);
-	clk_disable(dsi_byte_div_clk);
-	clk_disable(dsi_m_pclk);
-	clk_disable(dsi_s_pclk);
-	clk_disable(amp_pclk); /* clock for AHB-master to AXI */
-
-	mipi_dsi_clk_on = 0;
-}
 
 static int mipi_dsi_resource_initialized;
 
@@ -826,17 +825,17 @@ static int mipi_dsi_probe(struct platform_device *pdev)
 
 	if (mfd->panel_info.type == MIPI_VIDEO_PANEL) {
 		if (lanes > 0) {
-			pll_divider_config.clk_rate =
+			mfd->panel_info.clk_rate =
 			((h_period * v_period * (mipi->frame_rate) * bpp * 8)
 			   / lanes);
 		} else {
 			pr_err("%s: forcing mipi_dsi lanes to 1\n", __func__);
-			pll_divider_config.clk_rate =
+			mfd->panel_info.clk_rate =
 				(h_period * v_period
 					 * (mipi->frame_rate) * bpp * 8);
 		}
-	} else
-		pll_divider_config.clk_rate = mfd->panel_info.clk_rate;
+	}
+	pll_divider_config.clk_rate = mfd->panel_info.clk_rate;
 
 	rc = mipi_dsi_clk_div_config(bpp, lanes, &dsi_pclk_rate);
 	if (rc)
@@ -936,6 +935,8 @@ static int __init mipi_dsi_driver_init(void)
 		return PTR_ERR(dsi_byte_div_clk);
 	}
 
+	mipi_dsi_init();
+
 	ret = mipi_dsi_register_driver();
 
 	device_initialize(&dsi_dev);
@@ -954,8 +955,6 @@ static int __init mipi_dsi_driver_init(void)
 		printk(KERN_ERR "mipi_dsi_register_driver() failed!\n");
 		return ret;
 	}
-
-	mipi_dsi_init();
 
 	return ret;
 }

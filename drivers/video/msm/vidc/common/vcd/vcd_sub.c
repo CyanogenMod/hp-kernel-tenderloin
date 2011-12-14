@@ -820,10 +820,10 @@ void vcd_flush_output_buffers(struct vcd_clnt_ctxt *cctxt)
 		if (!cctxt->decoding || buf_entry->in_use) {
 			buf_entry->frame.data_len = 0;
 			cctxt->callback(VCD_EVT_RESP_OUTPUT_FLUSHED,
-					VCD_S_SUCCESS,
-					&buf_entry->frame,
-					sizeof(struct vcd_frame_data),
-					cctxt, cctxt->client_data);
+					  VCD_S_SUCCESS,
+					  &buf_entry->frame,
+					  sizeof(struct vcd_frame_data),
+					  cctxt, cctxt->client_data);
 			if (buf_entry->in_use) {
 				VCD_BUFFERPOOL_INUSE_DECREMENT(
 					buf_pool->in_use);
@@ -838,7 +838,7 @@ void vcd_flush_output_buffers(struct vcd_clnt_ctxt *cctxt)
 		VCD_MSG_ERROR("%s(): WARNING in_use(%u) or q_len(%u) not zero!",
 			__func__, buf_pool->in_use, buf_pool->q_len);
 		buf_pool->in_use = buf_pool->q_len = 0;
-		}
+  }
 	if (cctxt->sched_clnt_hdl) {
 		if (count > cctxt->sched_clnt_hdl->tkns)
 			cctxt->sched_clnt_hdl->tkns = 0;
@@ -852,7 +852,7 @@ void vcd_flush_output_buffers(struct vcd_clnt_ctxt *cctxt)
 		count = 0x1;
 
 		(void)ddl_set_property(cctxt->ddl_handle, &prop_hdr,
-					&count);
+					   &count);
 	}
 	vcd_release_all_clnt_frm_transc(cctxt);
 	cctxt->status.mask &= ~VCD_IN_RECONFIG;
@@ -879,13 +879,13 @@ u32 vcd_flush_buffers(struct vcd_clnt_ctxt *cctxt, u32 mode)
 		while (!VCD_FAILED(rc) && buf_entry) {
 			if (buf_entry->virtual) {
 				cctxt->callback(VCD_EVT_RESP_INPUT_FLUSHED,
-						VCD_S_SUCCESS,
-						&buf_entry->frame,
-						sizeof(struct
+						  VCD_S_SUCCESS,
+						  &buf_entry->frame,
+						  sizeof(struct
 							 vcd_frame_data),
-						cctxt,
-						cctxt->client_data);
-				}
+						  cctxt,
+						  cctxt->client_data);
+			}
 
 			buf_entry->in_use = false;
 			VCD_BUFFERPOOL_INUSE_DECREMENT(
@@ -903,7 +903,7 @@ u32 vcd_flush_buffers(struct vcd_clnt_ctxt *cctxt, u32 mode)
 		if (mode & VCD_FLUSH_INPUT)
 			vcd_flush_bframe_buffers(cctxt, VCD_FLUSH_INPUT);
 		if (mode & VCD_FLUSH_OUTPUT)
-			vcd_flush_output_buffers(cctxt);
+		vcd_flush_output_buffers(cctxt);
 	}
 	return VCD_S_SUCCESS;
 }
@@ -1725,10 +1725,10 @@ u32 vcd_handle_input_done(
 	transc->frame = frame->vcd_frm.frame;
 
 	cctxt->callback(event,
-			status,
-			&frame->vcd_frm,
-			sizeof(struct vcd_frame_data),
-			cctxt, cctxt->client_data);
+			  status,
+			  &frame->vcd_frm,
+			  sizeof(struct vcd_frame_data),
+			  cctxt, cctxt->client_data);
 
 	transc->ip_buf_entry->in_use = false;
 	VCD_BUFFERPOOL_INUSE_DECREMENT(cctxt->in_buf_pool.in_use);

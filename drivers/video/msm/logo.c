@@ -28,6 +28,10 @@
 #define fb_height(fb)	((fb)->var.yres)
 #define fb_size(fb)	((fb)->var.xres * (fb)->var.yres * 2)
 
+#define from565_r(x) ((((x) >> 11) & 0x1f) * 255 / 31)
+#define from565_g(x) ((((x) >> 5) & 0x3f) * 255 / 63)
+#define from565_b(x) (((x) & 0x1f) * 255 / 31)
+
 static void memset16(void *_ptr, unsigned short val, unsigned count)
 {
 	unsigned short *ptr = _ptr;
@@ -42,7 +46,9 @@ int load_565rle_image(char *filename)
 	struct fb_info *info;
 	int fd, count, err = 0;
 	unsigned max;
-	unsigned short *data, *bits, *ptr;
+	unsigned short *data, *ptr;
+	unsigned int *bits;
+	unsigned short compressed;
 
 	info = registered_fb[0];
 	if (!info) {
@@ -77,15 +83,13 @@ int load_565rle_image(char *filename)
 	max = fb_width(info) * fb_height(info);
 	ptr = data;
 	bits = (unsigned short *)(info->screen_base);
-	while (count > 3) {
-		unsigned n = ptr[0];
-		if (n > max)
-			break;
-		memset16(bits, ptr[1], n << 1);
-		bits += n;
-		max -= n;
-		ptr += 2;
-		count -= 4;
+	while (count > 1) {
+		compressed = *ptr;
+
+		*bits = (from565_r(compressed) << 16) | (from565_g(compressed) << 8) | from565_b(compressed);
+		bits += 1;
+		ptr += 1;
+		count -=2;
 	}
 
 err_logo_free_data:
@@ -95,3 +99,4 @@ err_logo_close_file:
 	return err;
 }
 EXPORT_SYMBOL(load_565rle_image);
+
