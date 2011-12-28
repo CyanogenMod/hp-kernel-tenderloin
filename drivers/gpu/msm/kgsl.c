@@ -1531,6 +1531,26 @@ error:
 	return result;
 }
 
+static long kgsl_ioctl_cff_syncmem(struct kgsl_device_private *dev_priv,
+          unsigned int cmd, void *data)
+
+{
+	int result = 0;
+	struct kgsl_cff_syncmem *param = data;
+	struct kgsl_process_private *private = dev_priv->process_priv;
+	struct kgsl_mem_entry *entry = NULL;
+
+	spin_lock(&private->mem_lock);
+	entry = kgsl_sharedmem_find_region(private, param->gpuaddr, param->len);
+	if (entry)
+		kgsl_cffdump_syncmem(dev_priv, &entry->memdesc, param->gpuaddr,
+             param->len, true);
+	else
+		result = -EINVAL;
+	spin_unlock(&private->mem_lock);
+	return result;
+}
+
 /*This function flushes a graphics memory allocation from CPU cache
  *when caching is enabled with MMU*/
 static long
@@ -1638,6 +1658,8 @@ static const struct {
 			kgsl_ioctl_sharedmem_flush_cache, 0),
 	KGSL_IOCTL_FUNC(IOCTL_KGSL_GPUMEM_ALLOC,
 			kgsl_ioctl_gpumem_alloc, 0),
+	KGSL_IOCTL_FUNC(IOCTL_KGSL_CFF_SYNCMEM,
+			kgsl_ioctl_cff_syncmem, 0),
 };
 
 static long kgsl_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
