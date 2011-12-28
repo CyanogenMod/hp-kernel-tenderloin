@@ -141,6 +141,13 @@ struct kgsl_memregion {
 	unsigned int   sizebytes;
 };
 
+struct kgsl_event {
+	uint32_t timestamp;
+	void (*func)(struct kgsl_device *, void *, u32);
+	void *priv;
+	struct list_head list;
+};
+
 struct kgsl_device {
 	struct device *dev;
 	const char *name;
@@ -185,6 +192,8 @@ struct kgsl_device {
 	int mem_log;
 	int pwr_log;
 	struct wake_lock idle_wakelock;
+
+	struct list_head events;
 };
 
 struct kgsl_context {
