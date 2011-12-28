@@ -210,9 +210,9 @@ int kgsl_register_ts_notifier(struct kgsl_device *device,
 int kgsl_unregister_ts_notifier(struct kgsl_device *device,
 				struct notifier_block *nb);
 
-int kgsl_device_probe(struct kgsl_device *device,
+int kgsl_device_platform_probe(struct kgsl_device *device,
 		irqreturn_t (*dev_isr) (int, void*));
-void kgsl_device_remove(struct kgsl_device *device);
+void kgsl_device_platform_remove(struct kgsl_device *device);
 
 extern const struct dev_pm_ops kgsl_pm_ops;
 

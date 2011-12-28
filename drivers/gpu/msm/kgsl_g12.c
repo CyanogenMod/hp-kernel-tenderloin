@@ -331,7 +331,7 @@ static int __devinit kgsl_2d_probe(struct platform_device *pdev)
 	if (status != 0)
 		goto error;
 
-	status = kgsl_device_probe(device, kgsl_g12_isr);
+	status = kgsl_device_platform_probe(device, kgsl_g12_isr);
 	if (status)
 		goto error_close_cmdstream;
 
@@ -350,7 +350,7 @@ static int __devexit kgsl_2d_remove(struct platform_device *pdev)
 
 	device = (struct kgsl_device *)pdev->id_entry->driver_data;
 
-	kgsl_device_remove(device);
+	kgsl_device_platform_remove(device);
 
 	kgsl_g12_cmdstream_close(device);
 

@@ -1917,7 +1917,7 @@ err_devlist:
 }
 EXPORT_SYMBOL(kgsl_register_device);
 
-int kgsl_device_probe(struct kgsl_device *device,
+int kgsl_device_platform_probe(struct kgsl_device *device,
 			irqreturn_t (*dev_isr) (int, void*))
 {
 	int status = -EINVAL;
@@ -2037,7 +2037,7 @@ error:
 }
 EXPORT_SYMBOL(kgsl_device_platform_probe);
 
-void kgsl_device_remove(struct kgsl_device *device)
+void kgsl_device_platform_remove(struct kgsl_device *device)
 {
 	struct kgsl_memregion *regspace = &device->regspace;
 
