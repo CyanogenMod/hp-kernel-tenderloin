@@ -30,7 +30,7 @@
 #define _MSM_KGSL_H
 
 #define KGSL_VERSION_MAJOR        3
-#define KGSL_VERSION_MINOR        3
+#define KGSL_VERSION_MINOR        4
 
 /*context flags */
 #define KGSL_CONTEXT_SAVE_GMEM	1
@@ -78,9 +78,11 @@ struct kgsl_devinfo {
 	unsigned int chip_id;
 	unsigned int mmu_enabled;
 	unsigned int gmem_gpubaseaddr;
-	/* if gmem_hostbaseaddr is NULL, we would know its not mapped into
-	 * mmio space */
-	unsigned int gmem_hostbaseaddr;
+	/*
+	* This field contains the adreno revision
+	* number 200, 205, 220, etc...
+	*/
+	unsigned int gpu_id;
 	unsigned int gmem_sizebytes;
 };
 
