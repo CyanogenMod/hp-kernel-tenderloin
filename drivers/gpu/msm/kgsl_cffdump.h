@@ -56,6 +56,11 @@ void kgsl_cffdump_user_event(unsigned int cff_opcode, unsigned int op1,
 		unsigned int op4, unsigned int op5);
 static inline bool kgsl_cffdump_flags_no_memzero(void) { return true; }
 
+void kgsl_cffdump_memory_base(enum kgsl_deviceid device_id, unsigned int base,
+		unsigned int range, unsigned int gmemsize);
+
+void kgsl_cffdump_hang(enum kgsl_deviceid device_id);
+
 #else
 
 #define kgsl_cffdump_init()					(void)0

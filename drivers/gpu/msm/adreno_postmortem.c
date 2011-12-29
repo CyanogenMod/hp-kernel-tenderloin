@@ -25,6 +25,7 @@
 #include "adreno_ringbuffer.h"
 #include "adreno_postmortem.h"
 #include "adreno_debugfs.h"
+#include "kgsl_cffdump.h"
 
 #include "a200_reg.h"
 
@@ -802,6 +803,8 @@ int kgsl_postmortem_dump(struct kgsl_device *device, int manual)
 	bool saved_nap;
 
 	BUG_ON(device == NULL);
+
+	kgsl_cffdump_hang(device->id);
 
 	/* For a manual dump, make sure that the system is idle */
 

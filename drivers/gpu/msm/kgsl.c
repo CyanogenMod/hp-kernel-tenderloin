@@ -678,19 +678,6 @@ static int kgsl_release(struct inode *inodep, struct file *filep)
 	 */
 	kgsl_memqueue_cleanup(device, private);
 
-	/* Process expired events */
-/* FIXME
-	list_for_each_entry_safe(event, event_tmp, &device->events, list) {
-		if (timestamp_cmp(ts_processed, event->timestamp) < 0)
-			break;
-
-		if (event->func)
-			event->func(device, event->priv, ts_processed);
-
-		list_del(&event->list);
-		kfree(event);
-	}
-*/
 	mutex_unlock(&device->mutex);
 	kfree(dev_priv);
 
@@ -1632,10 +1619,8 @@ static long kgsl_ioctl_cff_user_event(struct kgsl_device_private *dev_priv,
 {
 	int result = 0;
 	struct kgsl_cff_user_event *param = data;
-/* FIXME
 	kgsl_cffdump_user_event(param->cff_opcode, param->op1, param->op2,
 			param->op3, param->op4, param->op5);
-*/
 	return result;
 }
 
