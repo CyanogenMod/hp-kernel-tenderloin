@@ -1986,7 +1986,6 @@ void kgsl_unregister_device(struct kgsl_device *device)
 	kgsl_driver.devp[minor] = NULL;
 	mutex_unlock(&kgsl_driver.devlock);
 
-	atomic_dec(&kgsl_driver.device_count);
 }
 EXPORT_SYMBOL(kgsl_unregister_device);
 
@@ -2029,7 +2028,6 @@ kgsl_register_device(struct kgsl_device *device)
 	dev_set_drvdata(&device->pdev->dev, device);
 
 	/* Generic device initialization */
-	atomic_inc(&kgsl_driver.device_count);
 
 	/* sysfs and debugfs initalization - failure here is non fatal */
 
@@ -2287,7 +2285,6 @@ static int __init kgsl_core_init(void)
 	kgsl_cffdump_init();
 
 	/* Generic device initialization */
-	atomic_set(&kgsl_driver.device_count, -1);
 
 	INIT_LIST_HEAD(&kgsl_driver.process_list);
 
