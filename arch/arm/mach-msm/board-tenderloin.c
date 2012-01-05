@@ -2388,22 +2388,52 @@ static struct platform_device msm_batt_device = {
 };
 #endif
 
+#ifdef CONFIG_FB_MSM_LCDC_DSUB
+ /* VGA = 1440 x 900 x 4(bpp) x 2(pages)
+    prim = 1024 x 600 x 4(bpp) x 2(pages)
+    This is the difference. */
+#define MSM_FB_DSUB_PMEM_ADDER (0x9E3400-0x4B0000)
+#else
+#define MSM_FB_DSUB_PMEM_ADDER (0)
+#endif
+
+#ifdef CONFIG_FB_MSM_TRIPLE_BUFFER
+#define MSM_FB_PRIM_BUF_SIZE (1024 * 768 * 4 * 3) /* 4 bpp x 3 pages */
+#else
+#define MSM_FB_PRIM_BUF_SIZE (1024 * 768 * 4 * 2) /* 4 bpp x 2 pages */
+#endif
+
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL
-/* prim = 1024 x 768 x 4(bpp) x 2(pages)
- * hdmi = 1920 x 1080 x 2(bpp) x 1(page)
- * Note: must be multiple of 4096 */
-#else /* CONFIG_FB_MSM_HDMI_MSM_PANEL */
-/*
- * 0x900000 = 1024 x 768 x 4 x 3
- * For FB1 we need an extra 0x1C2000 to allow scaling of legacy games
- * 0x1C2000 is 320x480x4x3 and is needed by the rotator
- * to allowing copying between render targets
- */
-#define MSM_FB0_SIZE 0x900000
-#define MSM_FB1_SIZE 0xAC2000
-#endif /* CONFIG_FB_MSM_HDMI_MSM_PANEL */
+#define MSM_FB_EXT_BUF_SIZE  (1920 * 1080 * 2 * 1) /* 2 bpp x 1 page */
+#elif defined(CONFIG_FB_MSM_TVOUT)
+#define MSM_FB_EXT_BUF_SIZE  (720 * 576 * 2 * 2) /* 2 bpp x 2 pages */
+#else
+#define MSM_FB_EXT_BUF_SIZE     0
+#endif
+
+#ifdef CONFIG_FB_MSM_OVERLAY_WRITEBACK
+/* width x height x 3 bpp x 2 frame buffer */
+#define MSM_FB_WRITEBACK_SIZE (1024 * 768 * 3 * 2)
+#define MSM_FB_WRITEBACK_OFFSET  \
+                (MSM_FB_PRIM_BUF_SIZE + MSM_FB_EXT_BUF_SIZE)
+#else
+#define MSM_FB_WRITEBACK_SIZE   0
+#define MSM_FB_WRITEBACK_OFFSET 0
+#endif
+
+
+/* Note: must be multiple of 4096 */
+#define MSM_FB_SIZE roundup(MSM_FB_PRIM_BUF_SIZE + MSM_FB_EXT_BUF_SIZE + \
+                                 MSM_FB_WRITEBACK_SIZE + \
+                                 MSM_FB_DSUB_PMEM_ADDER, 4096)
 
 #define MSM_PMEM_SF_SIZE 0x4000000 /* 64 Mbytes */
+
+static int writeback_offset(void)
+{
+         return MSM_FB_WRITEBACK_OFFSET;
+}
+
 #define MSM_OVERLAY_BLT_SIZE roundup(0x500000, 4096)
 
 #define MSM_PMEM_KERNEL_EBI1_SIZE  0x600000
@@ -2432,7 +2462,7 @@ static int __init fb_args(char *str)
 }
 early_param("fb", fb_args);
 
-static unsigned fb_size = MSM_FB0_SIZE;
+static unsigned fb_size = MSM_FB_SIZE;
 static int __init fb_size_setup(char *p)
 {
 	fb_size = memparse(p, NULL);
