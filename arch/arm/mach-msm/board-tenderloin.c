@@ -1625,10 +1625,10 @@ static struct lsm303dlh_acc_platform_data lsm303dlh_acc_pdata = {
 	.poll_interval = 200,
 	.min_interval = 10,
 	.g_range = LSM303DLH_ACC_G_2G,
-	.axis_map_x = 0,
-	.axis_map_y = 1,
+	.axis_map_x = 1,
+	.axis_map_y = 0,
 	.axis_map_z = 2,
-	.negate_x = 0,
+	.negate_x = 1,
 	.negate_y = 0,
 	.negate_z = 0,
 	.gpio_int1 = -1,
@@ -2638,7 +2638,7 @@ static void __init msm8x60_allocate_memory_regions(void)
 	void *addr;
 	unsigned long size;
 
-	size = MSM_FB0_SIZE;
+	size = MSM_FB_SIZE;
 	if(fb_phys) {
 		addr = (void *)fb_phys;
 		msm_fb_resources[0].start = (unsigned long)addr;
@@ -2653,14 +2653,14 @@ static void __init msm8x60_allocate_memory_regions(void)
 		pr_info("allocating %lu bytes at %p (%lx physical) for fb\n",
 			size, addr, __pa(addr));
 	}
-
+#if 0
 	size = MSM_FB1_SIZE;
 	addr = alloc_bootmem(size);
 	msm_fb_resources[1].start = __pa(addr);
 	msm_fb_resources[1].end = msm_fb_resources[1].start + size - 1;
 	pr_info("allocating %lu bytes at %p (%lx physical) for fb1\n",
 		size, addr, __pa(addr));
-
+#endif
 #ifdef CONFIG_KERNEL_PMEM_EBI_REGION
 	size = pmem_kernel_ebi1_size;
 	if (size) {
