@@ -333,50 +333,6 @@ static inline unsigned int cpufreq_quick_get(unsigned int cpu)
 }
 #endif
 
-/*********************************************************************
- *                       CPUFREQ ONDEMAND TICKLE                     *
- *********************************************************************/
-#ifdef CONFIG_CPU_FREQ_GOV_ONDEMAND_TICKLE
-struct tickle_file_data;
-
-void cpufreq_ondemand_tickle(void);
-void cpufreq_ondemand_tickle_millis(unsigned int millis);
-void cpufreq_ondemand_hold(void);
-void cpufreq_ondemand_unhold(void);
-void cpufreq_ondemand_hold_check(int *flag);
-void cpufreq_ondemand_unhold_check(int *flag);
-void cpufreq_ondemand_floor_hold(struct tickle_file_data *tfdp);
-void cpufreq_ondemand_floor_unhold(struct tickle_file_data *tfdp);
-void cpufreq_ondemand_floor_hold_check(struct tickle_file_data *tfdp,
-	int *flag);
-void cpufreq_ondemand_floor_unhold_check(struct tickle_file_data *tfdp,
-	int *flag);
-void cpufreq_ondemand_hold_sync(void);
-#define CPUFREQ_TICKLE cpufreq_ondemand_tickle
-#define CPUFREQ_TICKLE_MILLIS(millis) cpufreq_ondemand_tickle_millis((millis));
-#define CPUFREQ_HOLD cpufreq_ondemand_hold
-#define CPUFREQ_UNHOLD cpufreq_ondemand_unhold
-#define CPUFREQ_HOLD_CHECK cpufreq_ondemand_hold_check
-#define CPUFREQ_UNHOLD_CHECK cpufreq_ondemand_unhold_check
-#define CPUFREQ_HOLD_SYNC cpufreq_ondemand_hold_sync
-
-/* kernel-only calls */
-int cpufreq_ondemand_floor_hold_kernel(unsigned int freq);
-int cpufreq_ondemand_floor_unhold_kernel(void);
-#define CPUFREQ_FLOOR_HOLD_KERNEL cpufreq_ondemand_floor_hold_kernel
-#define CPUFREQ_FLOOR_UNHOLD_KERNEL cpufreq_ondemand_floor_unhold_kernel
-#else
-
-#define CPUFREQ_TICKLE()
-#define CPUFREQ_TICKLE_MILLIS(millis)
-#define CPUFREQ_HOLD()
-#define CPUFREQ_UNHOLD()
-#define CPUFREQ_HOLD_CHECK(flag)
-#define CPUFREQ_UNHOLD_CHECK(flag)
-#define CPUFREQ_HOLD_SYNC()
-#define CPUFREQ_FLOOR_HOLD_KERNEL cpufreq_ondemand_floor_hold_kernel
-#define CPUFREQ_FLOOR_UNHOLD_KERNEL cpufreq_ondemand_floor_unhold_kernel
-#endif
 
 /*********************************************************************
  *                       CPUFREQ DEFAULT GOVERNOR                    *
@@ -401,12 +357,12 @@ extern struct cpufreq_governor cpufreq_gov_userspace;
 #elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_ONDEMAND)
 extern struct cpufreq_governor cpufreq_gov_ondemand;
 #define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_ondemand)
-#elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_ONDEMAND_TICKLE)
-extern struct cpufreq_governor cpufreq_gov_ondemand_tickle;
-#define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_ondemand_tickle)
 #elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_CONSERVATIVE)
 extern struct cpufreq_governor cpufreq_gov_conservative;
 #define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_conservative)
+#elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_INTERACTIVE)
+extern struct cpufreq_governor cpufreq_gov_interactive;
+#define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_interactive)
 #endif
 
 
@@ -469,3 +425,4 @@ extern void cpufreq_debug_printk(unsigned int type, const char *prefix,
 #endif /* CONFIG_CPU_FREQ_DEBUG */
 
 #endif /* _LINUX_CPUFREQ_H */
+

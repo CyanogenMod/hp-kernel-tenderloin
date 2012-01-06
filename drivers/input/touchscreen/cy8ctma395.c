@@ -1,6 +1,5 @@
 //#define DEBUG
 
-#include <linux/cpufreq.h>
 #include <linux/cy8ctma395.h>
 #include <linux/delay.h>
 #include <linux/gpio.h>
@@ -359,7 +358,6 @@ static int port_acquire(struct device *dev, u32 *id, u8 *rev)
 	gpio_set_value(pdat->xres, 0);
 	usleep(pdat->xres_us);
 
-	CPUFREQ_HOLD_SYNC();
 	local_irq_disable();
 	{
 		u8 response;
@@ -381,7 +379,6 @@ retry:
 
 enable:
 	local_irq_enable();
-	CPUFREQ_UNHOLD();
 
 	if (rc < 0) {
 		dev_err(dev, "failed to acquire port\n");

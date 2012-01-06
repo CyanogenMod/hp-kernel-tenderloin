@@ -26,7 +26,6 @@
 #include <linux/irq.h>
 #include <linux/ctype.h>
 #include <linux/gpio_keys_pe.h>
-#include <linux/cpufreq.h>
 
 #include <asm/gpio.h>
 
@@ -340,9 +339,6 @@ gpio_keys_debounce_timer(unsigned long data)
 
 		gpio_keys_send_event(btn->kdev->idev, button, type, button->code, !!(btn->state));
 		input_sync (btn->kdev->idev);
-
-		// tickle the cpu into high performance on button presses
-		CPUFREQ_TICKLE();
 
 #ifdef CONFIG_GPIO_KEYS_TRIGGER
 		gpio_keys_check_keytrigger_event ( btn->kdev );
