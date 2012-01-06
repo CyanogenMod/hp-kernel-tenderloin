@@ -56,11 +56,9 @@ static int cpufreq_stats_update(unsigned int cpu)
 	struct cpufreq_stats *stat;
 	unsigned long long cur_time;
 
-	stat = per_cpu(cpufreq_stats_table, cpu);
-	if (!stat)
-		return 0;
 	cur_time = get_jiffies_64();
 	spin_lock(&cpufreq_stats_lock);
+	stat = per_cpu(cpufreq_stats_table, cpu);
 	if (stat->time_in_state)
 		stat->time_in_state[stat->last_index] =
 			cputime64_add(stat->time_in_state[stat->last_index],
@@ -329,6 +327,7 @@ static int __cpuinit cpufreq_stat_cpu_callback(struct notifier_block *nfb,
 		cpufreq_update_policy(cpu);
 		break;
 	case CPU_DOWN_PREPARE:
+	case CPU_DOWN_PREPARE_FROZEN:
 		cpufreq_stats_free_sysfs(cpu);
 		break;
 	case CPU_DEAD:
@@ -343,7 +342,6 @@ static int __cpuinit cpufreq_stat_cpu_callback(struct notifier_block *nfb,
 static struct notifier_block cpufreq_stat_cpu_notifier __refdata =
 {
 	.notifier_call = cpufreq_stat_cpu_callback,
-	.priority = 1,
 };
 
 static struct notifier_block notifier_policy_block = {

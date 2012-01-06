@@ -752,6 +752,7 @@ static void dbs_refresh_callback(struct work_struct *unused)
 	policy = this_dbs_info->cur_policy;
 
 	if (policy->cur < policy->max) {
+		policy->cur = policy->max;
 
 		__cpufreq_driver_target(policy, policy->max,
 					CPUFREQ_RELATION_L);
