@@ -97,24 +97,11 @@ static void evdev_event(struct input_handle *handle,
 	rcu_read_lock();
 
 	client = rcu_dereference(evdev->grab);
-	if (client) {
-		if (client->monotonic_time)
-			evdev_monotonic_time(&event.time);
-		else
-			do_gettimeofday(&event.time);
-
+	if (client)
 		evdev_pass_event(client, &event);
-	} else {
-		list_for_each_entry_rcu(client, &evdev->client_list, node) {
-			if (client->monotonic_time)
-				evdev_monotonic_time(&event.time);
-			else
-				do_gettimeofday(&event.time);
-
+	else
+		list_for_each_entry_rcu(client, &evdev->client_list, node)
 			evdev_pass_event(client, &event);
-
-		}
-	}
 
 	rcu_read_unlock();
 
