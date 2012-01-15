@@ -4772,7 +4772,7 @@ static void fixup_i2c_configs(void)
 
 #ifdef CONFIG_INPUT_LSM303DLH
 	if (machine_is_tenderloin() && boardtype_is_3g()) {
-		lsm303dlh_acc_pdata.negate_x = 1;
+		lsm303dlh_acc_pdata.negate_x = 0;
 	}
 #endif
 #endif
