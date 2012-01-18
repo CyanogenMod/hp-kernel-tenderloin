@@ -571,6 +571,18 @@ config USB_GADGET_DUALSPEED
 	  Means that gadget drivers should include extra descriptors
 	  and code to handle dual-speed controllers.
 
+config USB_GADGET_EVENT
+	boolean "Gadget Event support"
+	depends on USB_GADGET
+	help
+	  This driver is for sending the USB gadget events
+
+config USB_MULTIPLE_CHARGER_DETECT
+	boolean "Multiple USB Wall charger support"
+	depends on USB_GADGET && USB_MSM_72K
+	help
+	  Detect multiple types of USB wall charger
+
 #
 # USB Gadget Drivers
 #

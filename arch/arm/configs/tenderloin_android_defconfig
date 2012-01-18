@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Linux kernel version: 2.6.35-palm
-# Mon Jan 16 20:46:40 2012
+# Wed Jan 18 14:10:11 2012
 #
 CONFIG_ARM=y
 CONFIG_SYS_SUPPORTS_APM_EMULATION=y
@@ -2290,6 +2290,8 @@ CONFIG_USB_GADGET_MSM_72K=y
 CONFIG_USB_MSM_72K=y
 # CONFIG_USB_GADGET_DUMMY_HCD is not set
 CONFIG_USB_GADGET_DUALSPEED=y
+CONFIG_USB_GADGET_EVENT=y
+CONFIG_USB_MULTIPLE_CHARGER_DETECT=y
 # CONFIG_USB_ZERO is not set
 # CONFIG_USB_AUDIO is not set
 # CONFIG_USB_ETH is not set
