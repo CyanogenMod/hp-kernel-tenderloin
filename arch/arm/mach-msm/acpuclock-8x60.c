@@ -931,7 +931,7 @@ static unsigned int __init select_freq_plan(void)
 		switch (pvs) {
 		case 0x0:
 		case 0x7:
-			acpu_freq_tbl = acpu_freq_tbl_slow;
+			acpu_freq_tbl = acpu_freq_tbl_1188mhz;
 			pr_info("ACPU PVS: Slow\n");
 			break;
 		case 0x1:
