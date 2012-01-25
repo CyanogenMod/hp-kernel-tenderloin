@@ -38,6 +38,8 @@
 #define KLOG_MAGIC 0x6b6c6f67 // 'klog'
 #define KLOG_VERSION 1
 
+extern int log_buf_get_len(void);
+
 struct klog_header {
 	uint32_t magic;
 	uint32_t ver;
@@ -63,10 +65,15 @@ struct klog_buffer_header {
 static unsigned long klog_phys;
 static unsigned long klog_len;
 
+static int init_done = 0;
+
 static char *klog_buffer;
 
 static struct klog_header *klog;
 static struct klog_buffer_header *klog_buf;
+
+static void klog_copy_logbuf(void);
+int log_buf_copy(char *dest, int idx, int len);
 
 static DEFINE_SPINLOCK(klog_lock);
 
@@ -118,6 +125,38 @@ static void _klog_write(const char *s, unsigned int count)
 	}
 }
 
+static void klog_copy_logbuf()
+{
+	unsigned int count;
+	unsigned int towrite;
+
+	if (klog_buf == NULL)
+		return;
+
+	count = log_buf_get_len();
+
+	while (count > 0) {
+		/* write up to the end of the buffer */
+		towrite = MIN(count, klog_buf->len - klog_buf->head);
+
+		/* does this need to increment the tail? */
+		{
+			uint32_t vtail = klog_buf->tail;
+			if (klog_buf->tail <= klog_buf->head)
+				vtail += klog_buf->len;
+
+			if (klog_buf->head + towrite >= vtail)
+				klog_buf->tail = inc_pointer(klog_buf, klog_buf->head, towrite + 1);
+		}
+
+		/* copy */
+		log_buf_copy(klog_buf->data + klog_buf->head, 0, towrite);
+		klog_buf->head = inc_pointer(klog_buf, klog_buf->head, towrite);
+		count -= towrite;
+	}
+}
+
+
 void klog_printf(const char *fmt, ...)
 {
 	static char klog_print_buf[1024];
@@ -151,6 +190,7 @@ void klog_write(const char *s, unsigned int count)
 static int __init klog_init(void)
 {
 	void *base;
+	unsigned long flags;
 
 	printk("klog_init: entry\n");
 	printk("klog_init: phys buffer is at 0x%lx\n", klog_phys);
@@ -182,7 +222,15 @@ static int __init klog_init(void)
 
 	klog_buf = get_kbuf(klog->current_buf);
 
-	klog_printf("welcome to klog, buffer at %p, length %d\n", klog_buf, klog_buf->len);
+	spin_lock_irqsave(&klog_lock, flags);
+
+	klog_copy_logbuf();
+
+	init_done = 1;
+
+	spin_unlock_irqrestore(&klog_lock, flags);
+
+	printk(KERN_INFO "welcome to klog, buffer at %p, length %d\n", klog_buf, klog_buf->len);
 
 	return 0;
 }

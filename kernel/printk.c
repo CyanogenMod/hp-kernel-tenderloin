@@ -272,10 +272,11 @@ static inline void boot_delay_msec(void)
 /*
  * Return the number of unread characters in the log buffer.
  */
-static int log_buf_get_len(void)
+int log_buf_get_len(void)
 {
 	return logged_chars;
 }
+EXPORT_SYMBOL(log_buf_get_len);
 
 /*
  * Clears the ring-buffer
