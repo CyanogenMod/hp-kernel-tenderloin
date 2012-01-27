@@ -4638,7 +4638,7 @@ void a6_charger_event (int otg_chg_type)
 EXPORT_SYMBOL (a6_charger_event);
 
 #define A6_BATT_HB_PERIOD (msecs_to_jiffies (5*60*1000))
-#define A6_INIT_CONNECTED_PS_DELAY (msecs_to_jiffies (30*1000))
+#define A6_INIT_CONNECTED_PS_DELAY (msecs_to_jiffies (60*1000))
 static void a6_battery_heartbeat(struct work_struct *a6_battery_work)
 {
 	int percent = 0;
