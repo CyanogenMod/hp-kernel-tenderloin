@@ -1,4 +1,4 @@
-/* Copyright (c) 2009-2011, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2009-2012, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -107,6 +107,8 @@ int msm_clear_copp_id(int session_id, int copp_id);
 int msm_clear_session_id(int session_id);
 
 int msm_reset_all_device(void);
+
+int reset_device(void);
 
 int msm_clear_all_session(void);
 
