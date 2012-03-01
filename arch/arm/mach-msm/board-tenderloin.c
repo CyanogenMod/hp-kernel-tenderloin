@@ -3886,6 +3886,9 @@ static struct platform_device *tenderloin_devices[] __initdata = {
 	&msm_dsps_device,
 #endif
 
+#ifdef CONFIG_MAX8903B_CHARGER
+	&max8903b_charger_device,
+#endif
 #if defined(CONFIG_USB_GADGET_MSM_72K) || defined(CONFIG_USB_EHCI_HCD)
 	&msm_device_otg,
 #endif
@@ -3894,9 +3897,6 @@ static struct platform_device *tenderloin_devices[] __initdata = {
 #endif
 #ifdef CONFIG_BATTERY_MSM
 	&msm_batt_device,
-#endif
-#ifdef CONFIG_MAX8903B_CHARGER
-	&max8903b_charger_device,
 #endif
 #ifdef CONFIG_KERNEL_PMEM_EBI_REGION
 	&android_pmem_kernel_ebi1_device,
