@@ -1352,4 +1352,9 @@ config MSM_FORCE_FAST_CPU_TABLE
     bool "Enable CPU table with higher clock rates"
     depends on ARCH_MSM8X60
     default n
+
+config RESTART_USES_PALM_BOOTLOADER
+    bool "Enable Restart (Reboot/Shutdown) using HPalm bootloader"
+	depends on MACH_TENDERLOIN
+    default n
 endif

@@ -144,6 +144,8 @@ module_param_call(reset_detection, reset_detect_set, param_get_int,
 #define set_dload_mode(x) do {} while (0)
 #endif
 
+void arch_reset(char mode, const char *cmd);
+
 void msm_set_restart_mode(int mode)
 {
 	restart_mode = mode;
@@ -152,12 +154,18 @@ EXPORT_SYMBOL(msm_set_restart_mode);
 
 static void msm_power_off(void)
 {
+#ifndef CONFIG_RESTART_USES_PALM_BOOTLOADER
 	printk(KERN_NOTICE "Powering off the SoC\n");
 	pm8058_reset_pwr_off(0);
 	pm8901_reset_pwr_off(0);
 	writel(0, PSHOLD_CTL_SU);
 	mdelay(10000);
 	printk(KERN_ERR "Powering off has failed\n");
+#else
+	/* use HPalm bootloader to shutdown/poweroff */
+	printk(KERN_INFO "%s: Initiating poweroff via bootloader\n", __func__);
+	arch_reset(0, "shutdown");
+#endif
 	return;
 }
 
@@ -225,7 +233,7 @@ void arch_reset(char mode, const char *cmd)
 
 	pm8058_reset_pwr_off(1);
 
-	if (cmd != NULL) {
+	if (cmd != NULL && *cmd != NULL) {
 		if (RESTART_DLOAD != restart_mode) {
 			if (!strncmp(cmd, "bootloader", 10)) {
 				reason = 0x77665500;
@@ -254,6 +262,14 @@ void arch_reset(char mode, const char *cmd)
 			}
 			msm_put_msg(reason);
 		}
+	} else {
+#ifdef CONFIG_RESTART_USES_PALM_BOOTLOADER
+		/* use HPalm bootloader to reboot */
+		if (RESTART_DLOAD != restart_mode) {
+			printk(KERN_INFO "%s: Initiating reboot via bootloader\n", __func__);
+			msm_put_msg(RESTART_REASON_REBOOT);
+		}
+#endif
 	}
 
 	writel(0, WDT0_EN);

@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Linux kernel version: 2.6.35-palm
-# Wed Jan 18 14:10:11 2012
+# Wed Mar 28 16:11:34 2012
 #
 CONFIG_ARM=y
 CONFIG_SYS_SUPPORTS_APM_EMULATION=y
@@ -425,6 +425,7 @@ CONFIG_MSM_SLEEP_STATS=y
 CONFIG_MSM_SHOW_RESUME_IRQ=y
 # CONFIG_BT_MSM_PINTEST is not set
 # CONFIG_MSM_FORCE_FAST_CPU_TABLE is not set
+CONFIG_RESTART_USES_PALM_BOOTLOADER=y
 
 #
 # Processor Type
