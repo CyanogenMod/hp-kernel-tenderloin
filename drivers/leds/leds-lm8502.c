@@ -1864,6 +1864,8 @@ static int lm8502_i2c_resume(struct i2c_client *client)
             led_classdev_resume(&leds[i].cdev);
     }
 
+    lm8502_i2c_write_reg(state->i2c_dev, HAPTIC_PWM_DUTY_CYCLE, (state->vib_duty_cycle * 255) / 100);
+
     if (state->vib_start)
         lm8502_i2c_write_reg(state->i2c_dev, HAPTIC_FEEDBACK_CTRL, 0x02 + state->vib_direction);
 
