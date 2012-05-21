@@ -4598,9 +4598,27 @@ static int wm8994_ldo_power(int enable)
 
 static unsigned int msm_wm8958_setup_power(void)
 {
+	static struct regulator *tp_5v0 = NULL;
 	int rc=0;
 
 	pr_err("%s: codec power setup\n", __func__);
+
+	if (!tp_5v0) {
+		tp_5v0 = regulator_get(NULL, "vdd50_boost");
+		if (IS_ERR(tp_5v0)) {
+			pr_err("failed to get regulator 'vdd50_boost' with %ld\n",
+				PTR_ERR(tp_5v0));
+			tp_5v0 = NULL;
+		}
+	}
+
+	if (tp_5v0) {
+		rc = regulator_enable(tp_5v0);
+		if (rc < 0) {
+			pr_err("failed to enable regulator 'vdd50_boost' with %d\n", rc);
+		}
+	}
+
 	vreg_wm8958 = regulator_get(NULL, "8058_s3");
 	if (IS_ERR(vreg_wm8958)) {
 		pr_err("%s: Unable to get 8058_s3\n", __func__);
@@ -4624,9 +4642,29 @@ static unsigned int msm_wm8958_setup_power(void)
 
 static void msm_wm8958_shutdown_power(void)
 {
+	static struct regulator *tp_5v0 = NULL;
 	int rc;
+
 	pr_err("%s: codec power shutdown\n", __func__);
+
+	if (!tp_5v0) {
+		tp_5v0 = regulator_get(NULL, "vdd50_boost");
+		if (IS_ERR(tp_5v0)) {
+			pr_err("failed to get regulator 'vdd50_boost' with %ld\n",
+				PTR_ERR(tp_5v0));
+			tp_5v0 = NULL;
+		}
+	}
+
+	if (tp_5v0) {
+		rc = regulator_disable(tp_5v0);
+		if (rc < 0) {
+			pr_err("failed to disable regulator 'vdd50_boost' with %d\n", rc);
+		}
+	}
+
 	wm8994_ldo_power(0);
+
 	rc = regulator_disable(vreg_wm8958);
 
 	if (rc)
