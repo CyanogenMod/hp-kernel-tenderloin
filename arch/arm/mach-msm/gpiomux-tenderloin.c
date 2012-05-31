@@ -302,14 +302,6 @@ static struct msm_gpiomux_config msm8x60_ebi2_configs[] __initdata = {
 		},
 	},
 	{
-		.gpio      = 126,
-		.settings = {
-            [GPIOMUX_ACTIVE] = GPIO_IN_2M_PU,
-			[GPIOMUX_SUSPENDED] = EBI2_A_D,
-			[GPIOMUX_ACTIVE] = GPIO_IN_2M_PU,
-		},
-	},
-	{
 		.gpio      = 127,
 		.settings = {
 			[GPIOMUX_SUSPENDED] = EBI2_A_D,

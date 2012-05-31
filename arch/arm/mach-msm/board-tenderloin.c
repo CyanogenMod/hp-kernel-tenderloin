@@ -3532,18 +3532,6 @@ static struct user_pin bt_pins[] = {
 		.irq_config = IRQF_TRIGGER_RISING,
 		.irq_handle_mode = IRQ_HANDLE_AUTO
 	},
-	{
-		.name       =  "isl",
-		.gpio       =  126,
-		.act_level  =  0, // active low
-		.direction  =  1, // output
-		.def_level  =  0, // low
-		.pin_mode   =  (void *)-1,// undefined
-		.sysfs_mask =  0777,
-		.options    =  0,
-		.irq_handler = NULL,
-		.irq_config =  0,
-	},
 };
 
 static struct user_pin_set  board_user_pins_sets[] = {
