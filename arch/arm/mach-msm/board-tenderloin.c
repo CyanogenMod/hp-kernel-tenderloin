@@ -5210,6 +5210,12 @@ int board_sdio_wifi_disable(unsigned int param)
 }
 EXPORT_SYMBOL(board_sdio_wifi_disable);
 
+int board_get_wow_pin()
+{
+	return pin_table[TENDERLOIN_GPIO_HOST_WAKE_WL_PIN];
+}
+EXPORT_SYMBOL(board_get_wow_pin);
+
 #if (defined(CONFIG_MMC_MSM_SDC1_SUPPORT)\
 	|| defined(CONFIG_MMC_MSM_SDC2_SUPPORT)\
 	|| defined(CONFIG_MMC_MSM_SDC3_SUPPORT)\
