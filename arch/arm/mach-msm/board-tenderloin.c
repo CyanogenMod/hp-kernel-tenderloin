@@ -135,6 +135,7 @@
 #ifdef CONFIG_MAX8903B_CHARGER
 static unsigned max8903b_ps_connected = 0;
 static unsigned max8903b_vbus_draw_ma = 0;
+static unsigned max8903b_vbus_draw_ma_max = 0;
 void max8903b_set_vbus_draw (unsigned ma);
 #endif
 
@@ -1450,10 +1451,9 @@ void max8903b_set_connected_ps (unsigned connected)
 
 	if (!connected) {
 		max8903b_disable_charge();
+		max8903b_vbus_draw_ma_max = 0;
 	} else if (connected & MAX8903B_CONNECTED_PS_DOCK) {
 		max8903b_set_charge_ma(MAX8903B_DOCK_DRAW_MA);
-	} else {
-		max8903b_set_charge_ma(max8903b_vbus_draw_ma);
 	}
 }
 EXPORT_SYMBOL (max8903b_set_connected_ps);
@@ -1466,8 +1466,16 @@ void max8903b_set_vbus_draw (unsigned ma)
 {
 	max8903b_vbus_draw_ma = ma;
 
+	if (ma > max8903b_vbus_draw_ma_max) {
+		max8903b_vbus_draw_ma_max = ma;
+	}
+
 	if (!(max8903b_ps_connected & MAX8903B_CONNECTED_PS_DOCK)) {
-		max8903b_set_charge_ma(ma);
+		if (max8903b_ps_connected & MAX8903B_CONNECTED_PS_AC) {
+			max8903b_set_charge_ma(max8903b_vbus_draw_ma_max);
+		} else {
+			max8903b_set_charge_ma(ma);
+		}
 	}
 }
 #endif  /* CONFIG_MAX8903B_CHARGER */
