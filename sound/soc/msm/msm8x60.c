@@ -24,6 +24,7 @@
 #include <linux/platform_device.h>
 #include <linux/dma-mapping.h>
 #include <linux/msm_audio.h>
+#include <linux/switch.h>
 #include <sound/core.h>
 #include <sound/soc.h>
 #include <sound/soc-dapm.h>
@@ -56,6 +57,9 @@ extern struct snd_soc_platform msm_soc_platform;
 #include <linux/mfd/wm8994/pdata.h>
 #include <linux/input.h>
 #include <sound/pcm_params.h>
+
+static int headphone_plugged = 0;
+static struct switch_dev *headphone_switch;
 
 #define WM_FS 48000
 #define WM_CHANNELS 2
@@ -1279,6 +1283,7 @@ static int jack_notifier_event(struct notifier_block *nb, unsigned long event, v
 		wm8994 = snd_soc_codec_get_drvdata(codec);
 
 		if(1 == event){
+			headphone_plugged = 1;
 			// Someone inserted a jack, we need to turn on mic bias2 for headset mic detection
 			snd_soc_dapm_force_enable_pin( codec, "MICBIAS2");
 
@@ -1286,6 +1291,7 @@ static int jack_notifier_event(struct notifier_block *nb, unsigned long event, v
 			wm8958_mic_detect( codec, &hp_jack, NULL, NULL);
 
 		}else if (0 == event){
+			headphone_plugged = 0;
 			pr_crit("MIC DETECT: DISABLE. Jack removed\n");
 
 			// This will disable mic detection on 8958
@@ -1308,11 +1314,19 @@ static int jack_notifier_event(struct notifier_block *nb, unsigned long event, v
 			input_sync(jack->jack->input_dev);
 			snd_soc_dapm_disable_pin( codec, "MICBIAS2");
 		}
+		if (headphone_switch) {
+			switch_set_state(headphone_switch, headphone_plugged);
+		}
 	}
 
 	return 0;
 }
 
+static ssize_t headphone_switch_print_name(struct switch_dev *sdev, char *buf)
+{
+	bool plugged = switch_get_state(sdev) != 0;
+	return sprintf(buf, plugged ? "Headphone\n" : "None\n");
+}
 
 static int msm_soc_dai_init(struct snd_soc_codec *codec)
 {
@@ -1384,6 +1398,25 @@ static int msm_soc_dai_init(struct snd_soc_codec *codec)
 
 	if(wm8994)
 		wm8994->soc_jack = &hp_jack;
+
+	// add headphone switch
+	headphone_switch = kzalloc(sizeof(struct switch_dev), GFP_KERNEL);
+	if (headphone_switch) {
+		headphone_switch->name = "h2w";
+		headphone_switch->print_name = headphone_switch_print_name;
+
+		ret = switch_dev_register(headphone_switch);
+		if (ret < 0) {
+			printk(KERN_ERR "Unable to register headphone switch\n");
+			kfree(headphone_switch);
+			headphone_switch = NULL;
+		} else {
+			headphone_plugged = hp_jack.status;
+			switch_set_state(headphone_switch, headphone_plugged);
+		}
+	} else {
+		printk(KERN_ERR "Unable to allocate headphone switch\n");
+	}
 
    return ret;
 }
