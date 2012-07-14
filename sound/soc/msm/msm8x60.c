@@ -1287,6 +1287,7 @@ static int jack_notifier_event(struct notifier_block *nb, unsigned long event, v
 			// Someone inserted a jack, we need to turn on mic bias2 for headset mic detection
 			snd_soc_dapm_force_enable_pin( codec, "MICBIAS2");
 
+			pr_crit("MIC DETECT: ENABLE. Jack inserted\n");
 			// This will enable mic detection on 8958
 			wm8958_mic_detect( codec, &hp_jack, NULL, NULL);
 
@@ -1412,6 +1413,8 @@ static int msm_soc_dai_init(struct snd_soc_codec *codec)
 			headphone_switch = NULL;
 		} else {
 			headphone_plugged = hp_jack.status;
+			printk(KERN_INFO "Headphone switch initialized, plugged=%d\n",
+					headphone_plugged);
 			switch_set_state(headphone_switch, headphone_plugged);
 		}
 	} else {
