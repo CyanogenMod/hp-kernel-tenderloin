@@ -787,6 +787,13 @@ void msm_camio_disable(struct platform_device *pdev)
 	msm_io_w(val, csibase + MIPI_PHY_CL_CONTROL);
 	msleep(10);
 
+	val = msm_io_r(csibase + MIPI_PHY_D1_CONTROL);
+	val &= ~((0x1 << MIPI_PHY_D1_CONTROL_MIPI_CLK_PHY_SHUTDOWNB_SHFT) |
+	(0x1 << MIPI_PHY_D1_CONTROL_MIPI_DATA_PHY_SHUTDOWNB_SHFT));
+	CDBG("%s MIPI_PHY_D1_CONTROL val=0x%x\n", __func__, val);
+	msm_io_w(val, csibase + MIPI_PHY_D1_CONTROL);
+	usleep_range(5000, 6000);
+
 	free_irq(camio_ext.csiirq, 0);
 	iounmap(csibase);
 	release_mem_region(camio_ext.csiphy, camio_ext.csisz);
