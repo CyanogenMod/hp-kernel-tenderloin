@@ -2946,10 +2946,11 @@ static struct msm_vfe_callback msm_vfe_s = {
 	.vfe_free = msm_vfe_sync_free,
 };
 
-static int __msm_open(struct msm_sync *sync, const char *const apps_id,
+static int __msm_open(struct msm_cam_device *pmsm, const char *const apps_id,
 			int is_controlnode)
 {
 	int rc = 0;
+	struct msm_sync *sync = pmsm->sync;
 
 	mutex_lock(&sync->lock);
 	if (sync->apps_id && strcmp(sync->apps_id, apps_id)
@@ -2976,14 +2977,14 @@ static int __msm_open(struct msm_sync *sync, const char *const apps_id,
 			if (rc < 0) {
 				pr_err("%s: setting sensor clocks failed: %d\n",
 					__func__, rc);
-				goto msm_open_done;
+				goto msm_open_err;
 			}
 			rc = sync->sctrl.s_init(sync->sdata);
 			if (rc < 0) {
 				pr_err("%s: sensor init failed: %d\n",
 					__func__, rc);
 				msm_camio_sensor_clk_off(sync->pdev);
-				goto msm_open_done;
+				goto msm_open_err;
 			}
 			rc = sync->vfefn.vfe_init(&msm_vfe_s,
 				sync->pdev);
@@ -2992,12 +2993,12 @@ static int __msm_open(struct msm_sync *sync, const char *const apps_id,
 					__func__, rc);
 				sync->sctrl.s_release();
 				msm_camio_sensor_clk_off(sync->pdev);
-				goto msm_open_done;
+				goto msm_open_err;
 			}
 		} else {
 			pr_err("%s: no sensor init func\n", __func__);
 			rc = -ENODEV;
-			goto msm_open_done;
+			goto msm_open_err;
 		}
 		msm_camvpe_fn_init(&sync->vpefn, sync);
 
@@ -3013,6 +3014,11 @@ static int __msm_open(struct msm_sync *sync, const char *const apps_id,
 	sync->opencnt++;
 
 msm_open_done:
+	mutex_unlock(&sync->lock);
+	return rc;
+
+msm_open_err:
+	atomic_set(&pmsm->opened, 0);
 	mutex_unlock(&sync->lock);
 	return rc;
 }
@@ -3039,7 +3045,7 @@ static int msm_open_common(struct inode *inode, struct file *filep,
 		return rc;
 	}
 
-	rc = __msm_open(pmsm->sync, MSM_APPS_ID_PROP, is_controlnode);
+	rc = __msm_open(pmsm, MSM_APPS_ID_PROP, is_controlnode);
 	if (rc < 0)
 		return rc;
 	filep->private_data = pmsm;
