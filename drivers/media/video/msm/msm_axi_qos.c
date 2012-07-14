@@ -16,37 +16,41 @@
  *
  */
 
-#include <linux/clk.h>
+#include <linux/pm_qos_params.h>
 #include <mach/camera.h>
 #define MSM_AXI_QOS_NAME "msm_camera"
 
-static struct clk *ebi1_clk;
+static struct pm_qos_request_list *pm_qos_req;
 
 int add_axi_qos(void)
 {
-	ebi1_clk = clk_get(NULL, "ebi1_vfe_clk");
-	if (IS_ERR(ebi1_clk))
-		ebi1_clk = NULL;
-	else
-		clk_enable(ebi1_clk);
+	pm_qos_req = pm_qos_add_request(PM_QOS_SYSTEM_BUS_FREQ,
+					PM_QOS_DEFAULT_VALUE);
+	if (!pm_qos_req) {
+		CDBG("request AXI bus QOS fails.\n");
+		return -1;
+	}
 
+CDBG("request AXI bus QOS succeed.\n");
 	return 0;
 }
 
 int update_axi_qos(uint32_t rate)
 {
-	if (!ebi1_clk)
-		return 0;
+	if (!pm_qos_req) {
+		CDBG("add_axi_qos() has not been called\n");
+		return -1;
+	}
 
-	return clk_set_rate(ebi1_clk, rate * 1000);
+	pm_qos_update_request(pm_qos_req, rate);
+	return 0;
 }
 
 void release_axi_qos(void)
 {
-	if (!ebi1_clk)
-		return;
+	if (!pm_qos_req) {
+		CDBG("add_axi_qos() has not been called\n");
+	}
 
-	clk_disable(ebi1_clk);
-	clk_put(ebi1_clk);
-	ebi1_clk = NULL;
+	pm_qos_remove_request(pm_qos_req);
 }
