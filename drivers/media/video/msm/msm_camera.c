@@ -815,6 +815,7 @@ static struct msm_queue_cmd *__msm_control(struct msm_sync *sync,
 	int rc;
 
 	CDBG("Inside __msm_control\n");
+	int loop = 0;
 	if (sync->event_q.len <= 100 && sync->frame_q.len <= 100) {
 		/* wake up config thread */
 		msm_enqueue(&sync->event_q, &qcmd->list_config);
@@ -828,6 +829,7 @@ static struct msm_queue_cmd *__msm_control(struct msm_sync *sync,
 		return NULL;
 
 	/* wait for config status */
+wait_event:
 	CDBG("Waiting for config status \n");
 	rc = wait_event_interruptible_timeout(
 			queue->wait,
@@ -839,6 +841,11 @@ static struct msm_queue_cmd *__msm_control(struct msm_sync *sync,
 			rc = -ETIMEDOUT;
 			pr_err("%s: wait_event error %d\n", __func__, rc);
 			return ERR_PTR(rc);
+		} else if (rc == -512 && loop < 100) {
+			loop++;
+			msleep(5);
+			pr_info("[CAM]%s: goto wait_event loop %d\n", __func__, loop);
+			goto wait_event;
 		} else if (rc < 0) {
 			pr_err("%s: wait_event error %d\n", __func__, rc);
 			if (msm_delete_entry(&sync->event_q,
@@ -2001,6 +2008,10 @@ static int msm_set_crop(struct msm_sync *sync, void __user *arg)
 			mutex_unlock(&sync->lock);
 			return -ENOMEM;
 		}
+	} else if (sync->croplen != crop.len) {
+		CDBG("%s: wrong croplen\n", __func__);
+		mutex_unlock(&sync->lock);
+		return -EINVAL;
 	}
 
 	if (copy_from_user(sync->cropinfo,
