@@ -204,7 +204,7 @@ static void msm_enqueue_vpe(struct msm_device_queue *queue,
 		__q->len--;					\
 		qcmd = list_first_entry(&__q->list,		\
 				struct msm_queue_cmd, member);	\
-		if ((qcmd) && (&qcmd->member) && (&qcmd->member.next))	\
+		if ((qcmd) && (&qcmd->member))	\
 			list_del_init(&qcmd->member);			\
 	}							\
 	spin_unlock_irqrestore(&__q->lock, flags);	\
