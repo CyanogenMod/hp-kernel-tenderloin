@@ -576,7 +576,7 @@ int __msm_gemini_release(struct msm_gemini_device *pgmn_dev)
 	msm_gemini_q_cleanup(&pgmn_dev->output_rtn_q);
 	msm_gemini_outbuf_q_cleanup(&pgmn_dev->output_buf_q);
 	msm_gemini_q_cleanup(&pgmn_dev->input_rtn_q);
-	msm_gemini_q_cleanup(&pgmn_dev->input_buf_q);
+	msm_gemini_outbuf_q_cleanup(&pgmn_dev->input_buf_q);
 
 	if (pgmn_dev->open_count)
 		GMN_PR_ERR(KERN_ERR "%s: multiple opens\n", __func__);
