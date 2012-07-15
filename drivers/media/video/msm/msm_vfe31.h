@@ -820,6 +820,7 @@ struct vfe31_irq_status {
 	uint32_t camifStatus;
 	uint32_t demosaicStatus;
 	uint32_t asfMaxEdge;
+	uint32_t vfePingPongStatus;
 };
 
 struct vfe_msg_output {

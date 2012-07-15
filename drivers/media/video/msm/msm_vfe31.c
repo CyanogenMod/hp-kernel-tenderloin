@@ -47,6 +47,7 @@ struct vfe31_isr_queue_cmd {
 	struct list_head list;
 	uint32_t                           vfeInterruptStatus0;
 	uint32_t                           vfeInterruptStatus1;
+	uint32_t                           vfePingPongStatus;
 	struct vfe_frame_asf_info          vfeAsfFrameInfo;
 	struct vfe_frame_bpc_info          vfeBpcFrameInfo;
 	struct vfe_msg_camif_status        vfeCamifStatusLocal;
@@ -2122,6 +2123,9 @@ static inline void vfe31_read_irq_status(struct vfe31_irq_status *out)
 	out->camifStatus = msm_io_r(temp);
 	CDBG("camifStatus  = 0x%x\n", out->camifStatus);
 
+	temp = (uint32_t *)(vfe31_ctrl->vfebase + VFE_BUS_PING_PONG_STATUS);
+	out->vfePingPongStatus = msm_io_r(temp);
+
 	/* clear the pending interrupt of the same kind.*/
 	msm_io_w(out->vfeIrqStatus0, vfe31_ctrl->vfebase + VFE_IRQ_CLEAR_0);
 	msm_io_w(out->vfeIrqStatus1, vfe31_ctrl->vfebase + VFE_IRQ_CLEAR_1);
@@ -2428,12 +2432,11 @@ static void vfe31_process_error_irq(uint32_t errStatus)
 	vfe31_put_ch_pong_addr((chn), (addr)) : \
 	vfe31_put_ch_ping_addr((chn), (addr)))
 
-static void vfe31_process_output_path_irq_0(void)
+static void vfe31_process_output_path_irq_0(uint32_t ping_pong)
 {
-	uint32_t ping_pong;
 	uint32_t pyaddr, pcbcraddr;
 #ifdef CONFIG_MSM_CAMERA_V4L2
-	uint32_t pyaddr_ping, pcbcraddr_ping, pyaddr_pong, pcbcraddr_pong;
+	uint32_t pcbcraddr_ping, pyaddr_pong, pcbcraddr_pong;
 #endif
 	uint8_t out_bool = 0;
 
@@ -2448,9 +2451,6 @@ static void vfe31_process_output_path_irq_0(void)
 		(vfe31_ctrl->vfe_capture_count <= 1)) ||
 		(vfe31_ctrl->outpath.out0.free_buf.available);
 		if (out_bool) {
-			ping_pong = msm_io_r(vfe31_ctrl->vfebase +
-				VFE_BUS_PING_PONG_STATUS);
-
 			/* Y channel */
 			pyaddr = vfe31_get_ch_addr(ping_pong,
 				vfe31_ctrl->outpath.out0.ch0);
@@ -2528,9 +2528,8 @@ static void vfe31_process_output_path_irq_0(void)
 		}
 	}
 
-static void vfe31_process_output_path_irq_1(void)
+static void vfe31_process_output_path_irq_1(uint32_t ping_pong)
 {
-	uint32_t ping_pong;
 	uint32_t pyaddr, pcbcraddr;
 	/* this must be snapshot main image output. */
 	uint8_t out_bool = 0;
@@ -2545,9 +2544,6 @@ static void vfe31_process_output_path_irq_1(void)
 		 (vfe31_ctrl->vfe_capture_count <= 1)) ||
 		(vfe31_ctrl->outpath.out1.free_buf.available);
 		if (out_bool) {
-			ping_pong = msm_io_r(vfe31_ctrl->vfebase +
-				VFE_BUS_PING_PONG_STATUS);
-
 			/* Y channel */
 			pyaddr = vfe31_get_ch_addr(ping_pong,
 				vfe31_ctrl->outpath.out1.ch0);
@@ -2581,9 +2577,8 @@ static void vfe31_process_output_path_irq_1(void)
 	}
 }
 
-static void vfe31_process_output_path_irq_2(void)
+static void vfe31_process_output_path_irq_2(uint32_t ping_pong)
 {
-	uint32_t ping_pong;
 	uint32_t pyaddr, pcbcraddr;
 	uint8_t out_bool = 0;
 	/* we render frames in the following conditions:
@@ -2603,9 +2598,6 @@ static void vfe31_process_output_path_irq_2(void)
 		 vfe31_ctrl->outpath.out2.free_buf.available);
 
 	if (out_bool) {
-			ping_pong = msm_io_r(vfe31_ctrl->vfebase +
-				VFE_BUS_PING_PONG_STATUS);
-
 			/* Y channel */
 			pyaddr = vfe31_get_ch_addr(ping_pong,
 				vfe31_ctrl->outpath.out2.ch0);
@@ -2870,17 +2862,20 @@ static void vfe31_do_tasklet(unsigned long data)
 			if (qcmd->vfeInterruptStatus0 &
 				VFE_IRQ_STATUS0_IMAGE_COMPOSIT_DONE0_MASK) {
 				CDBG("Image composite done 0 irq occured.\n");
-				vfe31_process_output_path_irq_0();
+				vfe31_process_output_path_irq_0(
+					qcmd->vfePingPongStatus);
 			}
 			if (qcmd->vfeInterruptStatus0 &
 				VFE_IRQ_STATUS0_IMAGE_COMPOSIT_DONE1_MASK) {
 				CDBG("Image composite done 1 irq occured.\n");
-				vfe31_process_output_path_irq_1();
+				vfe31_process_output_path_irq_1(
+					qcmd->vfePingPongStatus);
 			}
 			if (qcmd->vfeInterruptStatus0 &
 				VFE_IRQ_STATUS0_IMAGE_COMPOSIT_DONE2_MASK) {
 				CDBG("Image composite done 2 irq occured.\n");
-				vfe31_process_output_path_irq_2();
+				vfe31_process_output_path_irq_2(
+					  qcmd->vfePingPongStatus);
 			}
 			/* in snapshot mode if done then send
 			snapshot done message */
@@ -3009,6 +3004,7 @@ static irqreturn_t vfe31_parse_irq(int irq_num, void *data)
 
 	qcmd->vfeInterruptStatus0 = irq.vfeIrqStatus0;
 	qcmd->vfeInterruptStatus1 = irq.vfeIrqStatus1;
+	qcmd->vfePingPongStatus = irq.vfePingPongStatus;
 
 	spin_lock_irqsave(&vfe31_ctrl->tasklet_lock, flags);
 	list_add_tail(&qcmd->list, &vfe31_ctrl->tasklet_q);
