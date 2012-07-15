@@ -290,6 +290,7 @@ int msm_gemini_we_pingpong_irq(struct msm_gemini_device *pgmn_dev,
 		rc = msm_gemini_core_we_buf_update(buf_out);
 		kfree(buf_out);
 	} else {
+		msm_gemini_core_we_buf_reset(buf_in);
 		GMN_PR_ERR("%s:%d] no output buffer\n", __func__, __LINE__);
 		rc = -2;
 	}

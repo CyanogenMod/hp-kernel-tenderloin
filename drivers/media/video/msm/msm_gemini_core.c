@@ -118,6 +118,17 @@ int msm_gemini_core_we_buf_update(struct msm_gemini_core_buf *buf)
 	return 0;
 }
 
+int msm_gemini_core_we_buf_reset(struct msm_gemini_hw_buf *buf)
+{
+	int i = 0;
+	for (i = 0; i < 2; i++) {
+		if (we_pingpong_buf.buf[i].y_buffer_addr
+					== buf->y_buffer_addr)
+			we_pingpong_buf.buf_status[i] = 0;
+	}
+	return 0;
+}
+
 void *msm_gemini_core_we_pingpong_irq(int gemini_irq_status, void *context)
 {
 	GMN_DBG("%s:%d]\n", __func__, __LINE__);
