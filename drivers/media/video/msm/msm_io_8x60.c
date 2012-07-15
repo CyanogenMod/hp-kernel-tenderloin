@@ -250,20 +250,20 @@ static struct msm_bus_scale_pdata cam_bus_client_pdata = {
 void msm_io_w(u32 data, void __iomem *addr)
 {
 	CDBG("%s: %08x %08x\n", __func__, (int) (addr), (data));
-	writel((data), (addr));
+	writel_relaxed((data), (addr));
 }
 
 void msm_io_w_mb(u32 data, void __iomem *addr)
 {
 	CDBG("%s: %08x %08x\n", __func__, (int) (addr), (data));
 	wmb();
-	writel((data), (addr));
+	writel_relaxed((data), (addr));
 	wmb();
 }
 
 u32 msm_io_r(void __iomem *addr)
 {
-	uint32_t data = readl(addr);
+	uint32_t data = readl_relaxed(addr);
 	CDBG("%s: %08x %08x\n", __func__, (int) (addr), (data));
 	return data;
 }
@@ -272,7 +272,7 @@ u32 msm_io_r_mb(void __iomem *addr)
 {
 	uint32_t data;
 	rmb();
-	data = readl(addr);
+	data = readl_relaxed(addr);
 	rmb();
 	CDBG("%s: %08x %08x\n", __func__, (int) (addr), (data));
 	return data;
@@ -286,7 +286,7 @@ void msm_io_memcpy_toio(void __iomem *dest_addr,
 	u32 *s = (u32 *) src_addr;
 	/* memcpy_toio does not work. Use writel for now */
 	for (i = 0; i < len; i++)
-		writel(*s++, d++);
+		writel_relaxed(*s++, d++);
 }
 
 void msm_io_dump(void __iomem *addr, int size)
@@ -303,7 +303,7 @@ void msm_io_dump(void __iomem *addr, int size)
 			sprintf(p_str, "%08x: ", (u32) p);
 			p_str += 10;
 		}
-		data = readl(p++);
+		data = readl_relaxed(p++);
 		sprintf(p_str, "%08x ", data);
 		p_str += 9;
 		if ((i + 1) % 4 == 0) {

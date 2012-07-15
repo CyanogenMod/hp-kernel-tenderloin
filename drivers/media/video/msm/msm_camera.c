@@ -723,9 +723,6 @@ static int msm_get_frame(struct msm_sync *sync, void __user *arg)
 	if (rc < 0)
 		return rc;
 
-	/* read the frame after the status has been read */
-	rmb();
-
 	mutex_lock(&sync->lock);
 	if (sync->croplen) {
 		if (frame.croplen != sync->croplen) {
@@ -1088,9 +1085,6 @@ static int msm_get_stats(struct msm_sync *sync, void __user *arg)
 	}
 
 	CDBG("%s: received from DSP %d\n", __func__, qcmd->type);
-
-	/* order the reads of stat/snapshot buffers */
-	rmb();
 
 	switch (qcmd->type) {
 	case MSM_CAM_Q_VFE_EVT:
