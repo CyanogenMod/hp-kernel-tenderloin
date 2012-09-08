@@ -2444,6 +2444,9 @@ static int __msm_release(struct msm_sync *sync)
 	mutex_lock(&sync->lock);
 	if (sync->opencnt)
 		sync->opencnt--;
+	pr_info("%s, stop vfe if active\n", __func__);
+	if (sync->vfefn.vfe_stop)
+		sync->vfefn.vfe_stop();
 	pr_info("%s, open count =%d\n", __func__, sync->opencnt);
 	if (!sync->opencnt) {
 		/* need to clean up system resource */
