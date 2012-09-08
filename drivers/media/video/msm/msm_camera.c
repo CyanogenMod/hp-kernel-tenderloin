@@ -837,6 +837,7 @@ wait_event:
 		if (!rc) {
 			rc = -ETIMEDOUT;
 			pr_err("%s: wait_event error %d\n", __func__, rc);
+			msm_delete_entry(&sync->event_q, list_config, qcmd);
 			return ERR_PTR(rc);
 		} else if (rc == -512 && loop < 100) {
 			loop++;
