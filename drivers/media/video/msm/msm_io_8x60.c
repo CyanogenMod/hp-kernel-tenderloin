@@ -690,7 +690,6 @@ int msm_camio_enable(struct platform_device *pdev)
 	int rc = 0;
 	struct msm_camera_sensor_info *sinfo = pdev->dev.platform_data;
 	struct msm_camera_device_platform_data *camdev = sinfo->pdata;
-	uint32_t val;
 
 	camio_dev = pdev;
 	camio_ext = camdev->ioext;
@@ -723,22 +722,6 @@ int msm_camio_enable(struct platform_device *pdev)
 	if (rc < 0)
 		goto csi_irq_fail;
 
-	msleep(10);
-	val = (20 <<
-		MIPI_PHY_D0_CONTROL2_SETTLE_COUNT_SHFT) |
-		(0x0F << MIPI_PHY_D0_CONTROL2_HS_TERM_IMP_SHFT) |
-		(0x0 << MIPI_PHY_D0_CONTROL2_LP_REC_EN_SHFT) |
-		(0x1 << MIPI_PHY_D0_CONTROL2_ERR_SOT_HS_EN_SHFT);
-	CDBG("%s MIPI_PHY_D0_CONTROL2 val=0x%x\n", __func__, val);
-	msm_io_w(val, csibase + MIPI_PHY_D0_CONTROL2);
-	msm_io_w(val, csibase + MIPI_PHY_D1_CONTROL2);
-	msm_io_w(val, csibase + MIPI_PHY_D2_CONTROL2);
-	msm_io_w(val, csibase + MIPI_PHY_D3_CONTROL2);
-
-	val = (0x0F << MIPI_PHY_CL_CONTROL_HS_TERM_IMP_SHFT) |
-		(0x0 << MIPI_PHY_CL_CONTROL_LP_REC_EN_SHFT);
-	CDBG("%s MIPI_PHY_CL_CONTROL val=0x%x\n", __func__, val);
-	msm_io_w(val, csibase + MIPI_PHY_CL_CONTROL);
 	return 0;
 
 csi_irq_fail:
@@ -759,30 +742,16 @@ common_fail:
 	return rc;
 }
 
-void msm_camio_disable(struct platform_device *pdev)
+static void msm_camio_csi_disable(void)
 {
 	uint32_t val;
-	val = (0x0 << MIPI_CALIBRATION_CONTROL_SWCAL_CAL_EN_SHFT) |
-		(0x0 <<
-		MIPI_CALIBRATION_CONTROL_SWCAL_STRENGTH_OVERRIDE_EN_SHFT) |
-		(0x0 << MIPI_CALIBRATION_CONTROL_CAL_SW_HW_MODE_SHFT) |
-		(0x0 << MIPI_CALIBRATION_CONTROL_MANUAL_OVERRIDE_EN_SHFT);
-	CDBG("%s MIPI_CALIBRATION_CONTROL val=0x%x\n", __func__, val);
-	msm_io_w(val, csibase + MIPI_CALIBRATION_CONTROL);
-
-	val = (20 <<
-		MIPI_PHY_D0_CONTROL2_SETTLE_COUNT_SHFT) |
-		(0x0F << MIPI_PHY_D0_CONTROL2_HS_TERM_IMP_SHFT) |
-		(0x0 << MIPI_PHY_D0_CONTROL2_LP_REC_EN_SHFT) |
-		(0x1 << MIPI_PHY_D0_CONTROL2_ERR_SOT_HS_EN_SHFT);
+	val = 0x0;
 	CDBG("%s MIPI_PHY_D0_CONTROL2 val=0x%x\n", __func__, val);
 	msm_io_w(val, csibase + MIPI_PHY_D0_CONTROL2);
 	msm_io_w(val, csibase + MIPI_PHY_D1_CONTROL2);
 	msm_io_w(val, csibase + MIPI_PHY_D2_CONTROL2);
 	msm_io_w(val, csibase + MIPI_PHY_D3_CONTROL2);
 
-	val = (0x0F << MIPI_PHY_CL_CONTROL_HS_TERM_IMP_SHFT) |
-		(0x0 << MIPI_PHY_CL_CONTROL_LP_REC_EN_SHFT);
 	CDBG("%s MIPI_PHY_CL_CONTROL val=0x%x\n", __func__, val);
 	msm_io_w(val, csibase + MIPI_PHY_CL_CONTROL);
 	msleep(10);
@@ -797,6 +766,12 @@ void msm_camio_disable(struct platform_device *pdev)
 	free_irq(camio_ext.csiirq, 0);
 	iounmap(csibase);
 	release_mem_region(camio_ext.csiphy, camio_ext.csisz);
+}
+
+void msm_camio_disable(struct platform_device *pdev)
+{
+	CDBG("disable mipi\n");
+	msm_camio_csi_disable();
 	CDBG("disable clocks\n");
 
 	msm_camio_clk_disable(CAMIO_CSI0_VFE_CLK);
@@ -871,8 +846,9 @@ int msm_camio_csi_config(struct msm_camera_csi_params *csi_params)
 {
 	int rc = 0;
 	uint32_t val = 0;
+	int i;
 
-	CDBG("msm_camio_csi_config \n");
+	CDBG("msm_camio_csi_config\n");
 
 	/* SOT_ECC_EN enable error correction for SYNC (data-lane) */
 	msm_io_w(0x4, csibase + MIPI_PHY_CONTROL);
@@ -892,15 +868,6 @@ int msm_camio_csi_config(struct msm_camera_csi_params *csi_params)
 	CDBG("%s MIPI_PROTOCOL_CONTROL val=0x%x\n", __func__, val);
 	msm_io_w(val, csibase + MIPI_PROTOCOL_CONTROL);
 
-	/* SW CAL EN */
-	val = (0x1 << MIPI_CALIBRATION_CONTROL_SWCAL_CAL_EN_SHFT) |
-		(0x1 <<
-		MIPI_CALIBRATION_CONTROL_SWCAL_STRENGTH_OVERRIDE_EN_SHFT) |
-		(0x1 << MIPI_CALIBRATION_CONTROL_CAL_SW_HW_MODE_SHFT) |
-		(0x1 << MIPI_CALIBRATION_CONTROL_MANUAL_OVERRIDE_EN_SHFT);
-	CDBG("%s MIPI_CALIBRATION_CONTROL val=0x%x\n", __func__, val);
-	msm_io_w(val, csibase + MIPI_CALIBRATION_CONTROL);
-
 	/* settle_cnt is very sensitive to speed!
 	increase this value to run at higher speeds */
 	val = (csi_params->settle_cnt <<
@@ -908,12 +875,9 @@ int msm_camio_csi_config(struct msm_camera_csi_params *csi_params)
 		(0x0F << MIPI_PHY_D0_CONTROL2_HS_TERM_IMP_SHFT) |
 		(0x1 << MIPI_PHY_D0_CONTROL2_LP_REC_EN_SHFT) |
 		(0x1 << MIPI_PHY_D0_CONTROL2_ERR_SOT_HS_EN_SHFT);
-	CDBG("%s MIPI_PHY_D0_CONTROL2 val=0x%x\n", __func__, val);
-	msm_io_w(val, csibase + MIPI_PHY_D0_CONTROL2);
-	msm_io_w(val, csibase + MIPI_PHY_D1_CONTROL2);
-	msm_io_w(val, csibase + MIPI_PHY_D2_CONTROL2);
-	msm_io_w(val, csibase + MIPI_PHY_D3_CONTROL2);
-
+	
+	for (i = 0; i < csi_params->lane_cnt; i++)
+		msm_io_w(val, csibase + MIPI_PHY_D0_CONTROL2 + i * 4);
 
 	val = (0x0F << MIPI_PHY_CL_CONTROL_HS_TERM_IMP_SHFT) |
 		(0x1 << MIPI_PHY_CL_CONTROL_LP_REC_EN_SHFT);
