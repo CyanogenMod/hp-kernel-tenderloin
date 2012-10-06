@@ -493,6 +493,23 @@ void msm_camio_clk_set_min_rate(struct clk *clk, int rate)
 	clk_set_min_rate(clk, rate);
 }
 
+void msm_camio_vfe_clk_set(enum msm_s_setting s_setting)
+{
+	switch (s_setting) {
+		case S_RES_PREVIEW:
+			camio_clk.vfe_clk_rate = CAMIO_VFE_CLK_PREV;
+			CDBG("Set VFE clk for Preview\n");
+			break;
+		case S_RES_CAPTURE:
+			camio_clk.vfe_clk_rate = CAMIO_VFE_CLK_SNAP;
+			CDBG("Set VFE clk for Snapshot\n");
+			break;
+		default:
+			return;
+	}
+	msm_camio_clk_rate_set_2(camio_vfe_clk, camio_clk.vfe_clk_rate);
+}
+
 static irqreturn_t msm_io_csi_irq(int irq_num, void *data)
 {
 	uint32_t irq;

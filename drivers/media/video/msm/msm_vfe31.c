@@ -880,6 +880,8 @@ static void vfe31_reset(void)
 	to the command register using the barrier */
 	msm_io_w_mb(VFE_RESET_UPON_RESET_CMD,
 		vfe31_ctrl->vfebase + VFE_GLOBAL_RESET);
+
+	msm_camio_vfe_clk_set(S_RES_CAPTURE);
 }
 
 static int vfe31_operation_config(uint32_t *cmd)
@@ -1127,6 +1129,7 @@ static int vfe31_start(void)
 		msm_io_w(1, vfe31_ctrl->vfebase + V31_AXI_OUT_OFF + 20 +
 			24 * (vfe31_ctrl->outpath.out0.ch1));
 	}
+	msm_camio_vfe_clk_set(S_RES_PREVIEW);
 	vfe31_start_common();
 	return 0;
 }

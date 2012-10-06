@@ -82,6 +82,9 @@
 #define	MIPI_PHY_D1_CONTROL_MIPI_DATA_PHY_SHUTDOWNB_SHFT	0x8
 #define	DBG_CSI	0
 
+#define	CAMIO_VFE_CLK_SNAP			228570000
+#define	CAMIO_VFE_CLK_PREV			153600000
+
 static struct clk *camio_cam_clk;
 static struct clk *camio_vfe_clk;
 static struct clk *camio_csi_src_clk;
@@ -601,6 +604,23 @@ void msm_camio_clk_set_min_rate(struct clk *clk, int rate)
 	clk_set_min_rate(clk, rate);
 }
 
+void msm_camio_vfe_clk_set(enum msm_s_setting s_setting)
+{
+	switch (s_setting) {
+		case S_RES_PREVIEW:
+			camio_clk.vfe_clk_rate = CAMIO_VFE_CLK_PREV;
+			CDBG("Set VFE clk for Preview\n");
+			break;
+		case S_RES_CAPTURE:
+			camio_clk.vfe_clk_rate = CAMIO_VFE_CLK_SNAP;
+			CDBG("Set VFE clk for Snapshot\n");
+			break;
+		default:
+			return;
+	}
+	msm_camio_clk_rate_set_2(camio_vfe_clk, camio_clk.vfe_clk_rate);
+}
+
 static irqreturn_t msm_io_csi_irq(int irq_num, void *data)
 {
 	uint32_t irq;
@@ -749,6 +769,7 @@ csi_busy:
 	release_mem_region(camio_ext.csiphy, camio_ext.csisz);
 common_fail:
 	msm_camio_clk_disable(CAMIO_CAM_MCLK_CLK);
+	msm_camio_clk_disable(CAMIO_VFE_CLK);
 	msm_camio_clk_disable(CAMIO_CSI0_VFE_CLK);
 	msm_camio_clk_disable(CAMIO_CSI0_CLK);
 	msm_camio_clk_disable(CAMIO_CSI1_VFE_CLK);
@@ -795,6 +816,7 @@ void msm_camio_disable(struct platform_device *pdev)
 	msm_camio_csi_disable();
 	CDBG("disable clocks\n");
 
+	msm_camio_clk_disable(CAMIO_VFE_CLK);
 	msm_camio_clk_disable(CAMIO_CSI0_VFE_CLK);
 	msm_camio_clk_disable(CAMIO_CSI0_CLK);
 	msm_camio_clk_disable(CAMIO_CSI1_VFE_CLK);
