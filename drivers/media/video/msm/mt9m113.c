@@ -866,6 +866,7 @@ static int mt9m113_sensor_probe(const struct msm_camera_sensor_info *info,
 	s->s_release = mt9m113_sensor_release;
 	s->s_config  = mt9m113_sensor_config;
 	s->s_camera_type = FRONT_CAMERA_2D;
+	s->s_mount_angle = 90;
 	//Put CAM_PWDN pin high during initialize as camera is not using
 	gpio_direction_output(info->sensor_pwd, 1);
 	mdelay(20);
