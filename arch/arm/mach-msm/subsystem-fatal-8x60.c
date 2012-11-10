@@ -24,7 +24,6 @@
 #include <linux/jiffies.h>
 
 #include <mach/irqs.h>
-#include <mach/restart.h>
 
 #include "smd_private.h"
 #include "modem_notifier.h"
@@ -74,11 +73,6 @@ static void send_q6_nmi(void)
 static void modem_unlock_timeout(struct work_struct *work)
 {
 	send_q6_nmi();
-	/*
-	 * Collect rpm logs post panic.
-	 */
-	msm_set_restart_mode(RESTART_DLOAD);
-
 	panic("subsys-restart: Timeout waiting for modem to unwedge.\n");
 }
 
@@ -96,10 +90,6 @@ static void modem_fatal_fn(struct work_struct *work)
 	if (modem_state == 0 || modem_state & panic_smsm_states) {
 
 		send_q6_nmi();
-		/*
-		 * Collect rpm logs post panic.
-		 */
-		msm_set_restart_mode(RESTART_DLOAD);
 		panic("subsys-restart: Modem SMSM state = 0x%x!", modem_state);
 
 	} else if (modem_state & reset_smsm_states) {
@@ -141,10 +131,7 @@ static void q6_fatal_fn(struct work_struct *work)
 	 */
 	modem_unregister_notifier(&modem_notif_nb);
 	smsm_reset_modem(SMSM_RESET);
-	/*
-	 * Collect rpm logs post panic.
-	 */
-	msm_set_restart_mode(RESTART_DLOAD);
+
 	panic("Watchdog bite received from Q6! Rebooting.\n");
 }
 
@@ -200,10 +187,6 @@ static int modem_notif_handler(struct notifier_block *this,
 {
 	if (code == MODEM_NOTIFIER_START_RESET) {
 		send_q6_nmi();
-		/*
-		 * Collect rpm logs post panic.
-		 */
-		msm_set_restart_mode(RESTART_DLOAD);
 		panic("subsys-restart: Modem error fatal'ed.");
 	}
 	return NOTIFY_DONE;
