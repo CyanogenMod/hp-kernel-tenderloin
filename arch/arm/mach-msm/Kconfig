@@ -1260,7 +1260,7 @@ config MSM_RPM_LOG
 	  via a debugfs node.
 
 config MSM_RPM_STATS_LOG
-	tristate "MSM Resource Power Manager Stat Driver
+	tristate "MSM Resource Power Manager Stat Driver"
 	depends on DEBUG_FS
 	depends on ARCH_MSM8X60
 	default n
