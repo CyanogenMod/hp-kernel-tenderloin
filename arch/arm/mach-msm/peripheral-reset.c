@@ -414,6 +414,7 @@ static int reset_q6_untrusted(void)
 
 	make_q6_proxy_votes();
 
+	usleep(5);
 	/* Put Q6 into reset */
 	reg = readl(LCC_Q6_FUNC);
 	reg |= Q6SS_SS_ARES | Q6SS_ISDB_ARES | Q6SS_ETM_ARES | STOP_CORE |
@@ -429,6 +430,7 @@ static int reset_q6_untrusted(void)
 		CORE_TCM_MEM_PERPH_EN;
 	writel(reg, LCC_Q6_FUNC);
 
+	usleep(5);
 	/* Turn on Q6 core clocks and take core out of reset */
 	reg &= ~(CLAMP_IO | Q6SS_SS_ARES | Q6SS_ISDB_ARES | Q6SS_ETM_ARES |
 			CORE_ARES);
@@ -436,15 +438,19 @@ static int reset_q6_untrusted(void)
 
 	/* Wait for clocks to be enabled */
 	mb();
+	usleep(5);
 	/* Program boot address */
 	writel((q6_start >> 12) & 0xFFFFF, QDSP6SS_RST_EVB);
 
+	usleep(5);
 	writel(Q6_STRAP_TCM_CONFIG | Q6_STRAP_TCM_BASE, QDSP6SS_STRAP_TCM);
 	writel(Q6_STRAP_AHB_UPPER | Q6_STRAP_AHB_LOWER, QDSP6SS_STRAP_AHB);
 
+	usleep(5);
 	/* Wait for addresses to be programmed before starting Q6 */
 	mb();
 
+	usleep(5);
 	/* Start Q6 instruction execution */
 	reg &= ~STOP_CORE;
 	writel(reg, LCC_Q6_FUNC);
