@@ -496,7 +496,7 @@ static int __init subsys_restart_init(void)
 {
 	int ret = 0;
 
-	restart_level = RESET_SOC;
+	restart_level = RESET_SUBSYS_INDEPENDENT;
 
 	ret = ssr_init_soc_restart_orders();
 
