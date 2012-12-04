@@ -1647,10 +1647,10 @@ static struct lsm303dlh_mag_platform_data lsm303dlh_mag_pdata = {
 	.poll_interval = 200,
 	.min_interval = 10,
 	.h_range = LSM303DLH_MAG_H_4_0G,
-	.axis_map_x = 0,
-	.axis_map_y = 1,
+	.axis_map_x = 1,
+	.axis_map_y = 0,
 	.axis_map_z = 2,
-	.negate_x = 0,
+	.negate_x = 1,
 	.negate_y = 0,
 	.negate_z = 0,
 };
@@ -4808,6 +4808,8 @@ static void fixup_i2c_configs(void)
 	if (machine_is_tenderloin() && boardtype_is_3g()) {
 		lsm303dlh_acc_pdata.negate_y = 1;
 		lsm303dlh_acc_pdata.negate_z = 1;
+		lsm303dlh_mag_pdata.negate_y = 1;
+		lsm303dlh_mag_pdata.negate_z = 1;
 	}
 #endif
 #endif
