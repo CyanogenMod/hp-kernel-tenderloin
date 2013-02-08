@@ -4445,6 +4445,12 @@ static int a6_fish_battery_get_percent(struct device *dev)
 
 	a6_reg_get (dev, A6_REG_TS2_I2C_BAT_RARC, &temp_val);
 
+#if defined(CONFIG_A6_BATTERY_SCALED_MIN) && CONFIG_A6_BATTERY_SCALED_MIN != 0
+	temp_val = (temp_val - CONFIG_A6_BATTERY_SCALED_MIN) * 100
+				/ (100 - CONFIG_A6_BATTERY_SCALED_MIN);
+	if (temp_val < 0) temp_val = 0;
+#endif
+
 	return temp_val;
 }
 

@@ -37,4 +37,11 @@ config A6_ENABLE_DOCK_PS
 	help
 	 Say Y to enable dock showing as separate power supply with A6 driver.
 
+config A6_BATTERY_SCALED_MIN
+	int "Scaled battery percentage"
+	depends on I2C && A6
+	default 0
+	help
+	 Scale A6 reported battery percent where min percent is reported as 0
+
 endif # POWER_SUPPLY
