@@ -571,6 +571,7 @@ void mdp_pipe_ctrl(MDP_BLOCK_TYPE block, MDP_BLOCK_POWER_STATE state,
 	int i;
 	unsigned long flag;
 	struct msm_fb_panel_data *pdata;
+	static int first_run = 2;
 
 	/*
 	 * It is assumed that if isr = TRUE then start = OFF
@@ -684,6 +685,15 @@ void mdp_pipe_ctrl(MDP_BLOCK_TYPE block, MDP_BLOCK_POWER_STATE state,
 				if (mdp_pclk != NULL) {
 					clk_disable(mdp_pclk);
 					MSM_FB_DEBUG("MDP PCLK OFF\n");
+				}
+				if (first_run) {
+					if (first_run == 1) {
+						printk("%s: first_run\n", __func__);
+						if (mdp_clk) clk_disable(mdp_clk);
+						first_run = 0;
+					} else {
+						first_run = 1;
+					}
 				}
 			} else {
 				/* send workqueue to turn off mdp power */
