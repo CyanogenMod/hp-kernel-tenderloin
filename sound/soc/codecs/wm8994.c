@@ -34,9 +34,13 @@
 #include <linux/mfd/wm8994/registers.h>
 #include <linux/mfd/wm8994/pdata.h>
 #include <linux/mfd/wm8994/gpio.h>
+#include <linux/switch.h>
 #include <linux/input.h>
 #include "wm8994.h"
 #include "wm_hubs.h"
+
+extern int headphone_plugged;
+extern struct switch_dev *headphone_switch;
 
 static struct snd_soc_codec *wm8994_codec;
 struct snd_soc_codec_device soc_codec_dev_wm8994;
@@ -4608,6 +4612,7 @@ static void wm8958_hp_micdet(u16 status, void *data)
 
 	oldtype = wm8994->micdet[0].jack->jack->type;
 	if(0x203 == status && !(wm8994->pdata->jack_is_mic) ){
+		headphone_plugged = 1;
 		dev_err(codec->dev, "  Reporting Headset inserted\n");
 
 		wm8994->pdata->jack_is_mic = true;
@@ -4616,6 +4621,7 @@ static void wm8958_hp_micdet(u16 status, void *data)
 						    SW_MICROPHONE_INSERT,
 					        1);		
 	}else if(7 == status && wm8994->pdata->jack_is_mic == false) { 
+		headphone_plugged = 1;
 		dev_err(codec->dev, "  Reporting headphones inserted\n");
 		input_report_switch(wm8994->micdet[0].jack->jack->input_dev,
 							    SW_HEADPHONE_INSERT,
@@ -4639,6 +4645,7 @@ static void wm8958_hp_micdet(u16 status, void *data)
 			input_report_key(wm8994->micdet[0].jack->jack->input_dev, KEY_PLAYPAUSE,
 					 0);
 		}else if(0x402 == status){
+			headphone_plugged = 0;
 			dev_err(codec->dev, "  Reporting headset removed\n");
 			wm8994->pdata->jack_is_mic = false;
 			wm8994->micdet[0].jack->jack->type = SND_JACK_MICROPHONE;
@@ -4648,6 +4655,9 @@ static void wm8958_hp_micdet(u16 status, void *data)
 		}
 	}
 	input_sync(wm8994->micdet[0].jack->jack->input_dev);
+	if (headphone_switch) {
+		switch_set_state(headphone_switch, headphone_plugged);
+	}
 	wm8994->micdet[0].jack->jack->type = oldtype;
 }
 

@@ -58,8 +58,8 @@ extern struct snd_soc_platform msm_soc_platform;
 #include <linux/input.h>
 #include <sound/pcm_params.h>
 
-static int headphone_plugged = 0;
-static struct switch_dev *headphone_switch;
+int headphone_plugged = 0;
+struct switch_dev *headphone_switch;
 
 #define WM_FS 48000
 #define WM_CHANNELS 2
@@ -1283,7 +1283,6 @@ static int jack_notifier_event(struct notifier_block *nb, unsigned long event, v
 		wm8994 = snd_soc_codec_get_drvdata(codec);
 
 		if(1 == event){
-			headphone_plugged = 1;
 			// Someone inserted a jack, we need to turn on mic bias2 for headset mic detection
 			snd_soc_dapm_force_enable_pin( codec, "MICBIAS2");
 
@@ -1293,6 +1292,9 @@ static int jack_notifier_event(struct notifier_block *nb, unsigned long event, v
 
 		}else if (0 == event){
 			headphone_plugged = 0;
+			if (headphone_switch) {
+				switch_set_state(headphone_switch, headphone_plugged);
+			}
 			pr_crit("MIC DETECT: DISABLE. Jack removed\n");
 
 			// This will disable mic detection on 8958
@@ -1314,9 +1316,6 @@ static int jack_notifier_event(struct notifier_block *nb, unsigned long event, v
 			
 			input_sync(jack->jack->input_dev);
 			snd_soc_dapm_disable_pin( codec, "MICBIAS2");
-		}
-		if (headphone_switch) {
-			switch_set_state(headphone_switch, headphone_plugged);
 		}
 	}
 
@@ -1412,7 +1411,7 @@ static int msm_soc_dai_init(struct snd_soc_codec *codec)
 			kfree(headphone_switch);
 			headphone_switch = NULL;
 		} else {
-			headphone_plugged = hp_jack.status;
+			headphone_plugged = hp_jack.status ? 1 : 0;
 			printk(KERN_INFO "Headphone switch initialized, plugged=%d\n",
 					headphone_plugged);
 			switch_set_state(headphone_switch, headphone_plugged);
