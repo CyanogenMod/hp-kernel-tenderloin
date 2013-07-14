@@ -589,6 +589,7 @@ retry:
 		goto retry;
 }
 
+#ifdef OOM_RESTART_ENABLED
 /* 
  * Palm-specific:
  * Routines to support restarting ourselves cleanly (with a sync)
@@ -623,6 +624,7 @@ void oom_restart(int type)
 	kernel_restart("panic");
 
 }
+#endif
 
 /*
  * pagefault handler calls into here because it is out of memory but
@@ -650,7 +652,9 @@ void pagefault_out_of_memory(void)
 	 */
 	if (!test_thread_flag(TIF_MEMDIE))
 		schedule_timeout_uninterruptible(1);
+#ifdef OOM_RESTART_ENABLED
 	oom_restart(PF_OOM_TYPE);
+#endif
 }
 
 /**
@@ -712,5 +716,7 @@ void out_of_memory(struct zonelist *zonelist, gfp_t gfp_mask,
 	 */
 	if (!test_thread_flag(TIF_MEMDIE))
 		schedule_timeout_uninterruptible(1);
+#ifdef OOM_RESTART_ENABLED
 	oom_restart(OOM_OOM_TYPE);
+#endif
 }
